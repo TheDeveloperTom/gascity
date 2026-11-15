@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
 
 import { m04Idle } from '../test/fixtures/m04Idle';
+import type { PeerBoardSource } from './boardOwner';
 import { ALL_EPICS, NO_EPIC } from './epics';
 import {
   ALL_PROJECTS,
@@ -223,7 +224,74 @@ describe('buildBoardModel', () => {
   it('every card has owner "me"', () => {
     const model = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'all' });
     expect(model.columns.waiting.map((c) => c.owner)).toEqual(['me', 'me']);
-    const richard = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'richard' });
+    const richard = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'peer:rich' });
     expect(ids(richard.columns.waiting)).toEqual([]);
+  });
+});
+
+// vk-final part 3: Richard's board is a second, read-only source. His cards
+// join the same columns, keyed by (city, rig, id) so an id both boards use
+// stays two cards.
+describe('buildBoardModel with a peer board', () => {
+  const PEER: PeerBoardSource = {
+    owner: 'peer:rich',
+    login: 'rich',
+    label: 'Ричарда',
+    name: 'Ричард',
+    avatar: 'Р',
+    available: true,
+    asOf: '2026-11-15T18:52:00Z',
+    stale: false,
+    cards: [
+      { rig: 'crm-api', bead: bead('dw-iy9a', { title: 'Изменение схемы users', status: 'in_progress' }) },
+      { rig: 'devwork', bead: bead('dw-zz1', { title: 'Richard devwork card' }) },
+    ],
+  };
+  const all = (m: ReturnType<typeof buildBoardModel>) =>
+    [...m.columns.waiting, ...m.columns.working, ...m.columns.review, ...m.columns.pr, ...m.columns.merged];
+
+  it('peer cards join the board with their owner, project and a (city, rig, id) key', () => {
+    const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]);
+    const peer = all(model).filter((c) => c.owner === 'peer:rich');
+    expect(peer.map((c) => c.key).sort()).toEqual(['peer:rich:crm-api:dw-iy9a', 'peer:rich:devwork:dw-zz1']);
+    const schema = peer.find((c) => c.node.bead.title === 'Изменение схемы users')!;
+    expect(schema.stage.stage).toBe('working');
+    expect(schema.project).toEqual({ key: 'crm-api', label: 'crm-api', kind: 'rig' });
+    expect(schema.peer).toMatchObject({ login: 'rich', label: 'Ричарда', avatar: 'Р', rig: 'crm-api' });
+    // own cards keep their bead id as the key
+    expect(all(model).find((c) => c.owner === 'me' && c.node.bead.id === 'dw-iy9a')?.key).toBe('dw-iy9a');
+  });
+
+  it('the same id on both boards is two cards', () => {
+    const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]);
+    expect(all(model).filter((c) => c.node.bead.id === 'dw-iy9a')).toHaveLength(2);
+  });
+
+  it('the owner filter shows mine, his, or both', () => {
+    const mine = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'me' }, [PEER]);
+    expect(all(mine).every((c) => c.owner === 'me')).toBe(true);
+    const his = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'peer:rich' }, [PEER]);
+    expect(all(his).map((c) => c.owner)).toEqual(['peer:rich', 'peer:rich']);
+    expect(all(buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]))).toHaveLength(4);
+  });
+
+  it('peer rigs are projects: counted, filterable and tagged', () => {
+    const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]);
+    expect(model.projects.map((p) => [p.key, p.count])).toEqual([
+      ['all', 4],
+      ['devwork', 2],
+      ['crm-api', 1],
+      ['city', 1],
+    ]);
+    const crm = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'crm-api' }, [PEER]);
+    expect(all(crm).map((c) => c.key)).toEqual(['peer:rich:crm-api:dw-iy9a']);
+    expect(all(model).find((c) => c.key === 'peer:rich:crm-api:dw-iy9a')?.tag).toBe('crm-api');
+  });
+
+  it('peer cards never add holds or blockers to my cards', () => {
+    const blocker = { rig: 'devwork', bead: bead('dw-zz2', { title: 'his blocker', needs: ['dw-iy9a'] }) };
+    const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [{ ...PEER, cards: [blocker] }]);
+    expect(model.waitersOf.get('dw-iy9a') ?? []).toEqual([]);
+    expect(all(model).find((c) => c.key === 'dw-iy9a')?.holds).toBe(0);
   });
 });

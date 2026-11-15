@@ -48,6 +48,7 @@ import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
 import { KanbanBadge } from './KanbanBadge';
+import { PeerKanbanCard, PROJECT_COLOR } from './PeerKanbanCard';
 import { PriorityIcon, priorityLevelOf } from './PriorityIcon';
 import { RelationshipBadge } from './RelationshipBadge';
 import { RunningDots } from './RunningDots';
@@ -55,8 +56,6 @@ import { RunningDots } from './RunningDots';
 /** Milestone tag colours: the design's dots, picked by a stable hash of the key. */
 const TAG_COLORS = ['#0EA5E9', '#EC4899', '#22C55E', '#F59E0B', '#8B5CF6', '#14B8A6'] as const;
 const NEEDS_YOU_COLOR = '#F59E0B';
-/** The project tag's dot (design Main: the slate «crm-api» tag). */
-export const PROJECT_COLOR = '#64748B';
 const SHORT_TITLE = 28;
 const VISIBLE_RELATIONS = 2;
 
@@ -103,9 +102,28 @@ export interface KanbanCardProps {
   /** column: VK board cell (-1px overlap); list: the phone's single list (hairline below). */
   variant?: 'column' | 'list';
   className?: string;
+  /** Peer cards only: «💬 N» (vk-final part 4). */
+  commentCount?: number;
 }
 
-export function KanbanCard({
+/** One board card; `onSelect` gets `card.key` (the bead id on my cards). */
+export function KanbanCard(props: KanbanCardProps) {
+  if (props.card.peer !== null) {
+    return (
+      <PeerKanbanCard
+        card={props.card}
+        selected={props.selected}
+        onSelect={props.onSelect}
+        {...(props.commentCount === undefined ? {} : { commentCount: props.commentCount })}
+        {...(props.variant === undefined ? {} : { variant: props.variant })}
+        {...(props.className === undefined ? {} : { className: props.className })}
+      />
+    );
+  }
+  return <OwnKanbanCard {...props} />;
+}
+
+function OwnKanbanCard({
   card,
   nowMs,
   selected,
@@ -163,6 +181,7 @@ export function KanbanCard({
     <article
       ref={ref}
       data-bead-id={bead.id}
+      data-card-key={card.key}
       data-stage={stage.stage}
       {...(routeAttention === null ? {} : { 'data-route-attention': routeAttention.kind })}
       {...(attentionSeverity === null ? {} : { 'data-attention-severity': attentionSeverity })}

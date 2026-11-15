@@ -41,7 +41,10 @@ export function useBeadLookup(model: BoardModel): (id: string) => SupervisorBead
   return useMemo(() => {
     const byId = new Map<string, SupervisorBead>();
     for (const stage of STAGES) {
-      for (const card of model.columns[stage.id]) byId.set(card.node.bead.id, card.node.bead);
+      // My cards only: a peer card's id may name a different bead of mine.
+      for (const card of model.columns[stage.id]) {
+        if (card.peer === null) byId.set(card.node.bead.id, card.node.bead);
+      }
     }
     return (id: string) => byId.get(id);
   }, [model]);
@@ -61,8 +64,8 @@ export interface VkColumn {
 /** Ждёт / В работе / Ревью (review + pr) / «Влито · за 7 дней». */
 export function boardColumns(model: BoardModel, nowMs: number): VkColumn[] {
   const recent = mergedWithin(model, nowMs);
-  const recentIds = new Set(recent.map((card) => card.node.bead.id));
-  const older = model.columns.merged.filter((card) => !recentIds.has(card.node.bead.id));
+  const recentKeys = new Set(recent.map((card) => card.key));
+  const older = model.columns.merged.filter((card) => !recentKeys.has(card.key));
   return [
     { id: 'waiting', label: t('Waiting'), color: '#3B82F6', cards: model.columns.waiting, older: [] },
     { id: 'working', label: t('Working'), color: '#F59E0B', cards: model.columns.working, older: [] },

@@ -87,10 +87,10 @@ export function PhoneBoard({
         ) : (
           cards.map((card) => (
             <KanbanCard
-              key={card.node.bead.id}
+              key={card.key}
               card={card}
               nowMs={nowMs}
-              selected={card.node.bead.id === selectedId}
+              selected={card.key === selectedId}
               onSelect={onSelect}
               sessions={sessions}
               beadById={beadById}

@@ -10,7 +10,10 @@ import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadBoard } from '../components/beads/BeadBoard';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
-import { useBoardSources, type OwnerFilter } from '../lib/boardOwner';
+import { asOfClock, boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
+import { usePeerBoards } from '../hooks/usePeerBoards';
+import type { PeerCard } from '../supervisor/peerBoardReads';
+import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
 import {
   ALL_EPICS,
@@ -94,7 +97,10 @@ export function BeadsPage() {
   const epicParam = normalizeSelectedBeadParam(searchParams.get('epic'));
   const [epic, setEpic] = useState<string>(epicParam ?? ALL_EPICS);
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
-  const boardSources = useBoardSources();
+  // vk-final part 3: the peers' read-only boards (city service peer-boards).
+  const peerBoards = usePeerBoards();
+  const peerSources = peerBoards.sources;
+  const boardSources = useMemo(() => boardSourcesOf(peerSources), [peerSources]);
   const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
@@ -208,6 +214,7 @@ export function BeadsPage() {
           epic,
           owner: ownerFilter,
         },
+        peerSources,
       ),
     [
       rows,
@@ -220,8 +227,13 @@ export function BeadsPage() {
       showTests,
       epic,
       ownerFilter,
+      peerSources,
     ],
   );
+  // A peer card is selected by its board key (`peer:<login>:<rig>:<id>`);
+  // it opens the read-only peer window, never the bead panel.
+  const selectedPeer = useMemo(() => peerCardOf(peerSources, selectedId), [peerSources, selectedId]);
+  const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
   const epics = useMemo(
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
     [rows, showAllHistory],
@@ -381,6 +393,23 @@ export function BeadsPage() {
           newTaskUrl={mayorChannelUrl()}
           plannedEmpty={plannedEmpty}
         />
+        {peerSources
+          .filter((peer) => peer.stale)
+          .map((peer) => (
+            <p
+              key={peer.owner}
+              role="status"
+              className="mt-3 flex items-center gap-2 rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 font-vk-sans text-[15px] text-vk-text-high"
+            >
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-warn" />
+              {t("{owner} Mac is offline since {time}", { owner: peer.label, time: asOfClock(peer.asOf) })}
+            </p>
+          ))}
+        {peerBoards.error !== null && (
+          <p className="mt-3 font-vk-sans text-sm text-vk-text-low">
+            {t('The other city’s board could not be read.')}
+          </p>
+        )}
       </div>
 
       {!hasLoadedBoard && loading ? (
@@ -396,10 +425,9 @@ export function BeadsPage() {
       ) : (
         <section aria-label={t('Board')} className="min-w-0 space-y-4">
           {boardModel.idle.state !== 'busy' &&
-            boardModel.columns.working.length +
-              boardModel.columns.review.length +
-              boardModel.columns.pr.length ===
-              0 && <IdleNotice idle={boardModel.idle} />}
+            [...boardModel.columns.working, ...boardModel.columns.review, ...boardModel.columns.pr].filter(
+              (card) => card.peer === null,
+            ).length === 0 && <IdleNotice idle={boardModel.idle} />}
           <BeadBoard
             model={boardModel}
             selectedId={selectedId}
@@ -429,10 +457,24 @@ export function BeadsPage() {
         </p>
       )}
 
+      {selectedPeer !== null && (
+        <PeerTaskDrawer
+          open
+          onClose={() => setSelectedId(null)}
+          bead={selectedPeer.card.bead}
+          rig={selectedPeer.card.rig}
+          name={selectedPeer.peer.name}
+          label={selectedPeer.peer.label}
+          avatar={selectedPeer.peer.avatar}
+          asOf={selectedPeer.peer.asOf}
+          stale={selectedPeer.peer.stale}
+        />
+      )}
+
       <BeadDetailModal
-        open={selectedId !== null}
+        open={ownSelectedId !== null}
         onClose={() => setSelectedId(null)}
-        beadId={selectedId}
+        beadId={ownSelectedId}
         initialBead={selectedBead}
         depNode={selectedNode}
         sessions={sessionItems}
@@ -480,6 +522,26 @@ export function BeadsPage() {
       </Modal>
     </section>
   );
+}
+
+function isPeerKey(key: string): boolean {
+  return key.startsWith('peer:');
+}
+
+/** The peer card a board key (`peer:<login>:<rig>:<id>`) names, or null. */
+function peerCardOf(
+  peers: readonly PeerBoardSource[],
+  key: string | null,
+): { peer: PeerBoardSource; card: PeerCard } | null {
+  if (key === null || !isPeerKey(key)) return null;
+  for (const peer of peers) {
+    const prefix = `${peer.owner}:`;
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    const card = peer.cards.find((c) => `${c.rig}:${c.bead.id}` === rest);
+    if (card !== undefined) return { peer, card };
+  }
+  return null;
 }
 
 function normalizeSelectedBeadParam(value: string | null): string | null {

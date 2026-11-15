@@ -1,7 +1,12 @@
 import { t } from '../i18n';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { buildBeadGraph } from './beadGraph';
-import { DEFAULT_OWNER, type CardOwner, type OwnerFilter } from './boardOwner';
+import {
+  DEFAULT_OWNER,
+  type CardOwner,
+  type OwnerFilter,
+  type PeerBoardSource,
+} from './boardOwner';
 import { ALL_EPICS, NO_EPIC } from './epics';
 import { beadRole } from './boardRoles';
 import {
@@ -47,10 +52,31 @@ export interface ProjectRef {
   kind: 'rig' | 'city';
 }
 
+/** What a peer card shows of its source (vk-final part 3); null on my cards. */
+export interface PeerCardInfo {
+  login: string;
+  /** «Ричарда» */
+  label: string;
+  /** «Ричард» */
+  name: string;
+  /** «Р» */
+  avatar: string;
+  rig: string;
+  asOf: string;
+  stale: boolean;
+}
+
 export interface BoardCard extends StageCard {
+  /**
+   * The card's identity on the board: my cards keep their bead id; a peer
+   * card is `peer:<login>:<rig>:<id>` (keyed by city, rig and id), so an id
+   * both boards use stays two cards. React keys and selection use it.
+   */
+  key: string;
   project: ProjectRef;
-  /** Whose board the card came from (lib/boardOwner seam; today always DEFAULT_OWNER). */
+  /** Whose board the card came from (lib/boardOwner seam). */
   owner: CardOwner;
+  peer: PeerCardInfo | null;
   tag: string | null;
   wait: CardWait | null;
   holds: number;
@@ -170,7 +196,8 @@ function groupWaiting(
   for (const card of cards) {
     const bead = card.node.bead;
     const stage = milestoneOf(bead);
-    const parent = bead.parent ? byId.get(bead.parent) : undefined;
+    // A peer card's parent id names his epic, never ours.
+    const parent = card.owner === DEFAULT_OWNER && bead.parent ? byId.get(bead.parent) : undefined;
     let key: string;
     let kind: keyof typeof GROUP_RANK;
     let name: string;
@@ -274,17 +301,15 @@ function withLandPrs(
   return out;
 }
 
-export function buildBoardModel(
-  data: BoardData,
-  rigs: readonly RigPrefix[],
-  filters: BoardFilters,
-): BoardModel {
-  const tasks = data.items.filter((bead) => beadRole(bead) === 'task');
-  const everything = [...tasks, ...data.routeItems, ...data.serviceItems];
-  const byId = new Map(everything.map((b) => [b.id, b]));
+/** One board's stage cards: its own graph, routes, stop cards, land PRs and waiters. */
+function stageCardsOf(
+  tasks: readonly SupervisorBead[],
+  routeItems: readonly SupervisorBead[],
+  routesComplete: boolean,
+) {
   // Tasks only, so a card never counts route steps as its neighbours.
   const graph = buildBeadGraph(tasks);
-  const routeIndex = buildRouteIndex(data.routeItems, { routesComplete: data.routesComplete });
+  const routeIndex = buildRouteIndex(routeItems, { routesComplete });
   const stopCards = stopCardsByTask(tasks);
   const taskIds = new Set(tasks.map((b) => b.id));
   const heads = headingEpics(tasks);
@@ -300,31 +325,90 @@ export function buildBoardModel(
     const node = graph.nodes.get(bead.id);
     return node ? [node] : [];
   });
-  const stageColumns = withLandPrs(buildStageColumns(nodes, routeIndex, stopCards), tasks);
+  const columns = withLandPrs(buildStageColumns(nodes, routeIndex, stopCards), tasks);
+  return { columns, routeIndex, taskIds, waitersOf };
+}
+
+function emptyColumns(): Record<StageId, BoardCard[]> {
+  return { waiting: [], working: [], review: [], pr: [], merged: [] };
+}
+
+export function buildBoardModel(
+  data: BoardData,
+  rigs: readonly RigPrefix[],
+  filters: BoardFilters,
+  /** Read-only peer boards (vk-final part 3); their cards join the same columns. */
+  peers: readonly PeerBoardSource[] = [],
+): BoardModel {
+  const tasks = data.items.filter((bead) => beadRole(bead) === 'task');
+  const everything = [...tasks, ...data.routeItems, ...data.serviceItems];
+  const byId = new Map(everything.map((b) => [b.id, b]));
+  const own = stageCardsOf(tasks, data.routeItems, data.routesComplete);
+  const { routeIndex, taskIds, waitersOf } = own;
 
   const prefixComplete = rigs.every((rig) => (rig.prefix?.trim() ?? '').length > 0);
   const toCard = (card: StageCard): BoardCard => {
     const bead = card.node.bead;
     return {
       ...card,
+      key: bead.id,
       project: prefixComplete ? projectOf(bead, rigs) : cityRef(),
       owner: DEFAULT_OWNER,
+      peer: null,
       tag: null,
       wait: cardWait(bead, card.stage, byId),
       holds: waitersOf.get(bead.id)?.length ?? 0,
       isTest: isTestBead(bead),
     };
   };
-  const allCards: Record<StageId, BoardCard[]> = {
-    waiting: [],
-    working: [],
-    review: [],
-    pr: [],
-    merged: [],
-  };
-  for (const stage of STAGES) allCards[stage.id] = stageColumns[stage.id].map(toCard);
+  const allCards = emptyColumns();
+  for (const stage of STAGES) allCards[stage.id] = own.columns[stage.id].map(toCard);
 
-  const activeTasks = allCards.working.length + allCards.review.length + allCards.pr.length;
+  // Peer cards: each (peer, rig) is its own small board, so ids never meet
+  // ours or another rig's; there are no route beads in a snapshot.
+  const peerRigs = new Set<string>();
+  for (const peer of peers) {
+    const byRig = new Map<string, SupervisorBead[]>();
+    for (const card of peer.cards) {
+      const list = byRig.get(card.rig) ?? [];
+      list.push(card.bead);
+      byRig.set(card.rig, list);
+    }
+    for (const [rig, beads] of byRig) {
+      const peerTasks = beads.filter((bead) => beadRole(bead) === 'task');
+      const peerById = new Map(peerTasks.map((b) => [b.id, b]));
+      const board = stageCardsOf(peerTasks, [], false);
+      const info: PeerCardInfo = {
+        login: peer.login,
+        label: peer.label,
+        name: peer.name,
+        avatar: peer.avatar,
+        rig,
+        asOf: peer.asOf,
+        stale: peer.stale,
+      };
+      if (peerTasks.length > 0) peerRigs.add(rig);
+      for (const stage of STAGES) {
+        for (const card of board.columns[stage.id]) {
+          const bead = card.node.bead;
+          allCards[stage.id].push({
+            ...card,
+            key: `${peer.owner}:${rig}:${bead.id}`,
+            project: { key: rig, label: rig, kind: 'rig' },
+            owner: peer.owner,
+            peer: info,
+            tag: null,
+            wait: cardWait(bead, card.stage, peerById),
+            holds: board.waitersOf.get(bead.id)?.length ?? 0,
+            isTest: isTestBead(bead),
+          });
+        }
+      }
+    }
+  }
+
+  // Idle is about my city's agents; a peer's work never makes mine busy.
+  const activeTasks = own.columns.working.length + own.columns.review.length + own.columns.pr.length;
   const flat = STAGES.flatMap((stage) => allCards[stage.id]);
   const testCount = flat.filter((card) => card.isTest).length;
   const visible = flat.filter((card) => filters.showTests || !card.isTest);
@@ -335,11 +419,21 @@ export function buildBoardModel(
   const projects: { key: string; label: string; count: number }[] = [
     { key: ALL_PROJECTS, label: t('All'), count: visible.length },
   ];
+  const ownRigNames = new Set(rigs.map((rig) => rig.name));
   if (prefixComplete) {
     for (const rig of rigs) {
       const count = counts.get(rig.name) ?? 0;
       if (count > 0) projects.push({ key: rig.name, label: rig.name, count });
     }
+  }
+  // A peer rig we do not run ourselves is its own project (after ours).
+  for (const rig of [...peerRigs].sort()) {
+    const count = counts.get(rig) ?? 0;
+    if (count > 0 && !(prefixComplete && ownRigNames.has(rig)) && rig !== CITY_PROJECT_KEY) {
+      projects.push({ key: rig, label: rig, count });
+    }
+  }
+  if (prefixComplete) {
     const city = counts.get(CITY_PROJECT_KEY) ?? 0;
     if (city > 0) projects.push({ key: CITY_PROJECT_KEY, label: t('City'), count: city });
   }
@@ -348,7 +442,8 @@ export function buildBoardModel(
   // project tag; one project (or a project chosen) needs no tag.
   const projectsWithCards = projects.filter((p) => p.key !== ALL_PROJECTS).length;
   const tagOf = (card: BoardCard): string | null => {
-    if (!prefixComplete || filters.project !== ALL_PROJECTS) return null;
+    if (filters.project !== ALL_PROJECTS) return null;
+    if (card.owner === DEFAULT_OWNER && !prefixComplete) return null;
     return projectsWithCards >= 2 ? card.project.label : null;
   };
 

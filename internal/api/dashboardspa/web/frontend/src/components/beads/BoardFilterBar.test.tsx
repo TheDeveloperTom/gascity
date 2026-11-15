@@ -7,7 +7,8 @@ import { type EpicSummary, NO_EPIC } from '../../lib/epics';
 import { BoardFilterBar } from './BoardFilterBar';
 
 const ME: BoardSource = { owner: 'me', label: 'Mine', available: true };
-const RICHARD: BoardSource = { owner: 'richard', label: 'Richard', available: true };
+// vk-final: a peer source is labelled with the person's genitive («Ричарда»).
+const RICHARD: BoardSource = { owner: 'peer:rich', label: 'Ричарда', available: true };
 const EPICS: EpicSummary[] = [
   { key: 'M03', name: 'Личный клиент', done: 1, total: 23, approx: false },
   { key: 'M04', name: 'Понимание вакансии', done: 7, total: 21, approx: false },
@@ -60,7 +61,8 @@ describe('BoardFilterBar (vk)', () => {
     expect(mine.disabled).toBe(false);
     expect(mine.title).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Ричарда' }));
-    expect(onOwnerFilter).toHaveBeenCalledWith('richard');
+    expect(onOwnerFilter).toHaveBeenCalledWith('peer:rich');
+    expect(screen.getAllByRole('button', { name: 'Ричарда' })).toHaveLength(1);
   });
 
   it('choosing M04 calls onEpic', () => {

@@ -34,6 +34,8 @@ export interface BeadBoardProps {
   attentionSeverity?: (beadId: string) => BadgeSeverity | null;
   /** Kept for callers of the route board; the VK card shows no liveness note. */
   noteOf?: (beadId: string) => string | null;
+  /** Peer cards' «💬 N» (vk-final part 4). */
+  commentCountOf?: (card: BoardCard) => number;
 }
 
 export function BeadBoard({
@@ -46,6 +48,7 @@ export function BeadBoard({
   onToggleHistory,
   className,
   attentionSeverity,
+  commentCountOf,
 }: BeadBoardProps) {
   const [showOld, setShowOld] = useState(showAllHistory);
   const [phoneColumn, setPhoneColumn] = useState<VkColumnId>('waiting');
@@ -54,15 +57,16 @@ export function BeadBoard({
 
   const renderCard = (card: BoardCard) => (
     <KanbanCard
-      key={card.node.bead.id}
+      key={card.key}
       card={card}
       nowMs={nowMs}
-      selected={card.node.bead.id === selectedId}
+      selected={card.key === selectedId}
       onSelect={onSelect}
       sessions={sessions}
       beadById={beadById}
       waitersOf={model.waitersOf}
-      attentionSeverity={attentionSeverity?.(card.node.bead.id) ?? null}
+      attentionSeverity={card.peer === null ? (attentionSeverity?.(card.node.bead.id) ?? null) : null}
+      {...(commentCountOf === undefined ? {} : { commentCount: commentCountOf(card) })}
     />
   );
 
