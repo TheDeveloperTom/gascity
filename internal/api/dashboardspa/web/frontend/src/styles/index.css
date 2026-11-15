@@ -262,6 +262,12 @@
     outline-offset: 2px;
   }
 
+  /* On the plate the enamel ring would vanish into the enamel, so controls
+     there ring in the rim's white (9.8:1 light, 7.8:1 dark on the plate). */
+  .bg-plate .focus-mark:focus-visible {
+    outline-color: oklch(var(--on-plate));
+  }
+
   /* Run steps (R17): one calm card shape. Every construct keeps its class,
      all share an 8px radius. Solid for steps (the run root a heavier 2px),
      dashed for containers, dotted for control. The construct word on the

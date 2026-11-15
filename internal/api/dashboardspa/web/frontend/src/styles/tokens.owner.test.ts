@@ -137,6 +137,18 @@ describe('«Табличка» tokens', () => {
     expect(rule).toMatch(/outline:[^;]*var\(--plate-ring\)/);
   });
 
+  // The plate holds its own controls («Ответить», «Открыть»). There the
+  // enamel ring would vanish into the enamel (1.00:1 light, 2.34:1 dark), so
+  // a control on the plate draws its ring in another token.
+  for (const [theme, block] of Object.entries(BLOCKS)) {
+    it(`${theme}: the focus ring on the plate clears 3:1 against the plate`, () => {
+      const rule = css.match(/\.bg-plate\s+\.focus-mark:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
+      const token = rule.match(/outline-color:\s*oklch\(var\(--([\w-]+)\)\)/)?.[1];
+      expect(token, 'on-plate focus rule names a colour token').toBeDefined();
+      expect(contrast(block, token ?? '', 'plate')).toBeGreaterThanOrEqual(3);
+    });
+  }
+
   // WCAG 1.4.11: a focus indicator needs 3:1 against what it sits on. Dark
   // enamel itself is only ~2.2:1 on the night ground, so the ring has its own
   // lighter enamel token.
