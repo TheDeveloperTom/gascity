@@ -91,6 +91,21 @@ describe('BeadBoard stages', () => {
     expect(screen.queryByTitle('Select gcg-10')).toBeNull();
   });
 
+  it.each([['javascript:alert(1)'], ['data:text/html,x'], ['garbage']])(
+    'renders an unsafe PR url %s as plain text, never a link',
+    (url) => {
+      const badGate = {
+        ...gate,
+        metadata: { ...gate.metadata, 'devwork.pr_url': url },
+      };
+      renderStageBoard([bead('dw-pr', { status: 'in_progress' })], [root, openPr, badGate]);
+      expect(screen.queryByRole('link', { name: 'PR #512' })).toBeNull();
+      const text = screen.getByText('PR #512');
+      expect(text.closest('a')).toBeNull();
+      expect(document.querySelector(`a[href="${url}"]`)).toBeNull();
+    },
+  );
+
   it('shows a queued route as Waiting with a link to the run', () => {
     const queued = { ...root, is_blocked: true };
     renderStageBoard(

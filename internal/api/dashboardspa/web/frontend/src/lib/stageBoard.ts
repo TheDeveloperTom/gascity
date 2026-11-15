@@ -243,12 +243,28 @@ function lastClosedMember(route: Route): SupervisorBead | null {
   return last;
 }
 
+/**
+ * An external link from bead metadata, or null. Agents write card metadata, so
+ * the value is untrusted: only an absolute http(s) URL may become an href
+ * (`javascript:`, `data:`, protocol-relative and unparsable values may not).
+ */
+export function safeExternalUrl(raw: string): string | null {
+  if (raw.length === 0) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+}
+
 function prOf(task: SupervisorBead, route: Route | null): TaskStage['pr'] {
   for (const bead of [task, ...(route?.members ?? [])]) {
     const number = meta(bead, PR_NUMBER_KEY);
-    const url = meta(bead, PR_URL_KEY);
-    if (number.length > 0 || url.length > 0) {
-      return { number: number.length > 0 ? number : null, url: url.length > 0 ? url : null };
+    const url = safeExternalUrl(meta(bead, PR_URL_KEY));
+    if (number.length > 0 || url !== null) {
+      return { number: number.length > 0 ? number : null, url };
     }
   }
   return null;

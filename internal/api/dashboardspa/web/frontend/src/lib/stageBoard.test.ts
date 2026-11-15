@@ -336,6 +336,43 @@ describe('marks', () => {
   });
 });
 
+describe('PR url safety (agents write card metadata, so the url is untrusted)', () => {
+  function prWith(url: string) {
+    const gate = step(
+      'await-merge',
+      null,
+      { issue_type: 'gate' },
+      {
+        'devwork.pr_number': '512',
+        'devwork.pr_url': url,
+      },
+    );
+    return stageOf(task({ status: 'in_progress' }), [root(), gate, ...routeFrom(8)]).pr;
+  }
+
+  it.each([
+    ['javascript:alert(1)'],
+    ['JavaScript:alert(1)'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['not a url at all'],
+    ['//evil.example/pull/1'],
+    ['ftp://example.com/pull/1'],
+  ])('drops %s as a link but keeps the PR number', (url) => {
+    expect(prWith(url)).toEqual({ number: '512', url: null });
+  });
+
+  it('keeps an https PR url', () => {
+    expect(prWith('https://github.com/o/r/pull/512')).toEqual({
+      number: '512',
+      url: 'https://github.com/o/r/pull/512',
+    });
+  });
+
+  it('keeps an http PR url', () => {
+    expect(prWith('http://git.local/o/r/pull/512')?.url).toBe('http://git.local/o/r/pull/512');
+  });
+});
+
 describe('folding', () => {
   it('route beads never become board cards and land under their task', () => {
     const t = task({ status: 'in_progress' });
@@ -379,6 +416,17 @@ describe('step link', () => {
     expect(routeRunHref(root(), s)).toBe(
       `/runs/${ROOT}?scope_kind=rig&scope_ref=devwork&node=${s.id}`,
     );
+  });
+
+  it('keeps hostile ids and scope values inside an encoded /runs/ path', () => {
+    const r = bead('javascript:alert(1)//x', {
+      metadata: { 'gc.kind': 'workflow', 'gc.scope_kind': 'javascript', 'gc.scope_ref': 'x' },
+    });
+    const s = bead('javascript:alert(2)');
+    const href = routeRunHref(r, s);
+    expect(href.startsWith('/runs/javascript%3Aalert(1)%2F%2Fx')).toBe(true);
+    expect(href).not.toContain('scope_kind');
+    expect(new URLSearchParams(href.split('?')[1]).get('node')).toBe('javascript:alert(2)');
   });
 
   it('prefers explicit gc.scope_kind/gc.scope_ref and omits a missing step', () => {
