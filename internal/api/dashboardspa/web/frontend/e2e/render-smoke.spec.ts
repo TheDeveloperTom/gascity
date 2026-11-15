@@ -174,7 +174,7 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     await expect(page.getByText('CPUs', { exact: true })).toBeVisible();
     await expect(page.getByText('Load (1m, 5m, 15m)')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin process', level: 2 })).toBeVisible();
-    await expect(page.getByText('Node', { exact: true })).toBeVisible();
+    await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
 
     // Source 3 — Tool versions (/api/health/local-tools). Probes the host PATH for
     // gc/bd/dolt; a CI runner may report every tool "unavailable", but the table
@@ -199,14 +199,14 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     // rig ("demo") has no on-disk .beads store, so the sampler probes it and the
     // tile renders the rig row in its DESIGNED unreachable state — a populated row
     // (the seeded rig is present) carrying the designed degraded note.
-    await expect(page.getByRole('heading', { name: 'Bead stores · per rig' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Bead stores by rig' })).toBeVisible();
     await expect(page.getByText('.beads store not found on disk')).toBeVisible();
 
     // Source 6 — Dolt-noms · 24 h (/api/city/{c}/dolt-noms/trend). The seeded
     // status reports a store_health.size_bytes, so the sampler appends a trend
     // sample and the tile renders its sparkline. POPULATED: the sparkline figure
     // is present (its aria-label is the stable handle).
-    await expect(page.getByRole('heading', { name: 'Dolt-noms · 24 h' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dolt storage, last 24 hours' })).toBeVisible();
     await expect(page.locator('[aria-label="24 hour dolt-noms size trend"]')).toBeVisible();
   });
 

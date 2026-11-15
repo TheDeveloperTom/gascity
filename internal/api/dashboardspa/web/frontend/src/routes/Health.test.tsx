@@ -458,7 +458,7 @@ describe('HealthPage', () => {
   it('surfaces per-rig bead-store health with a down rig flagged', async () => {
     const { container } = renderPage();
 
-    await screen.findByRole('heading', { name: /bead stores · per rig/i });
+    await screen.findByRole('heading', { name: /bead stores by rig/i });
 
     // Both rigs render; the down rig surfaces its dolt-down state.
     expect(screen.getByText('codeprobe')).toBeTruthy();
@@ -481,7 +481,7 @@ describe('HealthPage', () => {
     renderPage();
 
     await screen.findByRole('heading', { name: /supervisor/i });
-    await screen.findByRole('heading', { name: /bead stores · per rig/i });
+    await screen.findByRole('heading', { name: /bead stores by rig/i });
     expect(screen.getByText(/per-rig store health unavailable/i)).toBeTruthy();
   });
 
@@ -550,11 +550,13 @@ describe('HealthPage', () => {
       },
     });
 
-    await screen.findByRole('heading', { name: /dolt-noms/i });
+    await screen.findByRole('heading', { name: /dolt storage/i });
 
     expect(sectionFor('Supervisor')?.getAttribute('data-attention-severity')).toBe('watch');
     expect(sectionFor('Host')?.getAttribute('data-attention-severity')).toBe('attention');
-    expect(sectionFor('Dolt-noms · 24 h')?.getAttribute('data-attention-severity')).toBe('watch');
+    expect(sectionFor('Dolt storage, last 24 hours')?.getAttribute('data-attention-severity')).toBe(
+      'watch',
+    );
   });
 });
 
