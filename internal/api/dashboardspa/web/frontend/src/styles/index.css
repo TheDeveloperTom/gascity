@@ -43,18 +43,48 @@
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* PT Sans Narrow Bold (ParaType, OFL 1.1; see assets/fonts/pt-sans-narrow/OFL.txt).
+   The display face of «Табличка»: the enamel plate headline and the few big
+   numbers, nothing else. Fontsource 5.3.0, Latin and Cyrillic subsets only;
+   unicode-range values are Fontsource's, verbatim. */
+@font-face {
+  font-family: 'PT Sans Narrow';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('../assets/fonts/pt-sans-narrow/pt-sans-narrow-cyrillic-700-normal.woff2')
+    format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: 'PT Sans Narrow';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('../assets/fonts/pt-sans-narrow/pt-sans-narrow-latin-700-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  /* Signal & Pavement tokens (OKLCH triplets "L% C H", consumed by Tailwind
-     as `oklch(var(--token) / <alpha-value>)`). Light is the default.
+  /* «Табличка» tokens (OWNER-HOME-REVIEW §4). OKLCH triplets "L% C H",
+     consumed by Tailwind as `oklch(var(--token) / <alpha-value>)`. Light is
+     the default.
 
-     Pavement grey ground, Ink text, colour only as a signal: accent is
-     Stop red (alarm only), warn is Lamp amber, ok is Go green. primary
-     (Gas-flame blue) marks everything you can press. Every text token
-     clears WCAG AA on ground, panel and hover (DESIGN-PLAN §3.3). */
+     The enamel street plate is the one loud thing: --plate (cobalt enamel)
+     with --on-plate (white rim and letters) and --on-plate-muted (secondary
+     text on the plate). Enamel goes on the plate and the focus ring, nothing
+     else. Everything else is ink on plaster. primary is ink: pressable things
+     are ink with an underline or an ink fill, never a second blue. Colour is
+     meaning: warn is lamp amber (city trouble), accent is stop red (broken or
+     failed), ok is the done green. Every text token clears WCAG AA on ground,
+     panel and hover (tokens.owner.test.ts re-measures the shipped values). */
   /* Default border-color. Tailwind's `border` utility without an
      explicit color falls back to `currentColor`, which inherits the
      text color and produces stark white-on-dark borders in dark mode.
@@ -66,18 +96,21 @@
   }
 
   :root {
-    --surface: 96.9% 0.005 258.3; /* Pavement #F3F5F8: page ground */
+    --surface: 96% 0.004 106.5; /* Штукатурка #F2F2EF: page ground */
     --surface-raised: 100% 0 0; /* #FFFFFF: panel, table, modal */
-    --surface-tint: 94.4% 0.01 252.8; /* #E8EDF3: hover, selected, active nav */
-    --fg: 22.1% 0.024 259.3; /* Ink #141B26 */
-    --fg-muted: 43.3% 0.038 261.5; /* #455166: secondary text */
-    --fg-faint: 52.6% 0.036 261.6; /* #5F6B80: tertiary, still AA */
-    --rule: 89.2% 0.014 254.6; /* #D5DCE5: hairlines, panel borders */
-    --primary: 48.5% 0.188 263.9; /* Gas-flame blue #2453C7: pressable */
-    --on-primary: 100% 0 0; /* text on blue, red, amber or green fills */
-    --accent: 52.9% 0.187 28.6; /* Stop red #C02A22: alarm only */
-    --warn: 50.3% 0.112 66.4; /* Lamp amber #8E5500 */
-    --ok: 49.6% 0.112 154.4; /* Go green #1C7444 */
+    --surface-tint: 93.9% 0.007 106.5; /* #EBEBE6: hover, selected, active nav */
+    --fg: 26% 0.041 277.2; /* Чернила #1F2238: school ink */
+    --fg-muted: 42.4% 0.028 277.3; /* #4A4D5E: secondary text */
+    --fg-faint: 51.2% 0.033 278.8; /* #62657A: tertiary, still AA */
+    --rule: 88.4% 0.007 106.5; /* #D9D9D4: hairlines */
+    --primary: 26% 0.041 277.2; /* = ink #1F2238: pressable */
+    --on-primary: 100% 0 0; /* text on ink, red, amber or green fills */
+    --accent: 50.1% 0.178 28.7; /* Стоп #B3261E: broken or failed only */
+    --warn: 53.1% 0.119 65.1; /* Фонарь #9A5B00: city trouble */
+    --ok: 48.4% 0.095 153.8; /* done #2B6E45 */
+    --plate: 39% 0.134 262.8; /* Эмаль #1B3F8B: the plate and the focus ring */
+    --on-plate: 100% 0 0; /* Кромка #FFFFFF: rim and letters on the plate */
+    --on-plate-muted: 86.8% 0.039 269.4; /* #C9D3EE: secondary text on the plate */
     --scrim: 18.1% 0.018 259.7; /* #0D121A: modal backdrop, use /50 */
     --shadow-overlay: 0 18px 48px -12px rgb(13 18 26 / 0.28), 0 2px 8px rgb(13 18 26 / 0.1);
 
@@ -86,18 +119,21 @@
   }
 
   :root[data-theme='dark'] {
-    --surface: 22.4% 0.022 257.3; /* #151C26 */
-    --surface-raised: 26.2% 0.028 257.5; /* #1C2532 */
-    --surface-tint: 31% 0.033 255.8; /* #253141 */
-    --fg: 94.1% 0.01 252.8; /* #E7ECF2 */
-    --fg-muted: 76.6% 0.025 256.1; /* #A9B4C3 */
-    --fg-faint: 69.8% 0.03 256.5; /* #929FB1 */
-    --rule: 36.4% 0.036 256.6; /* #323F51 */
-    --primary: 76.4% 0.12 266.3; /* #8FB0FF */
-    --on-primary: 20.1% 0.034 263.4; /* #0E1626 */
-    --accent: 72.3% 0.172 27.1; /* #FF7468 */
-    --warn: 80.5% 0.138 75.9; /* #F2B24C */
-    --ok: 77.1% 0.14 158.1; /* #58CF92 */
+    --surface: 22.8% 0.012 278; /* #1B1C22: a night street (review §5, chosen) */
+    --surface-raised: 26.5% 0.013 272.8; /* #23252C */
+    --surface-tint: 30.2% 0.015 274.4; /* #2C2E36 */
+    --fg: 94.3% 0.011 291.9; /* #ECEBF3 */
+    --fg-muted: 77.2% 0.021 289; /* #B4B3C2 */
+    --fg-faint: 69% 0.026 288.2; /* #9A99AB */
+    --rule: 35.8% 0.017 276.5; /* #3A3C46 */
+    --primary: 94.3% 0.011 291.9; /* = ink #ECEBF3 */
+    --on-primary: 22.8% 0.012 278; /* #1B1C22 */
+    --accent: 75.9% 0.144 26.1; /* #FF8A80 */
+    --warn: 77.6% 0.142 77.4; /* #E8A93A */
+    --ok: 76.9% 0.121 156.6; /* #6CCB94 */
+    --plate: 44.4% 0.136 264.3; /* #2C4E9E: the white rim carries the edge */
+    --on-plate: 100% 0 0; /* #FFFFFF */
+    --on-plate-muted: 86.8% 0.039 269.4; /* #C9D3EE */
     --scrim: 13.2% 0.011 250.2; /* #05080C */
     --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
 
@@ -107,18 +143,21 @@
   /* System dark with no pinned choice: repeats the dark values exactly. */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']):not([data-theme='dark']) {
-      --surface: 22.4% 0.022 257.3;
-      --surface-raised: 26.2% 0.028 257.5;
-      --surface-tint: 31% 0.033 255.8;
-      --fg: 94.1% 0.01 252.8;
-      --fg-muted: 76.6% 0.025 256.1;
-      --fg-faint: 69.8% 0.03 256.5;
-      --rule: 36.4% 0.036 256.6;
-      --primary: 76.4% 0.12 266.3;
-      --on-primary: 20.1% 0.034 263.4;
-      --accent: 72.3% 0.172 27.1;
-      --warn: 80.5% 0.138 75.9;
-      --ok: 77.1% 0.14 158.1;
+      --surface: 22.8% 0.012 278;
+      --surface-raised: 26.5% 0.013 272.8;
+      --surface-tint: 30.2% 0.015 274.4;
+      --fg: 94.3% 0.011 291.9;
+      --fg-muted: 77.2% 0.021 289;
+      --fg-faint: 69% 0.026 288.2;
+      --rule: 35.8% 0.017 276.5;
+      --primary: 94.3% 0.011 291.9;
+      --on-primary: 22.8% 0.012 278;
+      --accent: 75.9% 0.144 26.1;
+      --warn: 77.6% 0.142 77.4;
+      --ok: 76.9% 0.121 156.6;
+      --plate: 44.4% 0.136 264.3;
+      --on-plate: 100% 0 0;
+      --on-plate-muted: 86.8% 0.039 269.4;
       --scrim: 13.2% 0.011 250.2;
       --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
 
@@ -196,11 +235,11 @@
     color: oklch(var(--fg-faint));
   }
 
-  /* Focus ring: 2px Gas-flame blue at 2px offset (≥5.69:1 on every surface).
-     No border-radius: the outline follows the control's own radius, so pills
-     stay pills and nav items keep their 8 px corners. */
+  /* Focus ring: 2px enamel at 2px offset, the plate's colour spent a second
+     and last time. No border-radius: the outline follows the control's own
+     radius, so pills stay pills and nav items keep their 8 px corners. */
   .focus-mark:focus-visible {
-    outline: 2px solid oklch(var(--primary));
+    outline: 2px solid oklch(var(--plate));
     outline-offset: 2px;
   }
 

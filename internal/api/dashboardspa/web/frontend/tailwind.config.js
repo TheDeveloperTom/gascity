@@ -15,9 +15,13 @@ export default {
   darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
-      // Signal & Pavement (DESIGN-PLAN §3). accent is Stop red and means
-      // alarm only; primary (Gas-flame blue) marks everything pressable.
+      // «Табличка» (OWNER-HOME-REVIEW §4). plate is the enamel street plate:
+      // the plate ground and the focus ring only. primary is ink. accent is
+      // stop red (broken or failed), warn lamp amber (city trouble).
       colors: {
+        plate: 'oklch(var(--plate) / <alpha-value>)',
+        'on-plate': 'oklch(var(--on-plate) / <alpha-value>)',
+        'on-plate-muted': 'oklch(var(--on-plate-muted) / <alpha-value>)',
         surface: 'oklch(var(--surface) / <alpha-value>)',
         'surface-raised': 'oklch(var(--surface-raised) / <alpha-value>)',
         'surface-tint': 'oklch(var(--surface-tint) / <alpha-value>)',
@@ -35,6 +39,9 @@ export default {
       fontFamily: {
         // Golos Text Variable, self-hosted (styles/index.css @font-face).
         sans: ['"Golos Text Variable"', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
+        // PT Sans Narrow Bold, self-hosted: the plate headline and the few
+        // big numbers only. Narrow fallbacks keep the plate's width if it fails.
+        display: ['"PT Sans Narrow"', '"Arial Narrow"', '"Roboto Condensed"', 'sans-serif'],
         // Mono only for copyable ids and literal terminal output.
         mono: ['ui-monospace', '"SF Mono"', 'Menlo', 'Consolas', '"Liberation Mono"', 'monospace'],
       },
@@ -65,6 +72,8 @@ export default {
         DEFAULT: '6px',
         md: '8px',
         lg: '12px',
+        // The enamel plate's corner (review §5: plate 12, buttons 6).
+        plate: '12px',
         full: '9999px',
       },
       // Elevation e2 is for overlays only (modals, expanded transcript).

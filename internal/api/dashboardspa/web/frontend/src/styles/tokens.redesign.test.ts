@@ -64,10 +64,11 @@ describe('Signal & Pavement tokens', () => {
   });
 
   it('pins signal values', () => {
-    expect(lightBlock).toContain('--accent: 52.9% 0.187 28.6');
-    expect(lightBlock).toContain('--primary: 48.5% 0.188 263.9');
-    expect(darkBlock).toContain('--accent: 72.3% 0.172 27.1');
-    expect(darkBlock).toContain('--primary: 76.4% 0.12 266.3');
+    // «Табличка» values (OWNER-HOME-REVIEW §4); primary is ink.
+    expect(lightBlock).toContain('--accent: 50.1% 0.178 28.7');
+    expect(lightBlock).toContain('--primary: 26% 0.041 277.2');
+    expect(darkBlock).toContain('--accent: 75.9% 0.144 26.1');
+    expect(darkBlock).toContain('--primary: 94.3% 0.011 291.9');
   });
 
   it('self-hosts Golos and drops Inter', () => {
@@ -79,8 +80,8 @@ describe('Signal & Pavement tokens', () => {
     }
   });
 
-  it('focus and selection are blue', () => {
-    expect(css).toMatch(/\.focus-mark:focus-visible\s*\{[^}]*var\(--primary\)/);
+  it('focus is enamel and selection is ink', () => {
+    expect(css).toMatch(/\.focus-mark:focus-visible\s*\{[^}]*var\(--plate\)/);
     expect(css).toMatch(/::selection\s*\{[^}]*var\(--primary\)/);
   });
 
