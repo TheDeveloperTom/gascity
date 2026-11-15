@@ -110,6 +110,13 @@ describe('Header language toggle', () => {
     expect(within(nav).getByText('Главная')).toBeTruthy();
   });
 
+  it('on phones the theme word folds to its icon, leaving the city name room', () => {
+    setLocale('ru');
+    renderHeader();
+    const word = screen.getByText('Тёмная');
+    expect(word.className.split(/\s+/)).toEqual(expect.arrayContaining(['hidden', 'lg:inline']));
+  });
+
   it('pills count owner items only', async () => {
     renderHeader([
       contributor('mail', [

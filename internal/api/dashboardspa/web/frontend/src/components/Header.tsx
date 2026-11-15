@@ -291,7 +291,9 @@ export function Header() {
             className="inline-flex h-8 items-center gap-2 rounded px-1.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
           >
             <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[18px] w-[18px]" />
-            {resolved === 'dark' ? t('Light') : t('Dark')}
+            {/* Below lg the icon alone (the aria-label names the action), so
+                the city name keeps its room beside the need-you chip. */}
+            <span className="hidden lg:inline">{resolved === 'dark' ? t('Light') : t('Dark')}</span>
           </button>
           {/* Language toggle (SH-18, ruling R2): the label names the language
               it switches TO; the choice persists in gascity:locale. */}
