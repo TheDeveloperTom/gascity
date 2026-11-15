@@ -4,6 +4,7 @@ import type {
   ListBodyBead,
 } from 'gas-city-dashboard-shared/gc-supervisor';
 import { activeCityOrThrow } from '../api/cityBase';
+import { beadRole, ENGINE_LABEL_PREFIX, TASK_TYPES } from '../lib/boardRoles';
 import { isRouteBead } from '../lib/stageBoard';
 import { SupervisorApiError, supervisorApi } from './client';
 import { listSupervisorRigs } from './rigReads';
@@ -20,6 +21,11 @@ export interface SupervisorBeadList extends Omit<ListBodyBead, 'items' | 'total'
   route_items?: SupervisorBead[];
   /** With `withRoutes`: false when the leg that supplied the routes was truncated. */
   routes_complete?: boolean;
+  /**
+   * With `withRoutes`: service beads (orders, gates, engine-labelled beads) of
+   * every leg, deduped by id and never in `items`; kept aside to name blockers.
+   */
+  service_items?: SupervisorBead[];
   /** With `recentClosed`: beads the rig-scoped closed legs returned. */
   recent_closed_fetched?: number;
 }
@@ -57,20 +63,10 @@ const DETAIL_FALLBACK_FETCH_LIMIT = 1000;
 // Closed window per rig store for the stage board's Merged column. Live
 // devwork holds 287 closed beads in total and the whole set reads in ~0.1 s.
 const RECENT_CLOSED_FETCH_LIMIT = 1000;
-// The "real work" bead types the board fans out (one typed query each),
-// then keeps via defaultBeadFilter — the bookkeeping types
-// (message/session/molecule/…) are dropped. Every entry MUST be a type the
-// live gc/bd backend accepts as a `type=` filter: a rig-scoped include-closed
-// (`all=true`) query for a type the backend rejects fails closed (HTTP 503
-// "invalid issue type") and that one rejected leg blanks the whole board.
-const ENGINEERING_BEAD_TYPES: ReadonlySet<string> = new Set([
-  'feature',
-  'bug',
-  'task',
-  'epic',
-  'chore',
-  'decision',
-]);
+// The "real work" bead types live in `TASK_TYPES` (lib/boardRoles.ts). Every
+// entry MUST be a type the live gc/bd backend accepts as a `type=` filter: a
+// rig-scoped include-closed (`all=true`) query for a type the backend rejects
+// fails closed (HTTP 503 "invalid issue type") and blanks the whole board.
 
 export async function listSupervisorBeads(
   options: ListSupervisorBeadsOptions = {},
@@ -155,7 +151,16 @@ export async function listSupervisorBeads(
   const routeItems = options.withRoutes
     ? uniqueById([...scoped, ...(routeList?.items ?? [])].filter(isRouteBead))
     : undefined;
-  const boardScoped = options.withRoutes ? scoped.filter((bead) => !isRouteBead(bead)) : scoped;
+  // B2: service beads of every leg travel aside so blockers can be named;
+  // with withRoutes they never reach the rows.
+  const serviceItems = options.withRoutes
+    ? uniqueById([...items, ...(routeList?.items ?? []), ...closedLegItems]).filter(
+        (bead) => beadRole(bead) === 'service',
+      )
+    : undefined;
+  const boardScoped = options.withRoutes
+    ? scoped.filter((bead) => beadRole(bead) === 'task')
+    : scoped;
   const filtered = includeBookkeeping ? boardScoped : boardScoped.filter(defaultBeadFilter);
   const upstreamTotal = countAsNumber(list.total);
   // Whether the leg that supplied the routes held every bead it matched: only
@@ -171,6 +176,7 @@ export async function listSupervisorBeads(
     ...(routeItems === undefined
       ? {}
       : { route_items: routeItems, routes_complete: routesComplete }),
+    ...(serviceItems === undefined ? {} : { service_items: serviceItems }),
     ...(closedLegs === null ? {} : { recent_closed_fetched: recentClosed.length }),
     ...(upstreamTotal === undefined ? {} : { upstream_total: upstreamTotal }),
     // Counted from the WINDOW leg alone, against which `upstream_total` is
@@ -247,12 +253,16 @@ async function recentClosedRigs(rigFilter: string): Promise<string[]> {
 }
 
 function defaultBeadFilter(bead: SupervisorBead): boolean {
-  if (!ENGINEERING_BEAD_TYPES.has(bead.issue_type)) return false;
-  if (Array.isArray(bead.labels) && bead.labels.some((label) => label.startsWith('gc:'))) {
-    return false;
+  // Route beads keep the pre-B2 path: a task-typed bead without engine labels.
+  if (isRouteBead(bead)) {
+    return (
+      TASK_TYPES.has(bead.issue_type) &&
+      !(bead.labels ?? []).some((label) => label.startsWith(ENGINE_LABEL_PREFIX))
+    );
   }
-  return true;
+  return beadRole(bead) !== 'service';
 }
+
 function countAsNumber(value: ListBodyBead['total']): number | undefined {
   if (typeof value === 'number') return value;
   if (typeof value === 'bigint') return Number(value);
