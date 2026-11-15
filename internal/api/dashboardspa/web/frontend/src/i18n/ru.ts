@@ -60,6 +60,13 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
     many: '{label}: {n} неполадок города',
   },
 
+  // Health: city issues (Task 10).
+  'City issues': 'Неполадки города',
+  'No city issues': 'Неполадок нет',
+  'Could not read': 'Не удалось прочитать',
+  'Show all {n}': { one: 'Показать все {n}', few: 'Показать все {n}', many: 'Показать все {n}' },
+  'Show fewer': 'Свернуть',
+
   // Page titles (Task 9; PageHeader translates a known title).
   Agent: 'Агент',
   Cockpit: 'Пульт',
