@@ -129,9 +129,7 @@ describe('route recognition', () => {
     // Review M9: the city's own resolver (devwork-strand.sh) reads
     // gc.source_anchor_id first, so the board does too.
     expect(
-      routeTaskId(
-        root({}, { 'gc.source_bead_id': 'dw-src', 'gc.source_anchor_id': 'dw-anchor' }),
-      ),
+      routeTaskId(root({}, { 'gc.source_bead_id': 'dw-src', 'gc.source_anchor_id': 'dw-anchor' })),
     ).toBe('dw-anchor');
     expect(
       routeTaskId(
@@ -172,13 +170,16 @@ describe('every devwork-development step maps to its stage', () => {
 });
 
 describe('closed but not merged (review M2)', () => {
-  it.each([['skipped'], ['fail']])('gives a closed task with outcome %s a quiet hint', (outcome) => {
-    const result = stageOf(task({ status: 'closed', metadata: { 'gc.outcome': outcome } }), []);
-    expect(result.stage).toBe('merged');
-    expect(result.marks).toContainEqual(
-      expect.objectContaining({ kind: 'not-merged', tone: 'quiet', label: 'closed, not merged' }),
-    );
-  });
+  it.each([['skipped'], ['fail']])(
+    'gives a closed task with outcome %s a quiet hint',
+    (outcome) => {
+      const result = stageOf(task({ status: 'closed', metadata: { 'gc.outcome': outcome } }), []);
+      expect(result.stage).toBe('merged');
+      expect(result.marks).toContainEqual(
+        expect.objectContaining({ kind: 'not-merged', tone: 'quiet', label: 'closed, not merged' }),
+      );
+    },
+  );
 
   it('gives a merged task (outcome pass) no hint', () => {
     const result = stageOf(task({ status: 'closed', metadata: { 'gc.outcome': 'pass' } }), []);
