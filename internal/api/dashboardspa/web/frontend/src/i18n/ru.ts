@@ -178,6 +178,13 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
     many: 'Вас ждут {n} дел',
   },
 
+  // Needs-you panels (Task 11).
+  '{n} task issues are on Health': {
+    one: 'Неполадки задач: {n}',
+    few: 'Неполадки задач: {n}',
+    many: 'Неполадки задач: {n}',
+  },
+
   // Why work waits (B3).
   '{n} tasks of stage {milestone} wait for card {id}': {
     one: '{n} задача этапа {milestone} ждёт карточку {id}',

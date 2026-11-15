@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { formatApiError } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
+import { tn } from '../i18n';
 import { useAttentionModel } from '../attention/context';
 import { inProgressCardNote } from '../attention/beadsNeedingAttention';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
@@ -461,7 +462,21 @@ export function BeadsPage() {
         </div>
       )}
 
-      <BeadAttentionPanel items={attention.byDomain.beads.items} onOpen={setSelectedId} />
+      {/* Task 11: only what waits for the owner; city issues are on Health. */}
+      <BeadAttentionPanel
+        items={attention.owner.items.filter((item) => item.domain === 'beads')}
+        onOpen={setSelectedId}
+      />
+      {attention.city.byDomain.beads > 0 && (
+        <p className="mb-6 text-body text-fg-muted">
+          <Link to="/health" className="text-fg underline underline-offset-2 focus-mark">
+            {tn(attention.city.byDomain.beads, {
+              one: '{n} task issue is on Health',
+              other: '{n} task issues are on Health',
+            })}
+          </Link>
+        </p>
+      )}
 
       <div className="mb-8 space-y-3">
         <ListSearchBar
