@@ -115,6 +115,13 @@ export interface BeadsAttentionFacts {
   decisionsError?: string;
   /** Failure of the dedicated escalation-queue fetch, independent of `error`. */
   escalationsError?: string;
+  /**
+   * Names that mean "the owner" when a bead waits on someone (operator alias,
+   * wire alias). `human` always counts. Set from OperatorConfig.
+   */
+  operatorAliases?: readonly string[];
+  /** Route beads (workflow roots and steps) split off `items` (withRoutes). */
+  routeItems?: readonly Bead[];
 }
 
 export interface MailAttentionFacts {
@@ -166,6 +173,10 @@ export const GC_ESCALATION_LABEL = 'gc:escalation';
  * present it becomes the row summary; when absent the title carries the ask.
  */
 const DECISION_DECIDE_META_KEY = 'decision.decide';
+const DECISION_CHAT_META_KEYS = ['decision.chat_url', 'decision.slack_url'] as const;
+
+/** The wire actor a worker names when it waits on "a human" — the owner here. */
+const OWNER_WIRE_ACTOR = 'human';
 
 export function createAttentionContributors(
   facts: AttentionContributorFacts = {},
@@ -370,6 +381,7 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
     items.push(
       domainAttention('agents', {
         id: `agents:${need.name}:needs-you`,
+        ...(need.reason === 'awaiting-input' ? { audience: 'owner' as const } : {}),
         title: `${need.name} ${agentNeedsYouReasonLabel(need.reason)}`,
         summary: need.detail,
         href: `/agents/${encodeURIComponent(need.name)}`,
@@ -435,6 +447,9 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
   // is the membership SSOT the /beads page also reads, so the nav badge count
   // and the page count cannot disagree.
   const generic = (facts.items ?? []).filter((bead) => !isMayorDecision(bead, facts.decisionLabel));
+  const ownerAliases = new Set(
+    [OWNER_WIRE_ACTOR, ...(facts.operatorAliases ?? [])].map((alias) => alias.trim().toLowerCase()),
+  );
   for (const row of selectBeadsNeedingAttention(
     {
       beads: generic,
@@ -444,9 +459,14 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     nowMs,
   )) {
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
+    const waitsOnOwner =
+      row.reason === 'waiting-human' &&
+      row.waitingOn !== undefined &&
+      ownerAliases.has(row.waitingOn.trim().toLowerCase());
     items.push(
       builder('beads', {
         id: `beads:${row.beadId}:${row.reason}`,
+        ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
         title: `${row.beadId} ${beadAttentionWord(row.reason)}`,
         summary: row.summary,
         href: beadHref(row.beadId),
@@ -497,13 +517,36 @@ function isMayorDecision(bead: Bead, decisionLabel: string): boolean {
  */
 function mayorDecisionAttention(bead: Bead): AttentionItem {
   const decide = bead.metadata?.[DECISION_DECIDE_META_KEY];
+  const chatHref = decisionChatHref(bead);
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,
+    audience: 'owner',
+    ref: bead.id,
+    ...(chatHref === null ? {} : { externalHref: chatHref }),
     title: bead.title,
     href: beadHref(bead.id),
     updatedAt: bead.updated_at ?? bead.created_at,
     ...(decide !== undefined && decide.trim().length > 0 ? { summary: decide } : {}),
   });
+}
+
+/**
+ * The chat thread where the owner answers a decision. The channel is moving
+ * (Slack to Discord), so any of the known keys is read, and only an `https:`
+ * URL is kept — never a `javascript:` or other scheme.
+ */
+function decisionChatHref(bead: Bead): string | null {
+  for (const key of DECISION_CHAT_META_KEYS) {
+    const raw = bead.metadata?.[key]?.trim();
+    if (raw === undefined || raw.length === 0) continue;
+    try {
+      const url = new URL(raw);
+      if (url.protocol === 'https:') return url.toString();
+    } catch {
+      // not a URL; try the next key
+    }
+  }
+  return null;
 }
 
 function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly AttentionItem[] {
@@ -541,6 +584,7 @@ function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly At
     items.push(
       domainAttention('mail', {
         id: `mail:${message.id}:${stale ? 'unread-stale' : 'unread'}`,
+        audience: 'owner',
         title: message.subject,
         summary: stale
           ? `from ${message.from}, unread for ${formatElapsed(staleAgeMs)}`

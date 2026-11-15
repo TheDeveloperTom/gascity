@@ -111,8 +111,19 @@ export function App() {
  */
 function AttentionRoot({ operator, children }: { operator: OperatorConfig; children: ReactNode }) {
   const { source } = useRunSummary();
-  const contributors = useLiveAttentionContributors(operator, source);
-  return <AttentionProvider contributors={contributors}>{children}</AttentionProvider>;
+  const { contributors, ownerReadiness, beadSnapshot } = useLiveAttentionContributors(
+    operator,
+    source,
+  );
+  return (
+    <AttentionProvider
+      contributors={contributors}
+      ownerReadiness={ownerReadiness}
+      {...(beadSnapshot === undefined ? {} : { beadSnapshot })}
+    >
+      {children}
+    </AttentionProvider>
+  );
 }
 
 /**

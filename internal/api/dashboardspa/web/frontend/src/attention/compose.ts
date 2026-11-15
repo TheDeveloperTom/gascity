@@ -22,8 +22,22 @@ export type AttentionSeverity = 'attention' | 'watch' | 'unavailable';
 export type BadgeSeverity = Exclude<AttentionSeverity, 'unavailable'>;
 export type AttentionDomain = (typeof ATTENTION_DOMAINS)[number];
 
+/** Who an item waits for: the owner (R3), or the city's own health. */
+export type AttentionAudience = 'owner' | 'city';
+
+export type OwnerReadiness =
+  | { state: 'loading' }
+  | { state: 'ready' }
+  | { state: 'degraded'; reasons: readonly string[] };
+
 export interface AttentionItem {
   id: string;
+  /** Absent means `city`. */
+  audience?: AttentionAudience;
+  /** An id shown as a mono tag beside the title, never as the title. */
+  ref?: string;
+  /** An https: link to the chat thread where the owner answers. */
+  externalHref?: string;
   domain: AttentionDomain;
   severity: AttentionSeverity;
   title: string;
@@ -77,10 +91,20 @@ export interface AttentionModel {
   topItems: readonly AttentionItem[];
   overflowByDomain: readonly AttentionOverflowGroup[];
   byDomain: Record<AttentionDomain, AttentionDomainSummary>;
+  owner: AudienceSlice;
+  city: AudienceSlice;
+  ownerReadiness: OwnerReadiness;
+}
+
+export interface AudienceSlice {
+  items: readonly AttentionItem[];
+  total: number;
+  byDomain: Record<AttentionDomain, number>;
 }
 
 export interface ComposeAttentionOptions {
   topLimit?: number;
+  ownerReadiness?: OwnerReadiness;
 }
 
 const DEFAULT_TOP_LIMIT = 5;
@@ -125,7 +149,34 @@ export function composeAttention(
   const topItems = items.slice(0, topLimit);
   const overflowByDomain = groupOverflow(items.slice(topLimit));
 
-  return { items, topItems, overflowByDomain, byDomain };
+  return {
+    items,
+    topItems,
+    overflowByDomain,
+    byDomain,
+    owner: audienceSlice(items, 'owner'),
+    city: audienceSlice(items, 'city'),
+    ownerReadiness: options.ownerReadiness ?? { state: 'ready' },
+  };
+}
+
+export function itemAudience(item: AttentionItem): AttentionAudience {
+  return item.audience ?? 'city';
+}
+
+// Both slices list `unavailable` items (they are shown faintly) and never
+// count them, so a degraded read cannot inflate a number.
+function audienceSlice(items: readonly AttentionItem[], audience: AttentionAudience): AudienceSlice {
+  const byDomain = {} as Record<AttentionDomain, number>;
+  for (const domain of ATTENTION_DOMAINS) byDomain[domain] = 0;
+  const sliced = items.filter((item) => itemAudience(item) === audience);
+  let total = 0;
+  for (const item of sliced) {
+    if (item.severity === 'unavailable') continue;
+    total += 1;
+    byDomain[item.domain] += 1;
+  }
+  return { items: sliced, total, byDomain };
 }
 
 function emptyDomainSummaries(): Record<AttentionDomain, AttentionDomainSummary> {

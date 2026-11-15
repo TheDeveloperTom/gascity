@@ -283,7 +283,7 @@ describe('useLiveAttentionContributors', () => {
     const { result } = renderHook(() => useLiveAttentionContributors(testOperator, undefined));
 
     await waitFor(() => {
-      const model = composeAttention(result.current);
+      const model = composeAttention(result.current.contributors);
       // gascity-dashboard-2j8e.7: the Runs badge reads the shared run-summary
       // subscription (passed in as the runsSource arg), not its own fan-out.
       // With no source here it contributes nothing; the blocked-counting logic
@@ -519,14 +519,14 @@ describe('useLiveAttentionContributors', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_750);
     });
-    expect(composeAttention(result.current).byDomain.beads.items).toHaveLength(3);
+    expect(composeAttention(result.current.contributors).byDomain.beads.items).toHaveLength(3);
 
     cityAvailable = true;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
 
-    expect(composeAttention(result.current).byDomain.beads.items).toEqual([]);
+    expect(composeAttention(result.current.contributors).byDomain.beads.items).toEqual([]);
     expect(mockSupervisorApi.listBeads).toHaveBeenCalledTimes(24);
   });
 
@@ -557,7 +557,7 @@ describe('useLiveAttentionContributors', () => {
 
     expect(callsForCity('captured-city')).toHaveLength(4);
     expect(callsForCity('later-city')).toHaveLength(4);
-    expect(composeAttention(result.current).byDomain.beads.items).toEqual([]);
+    expect(composeAttention(result.current.contributors).byDomain.beads.items).toEqual([]);
   });
 
   it('keeps a remounted attention panel on one city when old queue reads resolve late', async () => {
@@ -715,7 +715,7 @@ describe('useLiveAttentionContributors', () => {
   }
 
   function LiveBeadAttentionPanel() {
-    const contributors = useLiveAttentionContributors(testOperator, undefined);
+    const { contributors } = useLiveAttentionContributors(testOperator, undefined);
     const items = composeAttention(contributors).byDomain.beads.items;
     return <BeadAttentionPanel items={items} onOpen={() => undefined} />;
   }
