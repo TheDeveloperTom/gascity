@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import type { AttentionItem, OwnerReadiness } from '../../attention/compose';
 import { t, tn } from '../../i18n';
@@ -12,6 +12,9 @@ import { MAYOR_QUESTIONS_ON_BOARD } from '../../lib/constants';
 
 const ACTION =
   'focus-mark inline-flex h-9 shrink-0 items-center justify-center rounded border border-on-plate/90 px-4 text-body font-semibold text-on-plate transition-colors duration-150 ease-out-quart hover:bg-on-plate/10';
+
+/** Rows on the plate before «Ещё N» (task5-cap). */
+export const PLATE_VISIBLE = 5;
 
 function isCounted(item: AttentionItem): boolean {
   return item.severity !== 'unavailable';
@@ -40,9 +43,15 @@ export function OwnerPlate({
   questionsOnBoard?: boolean;
 }) {
   const baseId = useId();
+  const [expanded, setExpanded] = useState(false);
   const headingId = `${baseId}-headline`;
   const counted = items.filter(isCounted);
   const rows = [...counted, ...items.filter((item) => !isCounted(item))];
+  // task5-cap: a long queue (48 on test data) must not make Home endless. The
+  // headline keeps the full count; the rest unfolds in place, since owner
+  // items span beads, mail and agents and no single page lists them all.
+  const foldable = rows.length > PLATE_VISIBLE;
+  const shown = foldable && !expanded ? rows.slice(0, PLATE_VISIBLE) : rows;
   const headline = headlineFor(counted.length, readiness);
   const allClear = counted.length === 0 && readiness.state === 'ready';
   // With items on the plate, a failed read still has to be named.
@@ -85,7 +94,7 @@ export function OwnerPlate({
 
       {rows.length > 0 && (
         <ul className="divide-y divide-on-plate/25 border-t border-on-plate/25">
-          {rows.map((item, index) => {
+          {shown.map((item, index) => {
             const titleId = `${baseId}-item-${index}`;
             const muted = !isCounted(item);
             return (
@@ -131,6 +140,18 @@ export function OwnerPlate({
             );
           })}
         </ul>
+      )}
+      {foldable && (
+        <div className="border-t border-on-plate/25 px-5 py-3 sm:px-6">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((open) => !open)}
+            className={ACTION}
+          >
+            {expanded ? t('Show fewer') : t('Show {n} more', { n: rows.length - PLATE_VISIBLE })}
+          </button>
+        </div>
       )}
     </section>
   );

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentResponse, Bead, Message } from 'gas-city-dashboard-shared/gc-supervisor';
 import { setLocale } from '../i18n';
+import { OWNER_QUESTION_LABEL } from '../lib/ownerQuestions';
 import { composeAttention } from './compose';
 import { createAttentionContributors, type AttentionContributorFacts } from './registry';
 
-const LABEL = 'needs/stephanie';
+// Dashboard v3: the owner slice holds owner questions only (ownerQuestionOf).
+// Mail, agents, stalled and unassigned work belong to the city or nowhere.
+
+const LABEL = OWNER_QUESTION_LABEL;
 const NOW = Date.parse('2026-06-01T12:00:00.000Z');
 
 function bead(overrides: Partial<Bead>): Bead {
@@ -16,6 +20,19 @@ function bead(overrides: Partial<Bead>): Bead {
     title: 'Bead',
     ...overrides,
   };
+}
+
+function question(id: string, metadata: Record<string, string> = {}): Bead {
+  return bead({
+    id,
+    title: 'Merge the login change?',
+    labels: [LABEL],
+    metadata: {
+      'decision.question_id': `q-${id}`,
+      'owner.link': `https://discord.com/channels/1/2/${id}`,
+      ...metadata,
+    },
+  });
 }
 
 function message(overrides: Partial<Message>): Message {
@@ -59,15 +76,13 @@ function beadsFacts(extra: Partial<NonNullable<AttentionContributorFacts['beads'
 }
 
 describe('attention audience', () => {
-  it('decision is owner and carries the Slack link', () => {
+  it('an owner question is owner and links to its Discord message', () => {
     const m = model(
       beadsFacts({
         decisions: [
-          bead({
-            id: 'dw-9',
-            title: 'Merge the login change?',
-            labels: [LABEL],
-            metadata: { 'decision.slack_url': 'https://example.slack.com/archives/C1/p1' },
+          question('dw-9', {
+            'owner.link': 'https://discord.com/channels/1/2/3',
+            'decision.slack_url': 'https://example.slack.com/archives/C1/p1',
           }),
         ],
       }),
@@ -76,41 +91,72 @@ describe('attention audience', () => {
     expect(m.owner.items[0]).toMatchObject({
       audience: 'owner',
       ref: 'dw-9',
-      externalHref: 'https://example.slack.com/archives/C1/p1',
+      externalHref: 'https://discord.com/channels/1/2/3',
     });
   });
 
-  it('decision accepts a chat_url too', () => {
+  // Coupling (review M5): the decision queue is fetched by the configured
+  // label, but an owner question must carry needs/operator. A city that
+  // configures another label gets no owner questions until it uses this one.
+  it('a configured decision label other than needs/operator yields no owner questions', () => {
+    const other = bead({
+      id: 'dw-7',
+      labels: ['needs/stephanie'],
+      metadata: {
+        'decision.question_id': 'q-7',
+        'owner.link': 'https://discord.com/channels/1/2/7',
+      },
+    });
+    const m = model(beadsFacts({ decisionLabel: 'needs/stephanie', decisions: [other] }));
+    expect(m.owner.total).toBe(0);
+  });
+
+  it('no link → not owner', () => {
     const m = model(
       beadsFacts({
         decisions: [
-          bead({
-            id: 'dw-9',
-            labels: [LABEL],
-            metadata: { 'decision.chat_url': 'https://discord.com/channels/1/2/3' },
-          }),
+          question('dw-9', { 'owner.link': 'javascript:alert(1)' }),
+          question('dw-8', { 'owner.link': '' }),
         ],
       }),
     );
-    expect(m.owner.items[0]?.externalHref).toBe('https://discord.com/channels/1/2/3');
+    expect(m.owner.total).toBe(0);
+    expect(m.owner.items).toEqual([]);
   });
 
-  it('decision with a javascript: slack_url has no externalHref', () => {
-    const m = model(
-      beadsFacts({
-        decisions: [
+  it('owner total equals owner questions', () => {
+    const m = model({
+      ...beadsFacts({
+        decisions: [question('dw-9'), bead({ id: 'dw-legacy', labels: [LABEL] })],
+        items: [
           bead({
-            id: 'dw-9',
-            labels: [LABEL],
-            metadata: { 'decision.slack_url': 'javascript:alert(1)' },
+            id: 'B-h',
+            status: 'in_progress',
+            assignee: 'worker',
+            metadata: { 'gc.checkpoint_hold': 'design review', 'gc.waiting_on': 'human' },
           }),
         ],
       }),
-    );
-    expect(m.owner.items[0]).not.toHaveProperty('externalHref');
+      mail: { nowMs: NOW, items: [message({ id: 'M-1', from: 'mayor', subject: 'Please look' })] },
+      agents: {
+        items: [agent({ name: 'mayor', running: true, state: 'active' })],
+        pendingInteractions: [
+          {
+            agentName: 'mayor',
+            sessionId: 'gc-1',
+            sessionName: 'mayor',
+            pending: { kind: 'tool_approval', prompt: 'Approve?', request_id: 'r1' },
+          },
+        ],
+      },
+    });
+    expect(m.owner.total).toBe(1);
+    expect(m.owner.items.map((item) => item.ref)).toEqual(['dw-9']);
+    expect(m.city.items.map((item) => item.id)).toContain('beads:dw-legacy:mayor-decision');
+    expect(m.city.items.map((item) => item.id)).toContain('beads:B-h:waiting-human');
   });
 
-  it('operator mail is owner, pool-worker mail never appears', () => {
+  it('awaiting-input agent and operator mail are city', () => {
     const m = model({
       mail: {
         nowMs: NOW,
@@ -119,13 +165,6 @@ describe('attention audience', () => {
           message({ id: 'M-2', from: '/home/ds/gascity/polecat-1', subject: 'worker noise' }),
         ],
       },
-    });
-    expect(m.owner.items.map((item) => item.title)).toEqual(['Please look']);
-    expect(m.items.some((item) => item.title === 'worker noise')).toBe(false);
-  });
-
-  it('awaiting-input agent is owner, errored agent is city', () => {
-    const m = model({
       agents: {
         items: [
           agent({ name: 'mayor', running: true, state: 'active' }),
@@ -141,31 +180,22 @@ describe('attention audience', () => {
         ],
       },
     });
-    expect(m.owner.items.map((item) => item.id)).toEqual(['agents:mayor:needs-you']);
-    expect(m.city.items.map((item) => item.id)).toContain('agents:crashed:needs-you');
+    expect(m.owner.items).toEqual([]);
+    expect(m.city.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['agents:mayor:needs-you', 'agents:crashed:needs-you']),
+    );
+    expect(m.city.items.map((item) => item.title)).toContain('Please look');
+    expect(m.items.some((item) => item.title === 'worker noise')).toBe(false);
   });
 
-  it('waiting on human is owner, hold:mayor is city', () => {
+  it('ready-unclaimed rows are not health items', () => {
     const m = model(
       beadsFacts({
-        items: [
-          bead({
-            id: 'B-h',
-            status: 'in_progress',
-            assignee: 'worker',
-            metadata: { 'gc.checkpoint_hold': 'design review', 'gc.waiting_on': 'human' },
-          }),
-          bead({
-            id: 'B-m',
-            status: 'in_progress',
-            assignee: 'worker',
-            labels: ['hold:mayor'],
-          }),
-        ],
+        items: [bead({ id: 'B-old', created_at: '2026-05-20T00:00:00.000Z' })],
       }),
     );
-    expect(m.owner.items.map((item) => item.id)).toEqual(['beads:B-h:waiting-human']);
-    expect(m.city.items.map((item) => item.id)).toContain('beads:B-m:waiting-human');
+    expect(m.items.some((item) => item.id.endsWith(':ready-unclaimed'))).toBe(false);
+    expect(m.city.total).toBe(0);
   });
 
   // Review C1: an unknown hold names no actor, so it is city work, not the owner's.
@@ -206,29 +236,14 @@ describe('attention audience', () => {
     expect(m.owner.total).toBe(0);
   });
 
-  it('a stamped wait on the operator by name is the owner', () => {
-    const m = model(
-      beadsFacts({
-        items: [
-          bead({
-            id: 'B-s',
-            status: 'in_progress',
-            assignee: 'w',
-            metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'stephanie' },
-          }),
-        ],
-      }),
-    );
-    expect(m.owner.items.map((item) => item.id)).toEqual(['beads:B-s:waiting-human']);
-  });
-
-  // Re-review N1: spec §3.2 O4. The awaiting-human checkpoint and an explicit
-  // hold on the owner are the owner's, and read «Ждёт вас».
+  // v3: the owner slice holds owner questions only, so a bead that names the
+  // owner stays the city's; its copy still says it waits on you (review N1).
   it.each([
+    ['gc.waiting_on=<operator alias>', { metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'stephanie' } }],
     ['gc.checkpoint=awaiting-human', { metadata: { 'gc.checkpoint': 'awaiting-human' } }],
     ['hold:human', { labels: ['hold:human'] }],
     ['hold:<operator alias>', { labels: ['hold:stephanie'] }],
-  ] as const)('%s is the owner', (_name, extra) => {
+  ] as const)('%s is city work that reads as waiting on you', (_name, extra) => {
     const m = model(
       beadsFacts({
         items: [
@@ -237,13 +252,14 @@ describe('attention audience', () => {
             status: 'in_progress',
             assignee: 'w',
             updated_at: '2026-06-01T07:00:00.000Z',
-            ...extra,
+            ...(extra as Partial<Bead>),
           }),
         ],
       }),
     );
-    expect(m.owner.items.map((item) => item.id)).toEqual(['beads:B-o:waiting-human']);
-    expect(m.owner.items[0]?.summary).toBe('Waiting on you for 5 hours');
+    expect(m.owner.items).toEqual([]);
+    const row = m.city.items.find((item) => item.id === 'beads:B-o:waiting-human');
+    expect(row?.summary).toBe('Waiting on you for 5 hours');
   });
 
   it('an owner wait reads «Ждёт вас» in Russian', () => {
@@ -262,7 +278,8 @@ describe('attention audience', () => {
           ],
         }),
       );
-      expect(m.owner.items[0]?.summary).toBe('Ждёт вас уже 5 часов');
+      const row = m.city.items.find((item) => item.id === 'beads:B-o:waiting-human');
+      expect(row?.summary).toBe('Ждёт вас уже 5 часов');
     } finally {
       setLocale('en');
     }
@@ -277,15 +294,7 @@ describe('attention audience', () => {
           operatorAliases: ['stephanie', 'human'],
           nowMs: NOW,
           sessions: [],
-          items: [
-            bead({ id: 'gcg-153601', status: 'in_progress', title: 'stalled' }),
-            bead({
-              id: 'B-u',
-              status: 'open',
-              title: 'unclaimed',
-              created_at: '2026-05-20T00:00:00Z',
-            }),
-          ],
+          items: [bead({ id: 'gcg-153601', status: 'in_progress', title: 'stalled' })],
           escalations: [bead({ id: 'B-e', status: 'open', labels: ['gc:escalation'] })],
         },
         activity: {
@@ -328,7 +337,6 @@ describe('attention audience', () => {
     const cityIds = m.city.items.map((item) => item.id);
     for (const id of [
       'beads:gcg-153601:stalled',
-      'beads:B-u:ready-unclaimed',
       'beads:B-e:escalated',
       'activity:event:1:session.crashed',
       'runs:unavailable',
@@ -349,11 +357,13 @@ describe('attention audience', () => {
         decisions: [bead({ id: 'dw-9', labels: [LABEL], metadata: { [key]: value } })],
       }),
     );
-    expect(m.owner.items[0]).not.toHaveProperty('externalHref');
+    const row = m.items.find((item) => item.ref === 'dw-9');
+    expect(row).toBeDefined();
+    expect(row).not.toHaveProperty('externalHref');
   });
 
-  it('a decision bead also in the general list appears once, as owner', () => {
-    const decision = bead({ id: 'dw-9', labels: [LABEL], created_at: '2026-05-20T00:00:00.000Z' });
+  it('an owner question also in the general list appears once, as owner', () => {
+    const decision = { ...question('dw-9'), created_at: '2026-05-20T00:00:00.000Z' };
     const m = model(beadsFacts({ decisions: [decision], items: [decision] }));
     const matching = m.items.filter((item) => item.id.startsWith('beads:dw-9'));
     expect(matching).toHaveLength(1);

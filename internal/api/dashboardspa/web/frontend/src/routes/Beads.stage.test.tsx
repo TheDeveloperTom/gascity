@@ -142,31 +142,15 @@ describe('BeadsPage stopped runs (review I6)', () => {
   });
 });
 
-describe('BeadsPage rig filter keeps stages (review I1)', () => {
-  it('still folds routes and shows the step when a rig is selected', async () => {
-    renderPage();
-    await screen.findByText('Ship the stage board');
-    fireEvent.change(screen.getByLabelText(/rig filter/i), { target: { value: 'west' } });
-    await waitFor(() =>
-      expect(beadQueries.some((q) => q.get('rig') === 'west' && !q.has('status'))).toBe(true),
-    );
-    const working = await screen.findByRole('region', { name: 'Working' });
-    await waitFor(() =>
-      expect(within(working).getByTitle('Open step gcg-2 in its run')).toBeTruthy(),
-    );
-    expect(screen.queryByTitle('Select gcg-2')).toBeNull();
-  });
-});
-
-describe('BeadsPage closed chip (review I3)', () => {
+describe('BeadsPage Show all history (review I3)', () => {
   it('keeps merged tasks and live work instead of emptying the board', async () => {
     renderPage();
     await screen.findByText('Merged last night');
-    fireEvent.click(screen.getByRole('button', { name: 'closed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show all history' }));
     await waitFor(() => expect(beadQueries.some((q) => q.get('all') === 'true')).toBe(true));
     const merged = await screen.findByRole('region', { name: 'Merged' });
     await waitFor(() => expect(within(merged).getByText('Merged last night')).toBeTruthy());
-    expect(screen.queryByText('No beads match the current search or filter.')).toBeNull();
+    expect(screen.queryByText('No tasks match the search or filter.')).toBeNull();
     expect(screen.queryByTitle('Select gcg-777')).toBeNull();
   });
 });
@@ -191,13 +175,13 @@ describe('BeadsPage stage board', () => {
     const closedLeg = beadQueries.find((q) => q.get('status') === 'closed');
     expect(closedLeg?.get('rig')).toBe('east');
     expect(closedLeg?.has('all')).toBe(false);
-    expect(screen.getByText('Open work and recent merges')).toBeTruthy();
   });
 
-  it('counts tasks only in the synopsis', async () => {
+  // B7 / RB12: the synopsis is gone; the route line carries the counts.
+  it('the route line counts tasks only', async () => {
     renderPage();
     await screen.findByText('Ship the stage board');
-    expect(screen.getByText('1 in progress.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Working: 1' })).toBeTruthy();
   });
 
   it('counts runs that have no task on the board instead of showing them', async () => {

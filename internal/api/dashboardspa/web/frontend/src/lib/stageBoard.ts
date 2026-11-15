@@ -35,6 +35,9 @@ export const STAGES: readonly StageColumn[] = [
 /** Step metadata key a formula sets to place its step in a column. */
 export const STAGE_METADATA_KEY = 'dashboard.stage';
 
+/** Step metadata key a formula sets for the card's step line, in the city's words. */
+export const STEP_LABEL_METADATA_KEY = 'dashboard.label';
+
 const STAGE_RANK: Readonly<Record<StageId, number>> = {
   waiting: 0,
   working: 1,
@@ -73,7 +76,6 @@ const PR_URL_KEY = 'devwork.pr_url';
 
 export type StageMarkKind =
   | 'blocked'
-  | 'ready'
   | 'stopped'
   | 'route-failed'
   | 'route-stopped'
@@ -368,11 +370,6 @@ export function deriveTaskStage(
   if (task.status !== 'closed' && pr !== null && STAGE_RANK[stage] < STAGE_RANK.pr) stage = 'pr';
 
   if (task.status === 'blocked') marks.push({ kind: 'blocked', tone: 'warn', label: 'blocked' });
-  // `ready` (every need closed) only helps a task no run has picked up yet; a
-  // queued run already says where the task stands, and a visible ended run
-  // means the task was picked up (review I6).
-  if (stage === 'waiting' && node.ready && route === null)
-    marks.push({ kind: 'ready', tone: 'quiet', label: 'ready' });
 
   const stopCard = stopCards.get(task.id);
   const cancelled =
@@ -396,7 +393,12 @@ export function deriveTaskStage(
     marks.push({ kind: 'tdd-refused', tone: 'attention', label: 'TDD refused', title: refusal });
   }
 
-  if (stepLabel === null && step !== null) stepLabel = step.title;
+  // B6 / RB11: the city's Russian step label (`dashboard.label`) when set;
+  // a merged card keeps the step title.
+  if (stepLabel === null && step !== null) {
+    const label = stage === 'merged' ? '' : meta(step, STEP_LABEL_METADATA_KEY);
+    stepLabel = label.length > 0 ? label : step.title;
+  }
 
   return { stage, root: route?.root ?? null, step, stepLabel, pr, marks };
 }

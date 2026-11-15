@@ -550,16 +550,10 @@ describe('createAttentionContributors', () => {
       }),
     );
 
-    // gascity-dashboard-2j8e.3: a long-stale ready-unclaimed open bead surfaces
-    // (attention tier); an assigned in-progress bead is working-as-intended and
-    // no longer counts (the stale-assigned emitter was removed with the badge
-    // redefinition).
-    expect(model.byDomain.beads.items.map((item) => item.id)).toEqual([
-      'beads:B-stale-open:ready-unclaimed',
-    ]);
-    expect(model.byDomain.beads.items.map((item) => item.href)).toEqual([
-      '/beads?bead=B-stale-open',
-    ]);
+    // Dashboard v3: a long-stale ready-unclaimed open bead belongs on «Задачи»
+    // («Старое, никто не берёт», lib/boardFacts.oldUntaken), never in the
+    // attention model; an assigned in-progress bead is working-as-intended.
+    expect(model.byDomain.beads.items.map((item) => item.id)).toEqual([]);
     expect(model.byDomain.mail.items.map((item) => item.id)).toContain(
       'mail:M-stale-unread:unread-stale',
     );
@@ -700,9 +694,11 @@ describe('createAttentionContributors', () => {
       }),
     );
 
+    // Dashboard v3: ready-unclaimed work leaves the attention model (it is
+    // «Старое, никто не берёт» on «Задачи»); the escalation still counts.
     const ids = model.byDomain.beads.items.map((item) => item.id);
-    expect([...ids].sort()).toEqual(['beads:B-esc:escalated', 'beads:B-ready:ready-unclaimed']);
-    expect(model.byDomain.beads.attention).toBe(2);
+    expect([...ids].sort()).toEqual(['beads:B-esc:escalated']);
+    expect(model.byDomain.beads.attention).toBe(1);
   });
 
   it('surfaces each open mayor-decision bead as an attention item linked to the bead view', () => {

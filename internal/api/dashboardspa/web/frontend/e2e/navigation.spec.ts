@@ -1,6 +1,13 @@
 import type { Page } from '@playwright/test';
 
-import { ANCHOR_FORMULA, ANCHOR_RUN_ID, CITY_BASE, CITY_NAME } from './fixtures/expected';
+import {
+  ANCHOR_FORMULA,
+  ANCHOR_RUN_ID,
+  CITY_BASE,
+  CITY_NAME,
+  REVIEW_BEAD_ID,
+  REVIEW_BEAD_TITLE,
+} from './fixtures/expected';
 import { gotoCityRoute } from './support/renderGuards';
 import { expect, test } from './support/fixtures';
 
@@ -154,6 +161,18 @@ test.describe('dashboard client-side navigation', () => {
     await expect(page).toHaveURL(inCity('/runs'));
     await expect(page.getByRole('heading', { name: 'Runs', level: 1 })).toBeVisible();
     await expectSameDocument(page);
+  });
+
+  test('bare deep link keeps the bead', async ({ page }) => {
+    // B1 / RB13: a city-less link the Mayor sends lands on the same card.
+    await page.goto(`/beads?bead=${REVIEW_BEAD_ID}`);
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === `${CITY_BASE}/beads` && url.searchParams.get('bead') === REVIEW_BEAD_ID,
+    );
+    await expect(
+      page.getByRole('dialog').getByRole('heading', { name: REVIEW_BEAD_TITLE }),
+    ).toBeVisible();
   });
 
   test('an unknown in-app path renders the catch-all route and the nav recovers', async ({

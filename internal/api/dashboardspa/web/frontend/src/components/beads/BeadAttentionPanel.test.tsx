@@ -91,7 +91,14 @@ describe('BeadAttentionPanel (gascity-dashboard-2j8e.3)', () => {
           decisionLabel: 'needs/stephanie',
           nowMs: Date.parse('2026-06-07T12:00:00.000Z'),
           items: [
+            // Dashboard v3: ready-unclaimed work is not an attention item;
+            // stalled in-progress work with nobody on it still is.
             bead({ id: 'B-ready', status: 'open', created_at: '2026-06-04T11:00:00.000Z' }),
+            bead({
+              id: 'B-stalled',
+              status: 'in_progress',
+              created_at: '2026-06-04T11:00:00.000Z',
+            }),
             // plain dependency-blocked — excluded from both badge and page.
             bead({ id: 'B-dep', status: 'blocked' }),
           ],

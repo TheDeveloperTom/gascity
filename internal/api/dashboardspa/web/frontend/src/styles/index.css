@@ -117,6 +117,28 @@
 
     color-scheme: light;
     accent-color: oklch(var(--primary));
+
+    /* vibe-kanban token names (src/vk/), as aliases of our tokens above, so
+       ported components read `oklch(var(--vk-bg-primary))` and follow both
+       themes with no second palette. vk's own values, for reference:
+       brand #EA7A29 / brand-secondary #AC5111; light bg #FFFFFF/#F2F2F2/#E3E3E3,
+       text #0D0D0D/#333333/#636363; dark bg #212121/#1C1C1C/#292929, text
+       #F5F5F5/#C4C4C4/#969696. Being aliases, they resolve against the
+       light values here and the dark values under [data-theme='dark'] and
+       prefers-color-scheme: dark below. */
+    --vk-brand: var(--plate);
+    --vk-brand-secondary: var(--plate-ring);
+    --vk-bg-primary: var(--surface-raised);
+    --vk-bg-secondary: var(--surface);
+    --vk-bg-panel: var(--surface-tint);
+    --vk-text-high: var(--fg);
+    --vk-text-normal: var(--fg-muted);
+    --vk-text-low: var(--fg-faint);
+    --vk-border: var(--rule);
+    --vk-on-brand: var(--on-plate);
+    /* IBM Plex, self-hosted from @fontsource (imported in main.tsx); never Google Fonts. */
+    --vk-font-sans: 'IBM Plex Sans', 'Golos Text Variable', system-ui, sans-serif;
+    --vk-font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   }
 
   :root[data-theme='dark'] {

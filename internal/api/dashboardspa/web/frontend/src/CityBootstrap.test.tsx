@@ -28,20 +28,20 @@ const originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'loca
 // carries every field BrowserRouter reads (href/origin/pathname/search/hash)
 // plus our navigation spies. The runaway-render bug this once triggered is
 // fixed in the component (parsed is memoized), so a static stub is safe.
-function setPath(pathname: string): void {
+function setPath(pathname: string, search = '', hash = ''): void {
   const origin = 'http://127.0.0.1';
   Object.defineProperty(window, 'location', {
     configurable: true,
     value: {
-      href: `${origin}${pathname}`,
+      href: `${origin}${pathname}${search}${hash}`,
       origin,
       protocol: 'http:',
       host: '127.0.0.1',
       hostname: '127.0.0.1',
       port: '',
       pathname,
-      search: '',
-      hash: '',
+      search,
+      hash,
       replace: replaceSpy,
       assign: assignSpy,
       reload: vi.fn(),
@@ -75,6 +75,17 @@ describe('CityBootstrap', () => {
     render(<CityBootstrap />);
 
     expect(await screen.findByTestId('app-mounted')).toBeTruthy();
+  });
+
+  it('a bare deep link keeps its path and query', async () => {
+    setPath('/beads', '?bead=dw-1');
+    listCities.mockResolvedValue({ items: [city('alpha')], total: 1 });
+
+    render(<CityBootstrap />);
+
+    await waitFor(() => {
+      expect(replaceSpy).toHaveBeenCalledWith('/city/alpha/beads?bead=dw-1');
+    });
   });
 
   it('redirects a bare path to the first registered city', async () => {

@@ -38,7 +38,9 @@ function seeded() {
       beads: {
         decisionLabel: 'needs/x',
         nowMs: NOW,
-        items: [bead({ id: 'dw-42', title: 'Вход по ссылке' })],
+        // Dashboard v3: ready-unclaimed work is not an attention item, so the
+        // named bead is a stalled one (in progress, nobody on it).
+        items: [bead({ id: 'dw-42', title: 'Вход по ссылке', status: 'in_progress' })],
       },
       agents: {
         items: [agent({ name: 'superpowers__implementer-gcg-session-d1b5', state: 'failed' })],
@@ -60,7 +62,7 @@ function seeded() {
 
 describe('registry names', () => {
   it('bead item title is the bead title and ref the id', () => {
-    const item = seeded().items.find((entry) => entry.id === 'beads:dw-42:ready-unclaimed');
+    const item = seeded().items.find((entry) => entry.id === 'beads:dw-42:stalled');
     expect(item).toMatchObject({ title: 'Вход по ссылке', ref: 'dw-42' });
   });
 

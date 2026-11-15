@@ -16,7 +16,7 @@ test.describe('beads stage board', () => {
   });
 
   test('places every task in its route stage', async ({ page }) => {
-    const board = page.getByRole('region', { name: 'dw', exact: true });
+    const board = page.getByRole('region', { name: 'Board', exact: true });
     const expected: Array<[string, string]> = [
       ['Waiting', STAGE_TASKS.waiting.title],
       ['Waiting', STAGE_TASKS.blocked.title],
@@ -68,8 +68,8 @@ test.describe('beads stage board', () => {
     ).toBeVisible();
   });
 
-  test('shows recent merges without the closed chip', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'closed' })).toHaveAttribute(
+  test('shows recent merges without all history', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Show all history' })).toHaveAttribute(
       'aria-pressed',
       'false',
     );

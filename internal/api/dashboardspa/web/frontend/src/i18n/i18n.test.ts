@@ -87,9 +87,51 @@ describe('i18n', () => {
   it('initial locale', () => {
     expect(resolveInitialLocale('ru', 'en-US')).toBe('ru');
     expect(resolveInitialLocale(null, 'ru-RU')).toBe('ru');
-    expect(resolveInitialLocale(null, 'en-US')).toBe('en');
     expect(resolveInitialLocale('xx', 'ru')).toBe('ru');
-    expect(resolveInitialLocale(null, undefined)).toBe('en');
+    expect(resolveInitialLocale(null, undefined)).toBe('ru');
+  });
+
+  it('no stored choice means ru, even with navigator en-US', () => {
+    expect(resolveInitialLocale(null, 'en-US')).toBe('ru');
+    expect(resolveInitialLocale('xx', 'en-GB')).toBe('ru');
+  });
+
+  it('stored en stays en', () => {
+    expect(resolveInitialLocale('en', 'ru-RU')).toBe('en');
+    expect(resolveInitialLocale('en', 'en-US')).toBe('en');
+  });
+
+  it('no lane dictionary overrides a core key or another lane', async () => {
+    const { RU_HOME } = await import('./ru.home');
+    const { RU_BOARD } = await import('./ru.board');
+    const { RU_DEBUG } = await import('./ru.debug');
+    const seen = new Map<string, string>(Object.keys(RU).map((key) => [key, 'ru']));
+    const collisions: string[] = [];
+    for (const [name, dict] of [
+      ['ru.home', RU_HOME],
+      ['ru.board', RU_BOARD],
+      ['ru.debug', RU_DEBUG],
+    ] as const) {
+      for (const key of Object.keys(dict)) {
+        const owner = seen.get(key);
+        if (owner !== undefined) collisions.push(`${name}:${key} (already in ${owner})`);
+        seen.set(key, name);
+      }
+    }
+    expect(collisions).toEqual([]);
+  });
+
+  it('the lane dictionaries are merged into the Russian lookup', async () => {
+    const { RU_HOME } = await import('./ru.home');
+    const { RU_BOARD } = await import('./ru.board');
+    const { RU_DEBUG } = await import('./ru.debug');
+    setLocale('ru');
+    for (const dict of [RU_HOME, RU_BOARD, RU_DEBUG]) {
+      for (const [en, ru] of Object.entries(dict)) {
+        if (typeof ru === 'string') expect(t(en)).toBe(ru);
+      }
+    }
+    expect(collectMissing()).toEqual([]);
   });
 
   it('persists the choice and sets the document language', () => {

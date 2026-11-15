@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
+import { LOCALE_STORAGE_KEY, setLocale } from '../i18n';
 
 // gascity-dashboard-ucc: city-scoped `api.*` calls and EventSource URLs are
 // built off the module-level active city (set by the router from the URL
@@ -19,6 +20,14 @@ beforeAll(() => {
 
 beforeEach(() => {
   setActiveCity(TEST_CITY);
+  // The app defaults to Russian (dashboard v3). Unit tests are written
+  // against the English source strings and opt into Russian with
+  // setLocale('ru'), so each test starts in English with no stored choice.
+  // Node-environment tests (vite-config) have no window.
+  if (typeof window !== 'undefined') {
+    setLocale('en');
+    window.localStorage.removeItem(LOCALE_STORAGE_KEY);
+  }
   warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
     throw new Error(`Unexpected console.warn: ${formatConsoleArgs(args)}`);
   });

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AttentionItem, OwnerReadiness } from '../../attention/compose';
@@ -43,6 +43,37 @@ describe('OwnerPlate', () => {
   afterEach(() => {
     cleanup();
     setLocale('en');
+  });
+
+  it('caps the plate at five rows with Show N more', () => {
+    const many = Array.from({ length: 48 }, (_, i) => ({
+      ...decision,
+      id: `beads:dw-${i}:mayor-decision`,
+      title: `Вопрос ${i}`,
+    }));
+    plate(many, { state: 'ready' });
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('48');
+    expect(screen.getAllByText(/^Вопрос \d+$/)).toHaveLength(5);
+    const more = screen.getByRole('button', { name: 'Show 43 more' });
+    fireEvent.click(more);
+    expect(screen.getAllByText(/^Вопрос \d+$/)).toHaveLength(48);
+    expect(screen.getByRole('button', { name: 'Show fewer' })).toBeTruthy();
+  });
+
+  it('five or fewer rows show no fold', () => {
+    plate([decision, mail], { state: 'ready' });
+    expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+  });
+
+  it('the fold speaks Russian', () => {
+    setLocale('ru');
+    const many = Array.from({ length: 8 }, (_, i) => ({
+      ...mail,
+      id: `mail:${i}`,
+      title: `Письмо ${i}`,
+    }));
+    plate(many, { state: 'ready' });
+    expect(screen.getByRole('button', { name: 'Ещё 3' })).toBeTruthy();
   });
 
   it('empty and ready is the all-clear sentence', () => {

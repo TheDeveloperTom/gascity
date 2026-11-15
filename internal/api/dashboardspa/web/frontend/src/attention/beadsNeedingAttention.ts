@@ -440,6 +440,19 @@ function resolveSession(
   sessions: readonly BeadAttentionSession[] | undefined,
 ): BeadAttentionSession | undefined {
   if (sessions === undefined) return undefined;
+  return sessionForBead(bead, sessions) ?? undefined;
+}
+
+/**
+ * The session working a bead (dashboard v3): `gc.session_id` when stamped,
+ * else the assignee as session name, alias or id; a live session wins.
+ * Exported so the board facts and «Сейчас» resolve the same session the
+ * stall check does.
+ */
+export function sessionForBead(
+  bead: Bead,
+  sessions: readonly BeadAttentionSession[],
+): BeadAttentionSession | null {
   const assignee = bead.assignee?.trim() ?? '';
   const sessionId = bead.metadata?.[SESSION_ID_META_KEY];
   const candidates = sessions.filter(
@@ -450,8 +463,8 @@ function resolveSession(
           session.alias === assignee ||
           session.id === assignee)),
   );
-  if (candidates.length === 0) return undefined;
-  return candidates.find((session) => isLiveSession(session.state)) ?? candidates[0];
+  if (candidates.length === 0) return null;
+  return candidates.find((session) => isLiveSession(session.state)) ?? candidates[0] ?? null;
 }
 
 // Freshest sign of life: session last_active vs the legacy bead heartbeat (see

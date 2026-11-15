@@ -22,6 +22,7 @@ import { eventTitle } from './eventTitles';
 import { beadRowSummary } from './rowCopy';
 import { agentDisplayName } from '../lib/agentNames';
 import { t, tn } from '../i18n';
+import { ownerQuestionOf } from '../lib/ownerQuestions';
 import type {
   AgentResponse,
   Bead,
@@ -469,8 +470,9 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
   for (const need of selectAgentsNeedingYou(facts.items ?? [], pendingSignals)) {
     items.push(
       domainAttention('agents', {
+        // Dashboard v3: an agent waiting for input is the city's to handle;
+        // the owner slice holds owner questions only.
         id: `agents:${need.name}:needs-you`,
-        ...(need.reason === 'awaiting-input' ? { audience: 'owner' as const } : {}),
         ref: need.name,
         title: `${agentDisplayName(need.name)} ${t(agentNeedsYouReasonLabel(need.reason))}`,
         summary: need.detail,
@@ -554,10 +556,15 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     },
     nowMs,
   )) {
+    // Dashboard v3: ready, unclaimed work belongs on «Задачи» («Старое, никто
+    // не берёт»), never on Здоровье or Главная; a bead waiting on a person is
+    // the city's, since the owner slice holds owner questions only.
+    if (row.reason === 'ready-unclaimed') continue;
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
-    // Owner only when the bead NAMES the owner (review C1); an unknown hold
-    // such as `hold:plan` names nobody and is city work.
-    // An explicit `hold:human` / `hold:<operator alias>` names the owner too.
+    // The row stays the city's (v3), but when the bead NAMES the owner its
+    // copy reads «Ждёт вас» (review C1, N1); an unknown hold such as
+    // `hold:plan` names nobody. An explicit `hold:human` / `hold:<operator
+    // alias>` names the owner too.
     const waitsOnOwner =
       row.reason === 'waiting-human' &&
       ((row.waitingOnNamed === true &&
@@ -567,7 +574,6 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     items.push(
       builder('beads', {
         id: `beads:${row.beadId}:${row.reason}`,
-        ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
         ref: row.beadId,
         title: row.title,
         summary:
@@ -640,10 +646,16 @@ function isMayorDecision(bead: Bead, decisionLabel: string): boolean {
  */
 function mayorDecisionAttention(bead: Bead): AttentionItem {
   const decide = bead.metadata?.[DECISION_DECIDE_META_KEY];
-  const chatHref = decisionChatHref(bead);
+  // Dashboard v3: only a marked owner question with a Discord link (label +
+  // decision.question_id + owner.link) is the owner's, and its link is that
+  // Discord message (ruling C1). A legacy or link-less decision stays with the
+  // city until the Mayor backfills or re-asks it (V3, V8, Task 5).
+  const question = ownerQuestionOf(bead);
+  const isOwnerQuestion = question !== null;
+  const chatHref = question !== null ? question.chatUrl : decisionChatHref(bead);
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,
-    audience: 'owner',
+    ...(isOwnerQuestion ? { audience: 'owner' as const } : {}),
     ref: bead.id,
     ...(chatHref === null ? {} : { externalHref: chatHref }),
     title: bead.title,
@@ -706,8 +718,9 @@ function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly At
     const stale = staleAgeMs !== null && staleAgeMs >= MAIL_UNREAD_STALE_MS;
     items.push(
       domainAttention('mail', {
+        // Dashboard v3: operator mail is the city's; the owner slice holds
+        // owner questions only.
         id: `mail:${message.id}:${stale ? 'unread-stale' : 'unread'}`,
-        audience: 'owner',
         title: message.subject,
         summary: stale
           ? `from ${message.from}, unread for ${formatElapsed(staleAgeMs)}`

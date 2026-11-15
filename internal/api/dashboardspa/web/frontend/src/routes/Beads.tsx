@@ -1,51 +1,52 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { formatApiError } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
+import { t, tn } from '../i18n';
 import { useAttentionModel } from '../attention/context';
 import { inProgressCardNote } from '../attention/beadsNeedingAttention';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadAttentionPanel } from '../components/beads/BeadAttentionPanel';
-import { BeadBoardSection } from '../components/beads/BeadBoardSection';
+import { BeadBoard } from '../components/beads/BeadBoard';
+import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
 import { Field } from '../components/Field';
-import { FilterChips } from '../components/FilterChips';
-import { ListSearchBar } from '../components/ListSearchBar';
 import { Modal } from '../components/Modal';
 import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
-import { StatusBadge } from '../components/StatusBadge';
 import { useNow } from '../contexts/NowContext';
 import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { buildBeadGraph } from '../lib/beadGraph';
-import { buildRouteIndex, stopCardsByTask } from '../lib/stageBoard';
+import { ALL_PROJECTS, buildBoardModel } from '../lib/boardModel';
+import { readOpenGroups, writeOpenGroups } from '../lib/openGroups';
 import { resolveRigName, rigNameOptions } from '../lib/rigNames';
+import {
+  BOARD_RECENT_CLOSED_LIMIT,
+  BOARD_REFRESH_COALESCE_MS,
+  boardDataOf,
+  rigsCacheKey,
+  sessionsCacheKey,
+  sharedRead,
+  useBoardData,
+} from '../hooks/useBoardData';
 import { useCachedData } from '../hooks/useCachedData';
 import { useGcEventRefresh } from '../hooks/useGcEvents';
-import { useListFilters, type FilterChip } from '../hooks/useListFilters';
-import { beadProject } from '../hooks/projectOf';
 import { listSupervisorAgents, type SupervisorAgent } from '../supervisor/agentReads';
 import { listSupervisorBeads, type SupervisorBead } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { closeSupervisorBead, createAndSlingSupervisorBead } from '../supervisor/beadWrites';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
 
-const EMPTY_IDS: ReadonlySet<string> = new Set();
-const RIG_FILTER_ALL = '';
-const CLOSED_CHIP_ID = 'closed';
-// The board's refresh is a full list refetch (~1.3MB on a busy city). A busy
-// city emits bead.* events roughly every few seconds, so the default ~2.5s
-// coalesce window still drives a near-continuous full refetch — wasteful under
-// normal churn and, when the supervisor's task query spikes to 14-21s, enough
-// to keep superseding each in-flight slow fetch before it lands. Coalesce the
-// board's SSE-driven refresh into a much wider trailing window so churn yields
-// at most one refetch per window and a latency spike can no longer empty it.
-const BOARD_REFRESH_COALESCE_MS = 10_000;
-// Stage board (2026-11-15): Merged shows, by default, the tasks of each rig
-// store closed most recently (review I2: by close time, not creation).
-const RECENT_CLOSED_LIMIT = 100;
+// The Beads page (OWNER-HOME-PLAN B7): one board for every project, in the
+// owner's words. The route line carries the counts (RB12), so there is no
+// synopsis, scope label, status chips or rig select. The project and test
+// filters are client-side and never remembered; open Waiting groups are.
+
+// The board's refresh is a full list refetch (~1.3MB on a busy city); its
+// coalesce window and closed window live with the shared read
+// (hooks/useBoardData: BOARD_REFRESH_COALESCE_MS, BOARD_RECENT_CLOSED_LIMIT).
 const EMPTY_BEADS: readonly SupervisorBead[] = [];
 
 // Form controls per the Signal & Pavement input recipe (DESIGN-PLAN §7).
@@ -59,20 +60,6 @@ interface ActionMessage {
   text: string;
 }
 
-const BEAD_CHIPS: ReadonlyArray<FilterChip<SupervisorBead>> = [
-  { id: 'open', label: 'open', match: (b) => b.status === 'open' },
-  { id: 'in_progress', label: 'in progress', match: (b) => b.status === 'in_progress' },
-  { id: 'blocked', label: 'blocked', match: (b) => b.status === 'blocked' },
-  { id: CLOSED_CHIP_ID, label: 'closed', match: (b) => b.status === 'closed' },
-];
-
-const BEAD_SEARCH_FIELDS = (b: SupervisorBead): ReadonlyArray<string | undefined> => [
-  b.id,
-  b.title,
-  b.assignee,
-  ...(b.labels ?? []),
-];
-
 export function BeadsPage() {
   const attention = useAttentionModel();
   const readOnly = useReadOnly();
@@ -80,21 +67,13 @@ export function BeadsPage() {
   const cityCacheKey = cityName ?? 'no-city';
   const [searchParams] = useSearchParams();
   const selectedBeadParam = normalizeSelectedBeadParam(searchParams.get('bead'));
-  const [rigFilter, setRigFilter] = useState<string>(RIG_FILTER_ALL);
-  // Closed beads dwarf the open queue (~199.7K closed vs ~1K open on this
-  // city), so scanning them on every load makes the `task` query spike and
-  // trips the fetch-window truncation warning. Default the board to the
-  // non-closed set (open/in_progress/blocked) and fetch closed beads lazily,
-  // only once the operator activates the `closed` status control. showClosed
-  // drives BOTH the fetch (includeClosed) and the cache key so flipping it
-  // forces exactly one fresh fan-out. It lives here — outside useListFilters,
-  // which is declared below and owns the client-side chip filters — because
-  // the fetch must be parameterized before the filters hook exists (the
-  // hook needs `rows` from this fetch). The `closed` chip's toggle is wired
-  // to flip showClosed in addition to the normal client filter, keeping the
-  // four status controls reading as one group while `closed` alone widens
-  // the data scope.
-  const [showClosed, setShowClosed] = useState(false);
+  // «Вся история» widens the fetch to closed beads (the old `closed` chip's
+  // data effect). It drives BOTH the fetch (includeClosed) and the cache key.
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [project, setProject] = useState<string>(ALL_PROJECTS);
+  const [search, setSearch] = useState('');
+  const [showTests, setShowTests] = useState(false);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => readOpenGroups());
   const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
@@ -107,46 +86,62 @@ export function BeadsPage() {
   const [newRig, setNewRig] = useState('');
   const [newAgent, setNewAgent] = useState('');
 
-  const { data, loading, error, refresh } = useCachedData(
-    `beads:board:${cityCacheKey}:${rigFilter}:${showClosed ? 'all' : 'open'}`,
+  // Dashboard v3: the open board is the one shared read (useBoardData), so
+  // Главная and «Задачи» count from the same window. «Вся история» keeps its
+  // own wider read; while it is off, that read stays idle.
+  const board = useBoardData();
+  const history = useCachedData(
+    `beads:board:${cityCacheKey}:${showAllHistory ? 'all' : 'history-off'}`,
     () =>
-      listSupervisorBeads({
-        includeClosed: showClosed,
-        withRoutes: true,
-        recentClosed: { limit: RECENT_CLOSED_LIMIT },
-        ...(rigFilter === RIG_FILTER_ALL ? {} : { rigFilter }),
-      }),
+      showAllHistory
+        ? listSupervisorBeads({
+            includeClosed: true,
+            withRoutes: true,
+            recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
+          })
+        : Promise.resolve(null),
   );
+  const historyData = useMemo(() => boardDataOf(history.data), [history.data]);
+  const data = showAllHistory ? historyData : board.data;
+  const loading = showAllHistory ? history.loading : board.loading;
+  const error = showAllHistory ? history.error : board.error;
+  const refreshHistory = history.refresh;
+  const refreshBoard = board.refresh;
+  const refresh = showAllHistory ? refreshHistory : refreshBoard;
+  // Leaving «Вся история» reads the open board afresh, so the view it returns
+  // to is current rather than the window from before the history was opened.
+  const wasHistory = useRef(showAllHistory);
+  useEffect(() => {
+    if (wasHistory.current && !showAllHistory) void refreshBoard();
+    wasHistory.current = showAllHistory;
+  }, [showAllHistory, refreshBoard]);
   // Rows are tasks only; route roots and steps travel beside them and fold
-  // into their task's card (never cards of their own).
-  const rows = useMemo(() => data?.items ?? [], [data]);
-  const routeBeads = useMemo(() => data?.route_items ?? EMPTY_BEADS, [data]);
+  // into their task's card, and service beads only name blockers (B2).
+  const rows = useMemo(() => data?.items ?? EMPTY_BEADS, [data]);
+  const routeBeads = useMemo(() => data?.routeItems ?? EMPTY_BEADS, [data]);
+  const serviceItems = useMemo(() => data?.serviceItems ?? EMPTY_BEADS, [data]);
   // A truncated window may hide a live run, so only a complete one lets the
   // board read "no live run" as "its run stopped" (review I6).
-  const routesComplete = data?.routes_complete ?? false;
-  const routeIndex = useMemo(
-    () => buildRouteIndex(routeBeads, { routesComplete }),
-    [routeBeads, routesComplete],
-  );
-  const stopCards = useMemo(() => stopCardsByTask(rows), [rows]);
-  const totalShown = data?.total ?? 0;
-  const upstreamTotal = data?.upstream_total;
-  const upstreamFetched = data?.upstream_fetched;
-  const fetchLimit = data?.fetch_limit;
+  const routesComplete = data?.routesComplete ?? false;
+  const upstreamTotal = data?.upstreamTotal;
+  const upstreamFetched = data?.upstreamFetched;
   const hasLoadedBoard = data !== undefined;
 
-  const sessions = useCachedData(`sessions:${cityCacheKey}`, listSupervisorSessions);
+  // Same cache keys and one shared request as useBoardData; read here for
+  // the full rig records (paths) and the sessions' partial flag.
+  const sessionsKey = sessionsCacheKey(cityName);
+  const sessions = useCachedData(sessionsKey, () =>
+    sharedRead(sessionsKey, listSupervisorSessions),
+  );
   const sessionItems = useMemo(() => sessions.data?.items ?? [], [sessions.data]);
   const agents = useCachedData(`agents:${cityCacheKey}`, listSupervisorAgents);
   const agentItems = useMemo(() => agents.data?.items ?? [], [agents.data]);
-  const rigs = useCachedData(`rigs:${cityCacheKey}`, listSupervisorRigs);
+  const rigsKey = rigsCacheKey(cityName);
+  const rigs = useCachedData(rigsKey, () => sharedRead(rigsKey, listSupervisorRigs));
   const rigItems = useMemo(() => rigs.data?.items ?? [], [rigs.data]);
 
-  // The dropdown lists the supervisor's authoritative rig names, never the raw
-  // `agent.rig` values — those are sometimes filesystem paths and sometimes
-  // directories that belong to no registered rig at all. Agents are matched to
-  // a rig by canonicalizing their reported `rig` against the same list, so an
-  // agent reporting a path still groups under its real rig name.
+  // The New bead form lists the supervisor's authoritative rig names, never
+  // the raw `agent.rig` values — those are sometimes filesystem paths.
   const dispatchRigOptions = useMemo(() => rigNameOptions(rigItems), [rigItems]);
   const agentRigName = useCallback(
     (agent: SupervisorAgent) => resolveRigName(agent.rig, rigItems),
@@ -171,42 +166,15 @@ export function BeadsPage() {
     }
   }, [creating, filteredDispatchAgents, newAgent]);
 
-  useEffect(() => {
-    if (rigFilter !== RIG_FILTER_ALL && !dispatchRigOptions.includes(rigFilter)) {
-      setRigFilter(RIG_FILTER_ALL);
-    }
-  }, [dispatchRigOptions, rigFilter]);
-
-  const filteredRows = rows;
-
-  const filters = useListFilters<SupervisorBead>({
-    viewKey: 'beads',
-    rows: filteredRows,
-    projectOf: beadProject,
-    searchOf: BEAD_SEARCH_FIELDS,
-    chips: BEAD_CHIPS,
-  });
-
-  // The `closed` chip is special: besides being a client-side filter (like
-  // open/in_progress/blocked), toggling it flips showClosed, which widens the
-  // fetch to include closed beads. Keeping it inside BEAD_CHIPS means all four
-  // controls render and read as one "Status" group; only this wrapper gives
-  // `closed` its extra data-scope effect.
-  // Destructure the stable toggleChip so the wrapper can depend on it directly
-  // (the `filters` object is a fresh ref each render); keeps toggleStatusChip
-  // stable without depending on the whole object.
-  const { toggleChip } = filters;
-  const toggleStatusChip = useCallback(
-    (id: string) => {
-      if (id === CLOSED_CHIP_ID) setShowClosed((prev) => !prev);
-      toggleChip(id);
+  // useBoardData refreshes the open board on bead events; the history read
+  // refreshes here, only while it is shown.
+  useGcEventRefresh(
+    [GC_EVENT_PREFIX.bead],
+    () => {
+      if (showAllHistory) void refreshHistory();
     },
-    [toggleChip],
+    { coalesceMs: BOARD_REFRESH_COALESCE_MS },
   );
-
-  useGcEventRefresh([GC_EVENT_PREFIX.bead], () => void refresh(), {
-    coalesceMs: BOARD_REFRESH_COALESCE_MS,
-  });
 
   useEffect(() => {
     if (selectedBeadParam !== null) setSelectedId(selectedBeadParam);
@@ -222,10 +190,10 @@ export function BeadsPage() {
       try {
         await closeSupervisorBead(bead.id);
         setClosing(null);
-        setActionMessage({ tone: 'ok', text: `Closed ${bead.id}.` });
+        setActionMessage({ tone: 'ok', text: t('Closed {id}.', { id: bead.id }) });
         await refresh();
       } catch (err) {
-        setActionMessage({ tone: 'error', text: formatApiError(err, 'close failed') });
+        setActionMessage({ tone: 'error', text: formatApiError(err, t('close failed')) });
       } finally {
         setActionInFlight(null);
       }
@@ -278,47 +246,58 @@ export function BeadsPage() {
       });
       setActionMessage({
         tone: 'ok',
-        text: `Created ${result.bead.id} and slung to ${newAgent}.`,
+        text: t('Created {id} and slung to {agent}.', { id: result.bead.id, agent: newAgent }),
       });
       setCreating(false);
       await refresh();
     } catch (err) {
-      setCreateError(formatApiError(err, 'create and sling failed'));
+      setCreateError(formatApiError(err, t('create and sling failed')));
     } finally {
       setCreateInFlight(false);
     }
   }, [newAgent, newBody, newRig, newTitle, readOnly, refresh]);
 
-  const matched = useMemo(() => filters.groups.flatMap((group) => group.rows), [filters.groups]);
-  const graph = useMemo(() => buildBeadGraph(matched), [matched]);
-  const groupIds = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const group of filters.groups) {
-      map.set(group.projectKey, new Set(group.rows.map((row) => row.id)));
-    }
-    return map;
-  }, [filters.groups]);
-  // The dialog graph also holds the route beads, so a step opened by its deep
-  // link (or from a card's step line) keeps its dependency neighbourhood. The
-  // board graph stays tasks-only, so a card's `blocks N` never counts steps.
+  // One board model for every project (B4); filters never refetch.
+  const boardModel = useMemo(
+    () =>
+      buildBoardModel(
+        { items: rows, routeItems: routeBeads, serviceItems, routesComplete },
+        rigItems,
+        {
+          project,
+          search,
+          showTests,
+        },
+      ),
+    [rows, routeBeads, serviceItems, routesComplete, rigItems, project, search, showTests],
+  );
+  const toggleGroup = useCallback((key: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      writeOpenGroups(next);
+      return next;
+    });
+  }, []);
+
+  // The dialog graph also holds the route and service beads, so a step or a
+  // gate opened by its deep link keeps its dependency neighbourhood.
   const dialogGraph = useMemo(
-    () => buildBeadGraph([...matched, ...routeBeads]),
-    [matched, routeBeads],
+    () => buildBeadGraph([...rows, ...routeBeads, ...serviceItems]),
+    [rows, routeBeads, serviceItems],
   );
   const selectedBead = useMemo(
     () =>
-      matched.find((bead) => bead.id === selectedId) ??
+      rows.find((bead) => bead.id === selectedId) ??
       routeBeads.find((bead) => bead.id === selectedId) ??
+      serviceItems.find((bead) => bead.id === selectedId) ??
       null,
-    [matched, routeBeads, selectedId],
+    [rows, routeBeads, serviceItems, selectedId],
   );
   const selectedNode = useMemo(
     () => (selectedId === null ? null : (dialogGraph.nodes.get(selectedId) ?? null)),
     [dialogGraph, selectedId],
-  );
-  const orphanRunCount = useMemo(
-    () => routeIndex.orphanRoots(new Set(rows.map((row) => row.id))).length,
-    [routeIndex, rows],
   );
   const beadAttentionSeverity = useMemo(
     () => (beadId: string) => resourceAttentionSeverity(attention, 'beads', beadId),
@@ -326,14 +305,10 @@ export function BeadsPage() {
   );
 
   // In-progress liveness notes (gp-6xd): who holds the bead and whether they
-  // are alive, or the waiting/stalled reason. Computed from the sessions the
-  // page already fetches for the detail modal, via the same selector module
-  // the nav badge reads — one rule set, three surfaces. While the session
-  // read is pending, failed, or partial, `sessionsForNotes` stays undefined
-  // so the selector skips session-dependent stall checks instead of calling
-  // every assigned card "no live session" against an empty roster. The
-  // app-level 1s clock keeps ages advancing and lets a quiet card cross the
-  // stalled threshold without a data refresh.
+  // are alive, or the waiting/stalled reason. While the session read is
+  // pending, failed, or partial, `sessionsForNotes` stays undefined so the
+  // selector skips session-dependent stall checks instead of calling every
+  // assigned card "no live session" against an empty roster.
   const nowMs = useNow();
   const sessionsForNotes = useMemo(
     () =>
@@ -344,23 +319,18 @@ export function BeadsPage() {
   );
   const beadNoteOf = useMemo(() => {
     const notes = new Map<string, string>();
-    for (const bead of matched) {
+    for (const bead of rows) {
       if (bead.status !== 'in_progress') continue;
       const note = inProgressCardNote(bead, sessionsForNotes, nowMs);
       if (note !== null) notes.set(bead.id, note);
     }
     return (beadId: string) => notes.get(beadId) ?? null;
-  }, [matched, sessionsForNotes, nowMs]);
+  }, [rows, sessionsForNotes, nowMs]);
 
-  // The "Needs you" section (gascity-dashboard-2j8e.3) renders the same
-  // beads-domain attention items the nav badge counts, so the page count and the
-  // badge agree. Each item opens the bead to act on it — the operator does not
-  // claim beads (a bead assignee must be a concrete session, never the human
-  // operator), so there is no inline Claim affordance.
   const renderBeadActions = useCallback(
     (bead: SupervisorBead) => {
       const busy = actionInFlight !== null;
-      const actionLabel = actionInFlight === bead.id ? 'closing' : null;
+      const actionLabel = actionInFlight === bead.id ? t('closing') : null;
 
       const roTitle = readOnly ? READ_ONLY_CONTROL_TITLE : undefined;
 
@@ -378,7 +348,7 @@ export function BeadsPage() {
               setClosing(bead);
             }}
           >
-            Close bead…
+            {t('Close bead…')}
           </Button>
         </div>
       );
@@ -386,26 +356,18 @@ export function BeadsPage() {
     [actionInFlight, readOnly],
   );
 
-  const synopsis = useMemo(
-    () => (hasLoadedBoard ? buildSynopsis(filteredRows, totalShown, rigFilter) : 'Loading beads.'),
-    [filteredRows, hasLoadedBoard, totalShown, rigFilter],
-  );
-
   const isTruncated =
     typeof upstreamTotal === 'number' &&
     typeof upstreamFetched === 'number' &&
     upstreamFetched < upstreamTotal;
+  const totalCards = boardModel.projects[0]?.count ?? 0;
 
   return (
     <section>
       <PageHeader
-        title="Beads"
-        synopsis={synopsis}
+        title={t('Beads')}
         meta={
           <>
-            <span className="text-label font-medium text-fg-muted">
-              {showClosed ? 'All statuses' : 'Open work and recent merges'}
-            </span>
             {readOnly && <ReadOnlyBadge />}
             <Button
               type="button"
@@ -415,10 +377,10 @@ export function BeadsPage() {
               onClick={openCreateBead}
               disabled={readOnly || agents.loading || agentItems.length === 0}
             >
-              New bead
+              {t('New bead')}
             </Button>
             <Button size="sm" onClick={() => void refresh()} disabled={loading}>
-              {loading && !hasLoadedBoard ? 'Loading' : loading ? 'Refreshing' : 'Refresh'}
+              {loading && !hasLoadedBoard ? t('Loading') : loading ? t('Refreshing') : t('Refresh')}
             </Button>
           </>
         }
@@ -426,28 +388,14 @@ export function BeadsPage() {
 
       <PageAlerts messages={[error, sessions.error, agents.error, rigs.error]} />
 
-      {(isTruncated || rigFilter !== RIG_FILTER_ALL || actionMessage) && (
+      {(isTruncated || actionMessage) && (
         <div className="mb-6 max-w-prose space-y-2 text-body text-fg-muted">
           {isTruncated && (
-            <p className="text-warn">
-              <StatusBadge
-                tone="warn"
-                variant="inline"
-                wrap
-                label={`Fetch window covered ${upstreamFetched} of ${upstreamTotal} store beads. Raise the fetch limit (currently ${fetchLimit ?? '?'}) if engineering work sits past the window.`}
-              />
-            </p>
-          )}
-          {rigFilter !== RIG_FILTER_ALL && (
-            <p>
-              Filtering by rig <span className="font-semibold text-fg">{rigFilter}</span>.{' '}
-              <button
-                type="button"
-                onClick={() => setRigFilter(RIG_FILTER_ALL)}
-                className="rounded-sm text-primary underline-offset-2 hover:underline focus-mark"
-              >
-                Clear
-              </button>
+            <p className="text-warn [overflow-wrap:anywhere]">
+              {t('The board read {fetched} of {total} records; some work may be missing.', {
+                fetched: upstreamFetched,
+                total: upstreamTotal,
+              })}
             </p>
           )}
           {actionMessage && (
@@ -461,83 +409,69 @@ export function BeadsPage() {
         </div>
       )}
 
-      <BeadAttentionPanel items={attention.byDomain.beads.items} onOpen={setSelectedId} />
+      {/* Task 11: only what waits for the owner; city issues are on Health. */}
+      <BeadAttentionPanel
+        items={attention.owner.items.filter((item) => item.domain === 'beads')}
+        onOpen={setSelectedId}
+      />
+      {attention.city.byDomain.beads > 0 && (
+        <p className="mb-6 text-body text-fg-muted">
+          <Link to="/health" className="text-fg underline underline-offset-2 focus-mark">
+            {tn(attention.city.byDomain.beads, {
+              one: '{n} task issue is on Health',
+              other: '{n} task issues are on Health',
+            })}
+          </Link>
+        </p>
+      )}
 
-      <div className="mb-8 space-y-3">
-        <ListSearchBar
-          value={filters.search}
-          onChange={filters.setSearch}
-          placeholder="Search beads by id, title, label, assignee"
-          matchCount={filters.totalMatches}
-          totalCount={filteredRows.length}
-          ariaLabel="Search beads"
+      <div className="mb-8">
+        <BoardFilterBar
+          projects={boardModel.projects}
+          project={project}
+          onProject={setProject}
+          search={search}
+          onSearch={setSearch}
+          matched={boardModel.matched}
+          total={totalCards}
+          testCount={boardModel.testCount}
+          showTests={showTests}
+          onShowTests={setShowTests}
         />
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-          <FilterChips
-            chips={BEAD_CHIPS}
-            activeIds={filters.activeChipIds}
-            onToggle={toggleStatusChip}
-            legend="Status"
-          />
-          {dispatchRigOptions.length > 1 && (
-            <label className="flex items-center gap-2 text-label">
-              <span className="font-medium text-fg-muted">Rig</span>
-              <select
-                value={rigFilter}
-                onChange={(event) => setRigFilter(event.target.value)}
-                aria-label="Rig filter"
-                className="h-8 cursor-pointer rounded border border-rule bg-surface-raised px-2 text-label text-fg focus-mark"
-              >
-                <option value={RIG_FILTER_ALL}>all rigs</option>
-                {dispatchRigOptions.map((rig) => (
-                  <option key={rig} value={rig}>
-                    {rig}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
       </div>
 
       {!hasLoadedBoard && loading ? (
-        <p className="text-body text-fg-muted">Loading beads.</p>
-      ) : matched.length === 0 ? (
-        <p className="text-body text-fg-muted">
-          {filters.search.length > 0 || filters.activeChipIds.size > 0
-            ? 'No beads match the current search or filter.'
-            : 'Nothing on the queue right now.'}
-        </p>
+        <p className="text-body text-fg-muted">{t('Loading beads.')}</p>
+      ) : boardModel.matched === 0 && (search.trim().length > 0 || project !== ALL_PROJECTS) ? (
+        <p className="text-body text-fg-muted">{t('No tasks match the search or filter.')}</p>
+      ) : boardModel.matched === 0 ? (
+        <p className="text-body text-fg-muted">{t('Nothing on the board right now.')}</p>
       ) : (
-        <div className="space-y-10">
-          {filters.groups.map((group) => (
-            <BeadBoardSection
-              key={group.projectKey}
-              label={group.project}
-              count={group.totalInProject}
-              graph={graph}
-              ids={groupIds.get(group.projectKey) ?? EMPTY_IDS}
-              routeIndex={routeIndex}
-              stopCards={stopCards}
-              selectedId={selectedId}
-              attentionSeverity={beadAttentionSeverity}
-              noteOf={beadNoteOf}
-              onSelect={setSelectedId}
-            />
-          ))}
-        </div>
+        <BeadBoard
+          model={boardModel}
+          selectedId={selectedId}
+          attentionSeverity={beadAttentionSeverity}
+          noteOf={beadNoteOf}
+          nowMs={nowMs}
+          onSelect={setSelectedId}
+          openGroups={openGroups}
+          onToggleGroup={toggleGroup}
+          showAllHistory={showAllHistory}
+          onToggleHistory={() => setShowAllHistory((prev) => !prev)}
+        />
       )}
 
-      {hasLoadedBoard && orphanRunCount > 0 && (
+      {hasLoadedBoard && boardModel.orphanRuns > 0 && (
         <p className="mt-6 text-body text-fg-muted">
-          {orphanRunCount === 1
-            ? '1 run is not tied to a task on this board. '
-            : `${orphanRunCount} runs are not tied to a task on this board. `}
+          {tn(boardModel.orphanRuns, {
+            one: '{n} run is not tied to a task on this board.',
+            other: '{n} runs are not tied to a task on this board.',
+          })}{' '}
           <Link
             to="/runs"
-            className="rounded-sm text-primary underline-offset-2 hover:underline focus-mark"
+            className="rounded-sm text-fg underline underline-offset-2 focus-mark hover:text-primary"
           >
-            Runs
+            {t('Runs')}
           </Link>
         </p>
       )}
@@ -558,7 +492,7 @@ export function BeadsPage() {
         onClose={() => {
           if (actionInFlight === null) setClosing(null);
         }}
-        title={closing ? `Close ${closing.id}` : 'Close bead'}
+        title={closing ? t('Close {id}', { id: closing.id }) : t('Close bead')}
         caption={closing?.title}
         widthClass="max-w-xl"
         footer={
@@ -570,7 +504,7 @@ export function BeadsPage() {
               disabled={actionInFlight !== null}
               onClick={() => setClosing(null)}
             >
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               type="button"
@@ -582,13 +516,13 @@ export function BeadsPage() {
                 if (closing) void runClose(closing);
               }}
             >
-              Close bead
+              {t('Close bead')}
             </Button>
           </>
         }
       >
         <p className="text-body text-fg-muted">
-          Close this bead? It will be marked closed and drop out of the open queue.
+          {t('Close this bead? It will be marked closed and drop out of the open queue.')}
         </p>
       </Modal>
 
@@ -597,8 +531,8 @@ export function BeadsPage() {
         onClose={() => {
           if (!createInFlight) setCreating(false);
         }}
-        title="New bead"
-        caption="Create and sling"
+        title={t('New bead')}
+        caption={t('Create and sling')}
         widthClass="max-w-2xl"
         footer={
           <>
@@ -609,7 +543,7 @@ export function BeadsPage() {
               disabled={createInFlight}
               onClick={() => setCreating(false)}
             >
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               type="submit"
@@ -624,7 +558,7 @@ export function BeadsPage() {
                 newAgent.trim().length === 0
               }
             >
-              {createInFlight ? 'Creating' : 'Create and sling'}
+              {createInFlight ? t('Creating') : t('Create and sling')}
             </Button>
           </>
         }
@@ -642,7 +576,7 @@ export function BeadsPage() {
               {createError}
             </p>
           )}
-          <Field label="Title" variant="form">
+          <Field label={t('Title')} variant="form">
             <input
               value={newTitle}
               onChange={(event) => setNewTitle(event.target.value)}
@@ -650,7 +584,7 @@ export function BeadsPage() {
               className={INPUT_CLASS}
             />
           </Field>
-          <Field label="Body" variant="form">
+          <Field label={t('Body')} variant="form">
             <textarea
               value={newBody}
               onChange={(event) => setNewBody(event.target.value)}
@@ -659,13 +593,13 @@ export function BeadsPage() {
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Rig" variant="form">
+            <Field label={t('Rig')} variant="form">
               <select
                 value={newRig}
                 onChange={(event) => handleDispatchRigChange(event.target.value)}
                 className={INPUT_CLASS}
               >
-                {dispatchRigOptions.length === 0 && <option value="">all rigs</option>}
+                {dispatchRigOptions.length === 0 && <option value="">{t('all rigs')}</option>}
                 {dispatchRigOptions.map((rig) => (
                   <option key={rig} value={rig}>
                     {rig}
@@ -673,7 +607,7 @@ export function BeadsPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Agent" variant="form">
+            <Field label={t('Agent')} variant="form">
               <select
                 value={newAgent}
                 onChange={(event) => setNewAgent(event.target.value)}
@@ -700,24 +634,4 @@ export function BeadsPage() {
 function normalizeSelectedBeadParam(value: string | null): string | null {
   const clean = value?.trim();
   return clean && clean.length > 0 ? clean : null;
-}
-
-function buildSynopsis(
-  filtered: ReadonlyArray<SupervisorBead>,
-  totalShown: number,
-  rigFilter: string,
-): string {
-  if (rigFilter !== RIG_FILTER_ALL && filtered.length === 0) return `No beads on ${rigFilter}.`;
-  const open = filtered.filter((bead) => bead.status === 'open').length;
-  const inProgress = filtered.filter((bead) => bead.status === 'in_progress').length;
-  const blocked = filtered.filter((bead) => bead.status === 'blocked').length;
-  const parts: string[] = [];
-  if (open > 0) parts.push(`${open} open`);
-  if (inProgress > 0) parts.push(`${inProgress} in progress`);
-  if (blocked > 0) parts.push(`${blocked} blocked`);
-  if (parts.length === 0) return 'Nothing on the queue.';
-  let summary = `${parts.join(', ')}.`;
-  if (rigFilter !== RIG_FILTER_ALL) summary = `${rigFilter}: ${summary}`;
-  if (totalShown > filtered.length) summary += ` Showing ${filtered.length} of ${totalShown}.`;
-  return summary;
 }

@@ -147,7 +147,11 @@ export function AgentsPage() {
       ...(p.pending.prompt === undefined ? {} : { prompt: p.pending.prompt }),
     }));
     const byName = new Map(rows.map((a) => [a.name, a]));
+    // Task 11: only the owner's part (rule O3, the registry's own test): an agent
+    // awaiting his input. Errored, rate-limited and stalled agents keep their
+    // table rows and tint, and are listed on Health as city issues.
     return selectAgentsNeedingYou(rows, pending).flatMap((need) => {
+      if (need.reason !== 'awaiting-input') return [];
       const agent = byName.get(need.name);
       // need.name came from `rows`, so the lookup always resolves; flatMap with
       // an empty fallback narrows the type without inventing a label.

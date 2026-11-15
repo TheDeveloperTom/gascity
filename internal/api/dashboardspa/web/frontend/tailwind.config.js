@@ -35,6 +35,19 @@ export default {
         ok: 'oklch(var(--ok) / <alpha-value>)',
         warn: 'oklch(var(--warn) / <alpha-value>)',
         scrim: 'oklch(var(--scrim) / <alpha-value>)',
+        // vibe-kanban names (src/vk/), aliases of the tokens above via the
+        // --vk-* custom properties in styles/index.css: bg-vk-bg-primary,
+        // text-vk-text-high, border-vk-border, bg-vk-brand, ...
+        'vk-brand': 'oklch(var(--vk-brand) / <alpha-value>)',
+        'vk-brand-secondary': 'oklch(var(--vk-brand-secondary) / <alpha-value>)',
+        'vk-on-brand': 'oklch(var(--vk-on-brand) / <alpha-value>)',
+        'vk-bg-primary': 'oklch(var(--vk-bg-primary) / <alpha-value>)',
+        'vk-bg-secondary': 'oklch(var(--vk-bg-secondary) / <alpha-value>)',
+        'vk-bg-panel': 'oklch(var(--vk-bg-panel) / <alpha-value>)',
+        'vk-text-high': 'oklch(var(--vk-text-high) / <alpha-value>)',
+        'vk-text-normal': 'oklch(var(--vk-text-normal) / <alpha-value>)',
+        'vk-text-low': 'oklch(var(--vk-text-low) / <alpha-value>)',
+        'vk-border': 'oklch(var(--vk-border) / <alpha-value>)',
       },
       fontFamily: {
         // Golos Text Variable, self-hosted (styles/index.css @font-face).
@@ -44,6 +57,9 @@ export default {
         display: ['"PT Sans Narrow"', '"Arial Narrow"', '"Roboto Condensed"', 'sans-serif'],
         // Mono only for copyable ids and literal terminal output.
         mono: ['ui-monospace', '"SF Mono"', 'Menlo', 'Consolas', '"Liberation Mono"', 'monospace'],
+        // IBM Plex for the vibe-kanban port, self-hosted via @fontsource (main.tsx).
+        'vk-sans': ['"IBM Plex Sans"', '"Golos Text Variable"', 'system-ui', 'sans-serif'],
+        'vk-mono': ['"IBM Plex Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       fontSize: {
         // DESIGN-PLAN §4. No positive tracking anywhere: labels are

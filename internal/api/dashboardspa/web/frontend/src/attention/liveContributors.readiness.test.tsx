@@ -63,7 +63,8 @@ describe('deriveOwnerReadiness', () => {
   });
 
   // Review I1: a partial read is not a complete one.
-  it('a partial decision queue or mailbox is degraded', () => {
+  // v3: mail is the city's, so a partial mailbox does not degrade the owner.
+  it('a partial decision queue is degraded; a partial mailbox is not', () => {
     expect(
       deriveOwnerReadiness(
         { ...beads, decisionsPartial: true },
@@ -72,11 +73,15 @@ describe('deriveOwnerReadiness', () => {
       ),
     ).toEqual({
       state: 'degraded',
-      reasons: [
-        'Questions from the Mayor were read only in part',
-        'Your mail was read only in part',
-      ],
+      reasons: ['Questions from the Mayor were read only in part'],
     });
+    expect(deriveOwnerReadiness(beads, { ...mail, partial: true }, 'ready')).toEqual({
+      state: 'ready',
+    });
+  });
+
+  it('a pending mail read does not hold the owner slice back', () => {
+    expect(deriveOwnerReadiness(beads, undefined, 'ready')).toEqual({ state: 'ready' });
   });
 
   // Review I2: the fallback identity must not give an all-clear.
@@ -226,16 +231,15 @@ describe('useLiveAttentionContributors owner readiness', () => {
     invalidate('attention:');
   });
 
-  it('loading until decisions and mail resolve', async () => {
+  // Dashboard v3: the owner slice is owner questions only, so its readiness
+  // waits on the decision queue and never on mail.
+  it('loading until decisions resolve; mail does not hold it', async () => {
     const mail = deferred<unknown>();
     mockSupervisorApi.listMail.mockReturnValue(mail.promise);
     const { result } = renderHook(() => useLiveAttentionContributors(operator, undefined));
     expect(result.current.ownerReadiness).toEqual({ state: 'loading' });
-    // Beads resolve first; mail is still pending, so still loading.
-    await waitFor(() => expect(result.current.beadSnapshot).toBeDefined());
-    expect(result.current.ownerReadiness).toEqual({ state: 'loading' });
-    mail.resolve({ total: 0, items: [] });
     await waitFor(() => expect(result.current.ownerReadiness).toEqual({ state: 'ready' }));
+    mail.resolve({ total: 0, items: [] });
   });
 
   it('decision queue failure is degraded with its reason', async () => {
@@ -249,7 +253,7 @@ describe('useLiveAttentionContributors owner readiness', () => {
     await waitFor(() =>
       expect(result.current.ownerReadiness).toEqual({
         state: 'degraded',
-        reasons: ['Questions from the Mayor could not be read', 'Your mail could not be read'],
+        reasons: ['Questions from the Mayor could not be read'],
       }),
     );
   });

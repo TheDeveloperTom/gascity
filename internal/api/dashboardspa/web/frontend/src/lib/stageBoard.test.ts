@@ -417,19 +417,29 @@ describe('marks', () => {
     expect(result.marks.find((m) => m.kind === 'tdd-refused')?.tone).toBe('attention');
   });
 
-  it('marks a waiting task whose needs are all closed as ready', () => {
+  // B6: the `ready` mark is gone; lib/waitReasons cardWait owns «можно брать».
+  it('a waiting task carries no ready mark', () => {
     const dep = bead('dw-dep', { status: 'closed' });
     const result = stageOf(task({ needs: ['dw-dep'] }), [], [dep]);
-    expect(result.marks.map((m) => m.kind)).toContain('ready');
+    expect(result.marks.map((m) => m.kind as string)).not.toContain('ready');
   });
 
-  it('does not mark a queued run ready (ready is about a routeless task)', () => {
+  it('a queued run says Queued', () => {
     const result = stageOf(task(), [
       root({ is_blocked: true }),
       ...routeFrom(0, 'open').map(blocked),
     ]);
     expect(result.stepLabel).toBe('Queued');
-    expect(result.marks.map((m) => m.kind)).not.toContain('ready');
+  });
+
+  it('the step label prefers dashboard.label', () => {
+    const steps = routeFrom(0).map((s, i) =>
+      i === 0
+        ? { ...s, metadata: { ...s.metadata, 'dashboard.label': 'готовит рабочую копию' } }
+        : s,
+    );
+    const result = stageOf(task(), [root(), ...steps]);
+    expect(result.stepLabel).toBe('готовит рабочую копию');
   });
 
   it('reads the PR number and url from the route gate', () => {

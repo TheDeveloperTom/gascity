@@ -1,11 +1,8 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupervisorBead } from '../../supervisor/beadReads';
-import { buildBeadGraph } from '../../lib/beadGraph';
-import { buildRouteIndex, buildStageColumns, stopCardsByTask } from '../../lib/stageBoard';
+import { renderBoard as renderSharedBoard } from '../../test/renderBoard';
 import { assertAtMostOneMark } from '../../test/assertions/oneMarkRule';
-import { BeadBoard } from './BeadBoard';
 
 // Stage board (owner ruling 2026-11-15): Waiting → Working → Review → PR →
 // Merged. Route steps fold into their task; each card names its current step
@@ -49,23 +46,18 @@ const gate = bead('gcg-12', {
 });
 
 function renderStageBoard(tasks: SupervisorBead[], routeBeads: SupervisorBead[] = []) {
-  const graph = buildBeadGraph(tasks);
-  const columns = buildStageColumns(
-    graph.nodes.values(),
-    buildRouteIndex(routeBeads),
-    stopCardsByTask(tasks),
-  );
-  return render(
-    <MemoryRouter>
-      <BeadBoard columns={columns} selectedId={null} onSelect={vi.fn()} />
-    </MemoryRouter>,
-  );
+  // B5: one helper builds the board model (B4) the way the page does.
+  return renderSharedBoard(tasks, { routeBeads });
 }
 
 describe('BeadBoard stages', () => {
   it('renders the five stage columns in route order', () => {
     renderStageBoard([bead('dw-a')]);
-    const names = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    // B5: the board is one region around the five stage regions.
+    const names = screen
+      .getAllByRole('region')
+      .filter((r) => r.hasAttribute('data-stage'))
+      .map((r) => r.getAttribute('aria-label'));
     expect(names).toEqual(['Waiting', 'Working', 'Review', 'PR', 'Merged']);
     for (const name of names) {
       expect(screen.getByRole('heading', { level: 3, name: name ?? '' })).toBeTruthy();
@@ -160,7 +152,8 @@ describe('BeadBoard stages', () => {
     const merged = screen.getByRole('region', { name: 'Merged' });
     const titles = within(merged)
       .getAllByRole('button')
-      .map((b) => b.getAttribute('title'));
+      .map((b) => b.getAttribute('title'))
+      .filter((title) => title !== null); // B5: Show all history is no card
     expect(titles).toEqual(['Select dw-new', 'Select dw-old']);
     expect(within(merged).getByText('merged into main at abc123 (PR #9)')).toBeTruthy();
   });

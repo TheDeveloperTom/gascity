@@ -5,6 +5,13 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LocaleProvider } from './i18n/LocaleProvider';
 import 'react-diff-view/style/index.css';
+// IBM Plex for the vibe-kanban port (--vk-font-sans / --vk-font-mono), bundled
+// from @fontsource: self-hosted, fetched only when a face is used.
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@fontsource/ibm-plex-sans/600.css';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
 import './styles/index.css';
 
 const root = document.getElementById('root');

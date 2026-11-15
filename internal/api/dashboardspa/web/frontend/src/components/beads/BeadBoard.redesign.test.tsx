@@ -1,12 +1,9 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BeadStatus } from 'gas-city-dashboard-shared';
 import type { SupervisorBead } from '../../supervisor/beadReads';
-import { buildBeadGraph } from '../../lib/beadGraph';
-import { buildRouteIndex, buildStageColumns } from '../../lib/stageBoard';
+import { renderBoard as renderSharedBoard } from '../../test/renderBoard';
 import { assertAtMostOneMark } from '../../test/assertions/oneMarkRule';
-import { BeadBoard } from './BeadBoard';
 
 // Redesign (Signal & Pavement, Task 7): board columns are panels whose body
 // scrolls inside a fixed height, so a 1,000-bead column no longer makes the
@@ -33,13 +30,8 @@ function bead(id: string, status: BeadStatus, extra: Partial<SupervisorBead> = {
 }
 
 function renderBoard(beads: SupervisorBead[]) {
-  const graph = buildBeadGraph(beads);
-  const columns = buildStageColumns(graph.nodes.values(), buildRouteIndex([]), new Map());
-  return render(
-    <MemoryRouter>
-      <BeadBoard columns={columns} selectedId={null} onSelect={vi.fn()} />
-    </MemoryRouter>,
-  );
+  // B5: one helper builds the board model (B4) the way the page does.
+  return renderSharedBoard(beads);
 }
 
 describe('BeadBoard redesign', () => {
@@ -68,7 +60,8 @@ describe('BeadBoard redesign', () => {
     expect(merged.querySelector('header')?.className).not.toMatch(/border-b/);
   });
 
-  it('columns scroll inside', () => {
+  // B5 supersedes the inner scroll (RB5): columns fold, never scroll inside a box.
+  it('columns fold, never scroll inside', () => {
     const { container } = renderBoard([
       bead('A', 'open', { needs: ['B'] }),
       bead('B', 'in_progress'),
@@ -76,13 +69,8 @@ describe('BeadBoard redesign', () => {
       bead('D', 'closed'),
       bead('E', 'open'),
     ]);
-    // Stage board: A, C, E wait; B works; D merged → three non-empty columns.
-    const lists = container.querySelectorAll('section ul');
-    expect(lists.length).toBe(3);
-    for (const list of lists) {
-      expect(list.classList.contains('max-h-[28rem]')).toBe(true);
-      expect(list.classList.contains('overflow-y-auto')).toBe(true);
-    }
+    expect(container.querySelector('.max-h-\\[28rem\\]')).toBeNull();
+    expect(container.querySelector('.overflow-y-auto')).toBeNull();
   });
 
   // Stage board (2026-11-15) supersedes the red blocked count: there is no

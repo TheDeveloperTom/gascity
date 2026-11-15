@@ -62,19 +62,23 @@ const OWNER_LOADING: OwnerReadiness = { state: 'loading' };
 const OWNER_READY: OwnerReadiness = { state: 'ready' };
 
 /**
- * The owner slice is only trustworthy once both of its sources were read: the
- * decision queue (O1) and the operator mail (O2). Until then it is loading;
- * a failed source is named, so the plate never claims an all-clear (R12).
+ * The owner slice holds owner questions only (dashboard v3), so it is
+ * trustworthy once the decision queue was read. Until then it is loading; a
+ * failed read is named, so the plate never claims an all-clear (R12). Mail is
+ * the city's and no longer holds the owner slice back; the parameter stays
+ * for callers.
  */
 export function deriveOwnerReadiness(
   beads: BeadsAttentionFacts | undefined,
-  mail: MailAttentionFacts | undefined,
+  _mail: MailAttentionFacts | undefined,
   configState: OperatorConfigState = 'ready',
 ): OwnerReadiness {
   // The reads run under the fallback identity until /config lands, so they
-  // say nothing about the owner's own queue and inbox yet (review I2).
+  // say nothing about the owner's own queue yet (review I2).
   if (configState === 'loading') return OWNER_LOADING;
-  if (beads === undefined || mail === undefined) {
+  // v3: only the decision queue holds the owner slice back; mail is the
+  // city's, so a pending mail read does not keep the plate loading.
+  if (beads === undefined) {
     return configState === 'failed'
       ? { state: 'degraded', reasons: ['Your settings could not be read'] }
       : OWNER_LOADING;
@@ -86,11 +90,6 @@ export function deriveOwnerReadiness(
   } else if (beads.decisionsPartial === true) {
     // A partial read is not a complete one (review I1).
     reasons.push('Questions from the Mayor were read only in part');
-  }
-  if (hasText(mail.error)) {
-    reasons.push('Your mail could not be read');
-  } else if (mail.partial === true) {
-    reasons.push('Your mail was read only in part');
   }
   return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
 }

@@ -56,7 +56,8 @@ describe('attention row copy', () => {
   it('reads Russian in ru, with every key translated', () => {
     setLocale('ru');
     const s = summaries();
-    expect(s.get('B-u')).toBe('Никто не берёт уже 4 дня');
+    // Dashboard v3: ready, unclaimed work lives on «Задачи», not in attention.
+    expect(s.has('B-u')).toBe(false);
     expect(s.get('B-s')).toBe('Застряла 5 часов: никто не взялся');
     expect(s.get('B-d')).toBe('Застряла 5 часов: сессия в состоянии drained');
     expect(s.get('B-h')).toBe('На паузе уже 5 часов');
@@ -67,7 +68,7 @@ describe('attention row copy', () => {
 
   it('reads English in en', () => {
     const s = summaries();
-    expect(s.get('B-u')).toBe('Nobody has taken it for 4 days');
+    expect(s.has('B-u')).toBe(false);
     expect(s.get('B-s')).toBe('Stalled for 5 hours: nobody is on it');
     expect(s.get('B-h')).toBe('On hold for 5 hours');
     expect(s.get('B-m')).toBe('Waiting on Mayor for 5 hours');

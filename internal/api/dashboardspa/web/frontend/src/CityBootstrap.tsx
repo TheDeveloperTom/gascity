@@ -6,6 +6,7 @@ import { App } from './App';
 import { setActiveCity } from './api/cityBase';
 import { Button } from './components/Button';
 import { supervisorApi } from './supervisor/client';
+import { bareRedirectTarget } from './lib/cityRedirect';
 
 // gascity-dashboard-ucc — city bootstrap.
 //
@@ -100,7 +101,8 @@ export function CityBootstrap() {
         }
         // Full navigation (not client-side) so the app remounts under the
         // chosen city's basename with the active city set deterministically.
-        window.location.replace(`/city/${encodeURIComponent(first.name)}/`);
+        // The view path, query and hash survive (RB13).
+        window.location.replace(bareRedirectTarget(first.name, window.location));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
