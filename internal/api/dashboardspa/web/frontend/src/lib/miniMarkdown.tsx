@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ExternalLink } from '../vk/ExternalLink';
 
 // A small markdown renderer for card descriptions (dashboard v3, Safety):
 // paragraphs, **bold**, *em*, `code`, `-` and `1.` lists, `#`–`###` headings
@@ -44,9 +45,9 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
         safe === null ? (
           whole
         ) : (
-          <a key={key} href={safe} target="_blank" rel="noopener noreferrer" className="underline">
+          <ExternalLink key={key} href={safe} className="underline">
             {label}
-          </a>
+          </ExternalLink>
         ),
       );
     }

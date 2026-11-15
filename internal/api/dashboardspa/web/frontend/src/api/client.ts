@@ -13,6 +13,7 @@ import type {
   FormulaRunDetail,
 } from 'gas-city-dashboard-shared';
 import { cityPath } from './cityBase';
+import { authHeaders, withApiBase } from '../lib/apiBase';
 
 // Typed fetch client for the admin backend's API. Shares types with the
 // backend via the workspace 'gas-city-dashboard-shared' import so wire-shape
@@ -30,7 +31,9 @@ async function performRequest<T>(
   decode: ResponseDecoder<T>,
   body?: object,
 ): Promise<T> {
+  // vk lane 6: the Activity session headers (`{}` outside the Activity).
   const headers: Record<string, string> = {
+    ...authHeaders(),
     Accept: 'application/json',
   };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -49,7 +52,7 @@ async function performRequest<T>(
     credentials: 'same-origin',
   };
   if (body !== undefined) init.body = JSON.stringify(body);
-  const res = await fetch(url, init);
+  const res = await fetch(withApiBase(url), init);
   if (!res.ok) {
     const bodyText = await res.text();
     const payload = parseApiErrorBody(bodyText);

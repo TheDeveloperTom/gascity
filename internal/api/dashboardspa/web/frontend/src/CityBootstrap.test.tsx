@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CityBootstrap } from './CityBootstrap';
 import type { CityInfo } from 'gas-city-dashboard-shared/gc-supervisor';
@@ -21,6 +21,15 @@ function city(name: string, running = true): CityInfo {
 
 const replaceSpy = vi.fn();
 const assignSpy = vi.fn();
+// vk lane 6: the bare-URL bootstrap rewrites the URL in place (no reload, so
+// the Discord Activity's frame_id/instance_id survive). The spy moves the
+// stubbed location to the new URL, as the real history API would.
+const replaceStateSpy = vi.fn((_data: unknown, _unused: string, url?: string | URL | null) => {
+  if (typeof url !== 'string') return;
+  const u = new URL(url, 'http://127.0.0.1');
+  setPath(u.pathname, u.search, u.hash);
+});
+const originalReplaceState = window.history.replaceState.bind(window.history);
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location');
 
 // jsdom's window.location members are non-configurable, so we cannot spy on
@@ -54,6 +63,8 @@ describe('CityBootstrap', () => {
     listCities.mockReset();
     replaceSpy.mockReset();
     assignSpy.mockReset();
+    replaceStateSpy.mockClear();
+    window.history.replaceState = replaceStateSpy as typeof window.history.replaceState;
   });
 
   afterEach(() => {
@@ -61,6 +72,7 @@ describe('CityBootstrap', () => {
   });
 
   afterAll(() => {
+    window.history.replaceState = originalReplaceState;
     // Restore jsdom's real location so the swapped stub never leaks into
     // another test file sharing this worker.
     if (originalLocationDescriptor !== undefined) {
@@ -83,9 +95,10 @@ describe('CityBootstrap', () => {
 
     render(<CityBootstrap />);
 
-    await waitFor(() => {
-      expect(replaceSpy).toHaveBeenCalledWith('/city/alpha/beads?bead=dw-1');
-    });
+    expect(await screen.findByTestId('app-mounted')).toBeTruthy();
+    expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '/city/alpha/beads?bead=dw-1');
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it('redirects a bare path to the first registered city', async () => {
@@ -94,9 +107,24 @@ describe('CityBootstrap', () => {
 
     render(<CityBootstrap />);
 
-    await waitFor(() => {
-      expect(replaceSpy).toHaveBeenCalledWith('/city/alpha/');
-    });
+    expect(await screen.findByTestId('app-mounted')).toBeTruthy();
+    expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '/city/alpha/');
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Activity launch query and mounts without a reload', async () => {
+    setPath('/', '?frame_id=a&instance_id=b');
+    listCities.mockResolvedValue({ items: [city('devwork')], total: 1 });
+
+    render(<CityBootstrap />);
+
+    expect(await screen.findByTestId('app-mounted')).toBeTruthy();
+    expect(window.location.pathname + window.location.search).toBe(
+      '/city/devwork/?frame_id=a&instance_id=b',
+    );
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(listCities).toHaveBeenCalledTimes(1);
   });
 
   it('renders the unknown-city screen with links when the URL city is absent', async () => {
@@ -148,9 +176,9 @@ describe('CityBootstrap', () => {
     listCities.mockResolvedValue({ items: [city('alpha')], total: 1 });
     screen.getByRole('button', { name: 'Retry' }).click();
 
-    await waitFor(() => {
-      expect(replaceSpy).toHaveBeenCalledWith('/city/alpha/');
-    });
+    expect(await screen.findByTestId('app-mounted')).toBeTruthy();
+    expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '/city/alpha/');
+    expect(replaceSpy).not.toHaveBeenCalled();
     expect(listCities).toHaveBeenCalledTimes(2);
   });
 });

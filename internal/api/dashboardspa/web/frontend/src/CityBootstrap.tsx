@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter } from 'react-router';
 import { CITY_NAME_RE } from 'gas-city-dashboard-shared';
 import type { CityInfo } from 'gas-city-dashboard-shared/gc-supervisor';
@@ -7,6 +7,8 @@ import { setActiveCity } from './api/cityBase';
 import { Button } from './components/Button';
 import { supervisorApi } from './supervisor/client';
 import { bareRedirectTarget } from './lib/cityRedirect';
+import { hardNavigate } from './lib/navigation';
+import { ExternalLink } from './vk/ExternalLink';
 
 // gascity-dashboard-ucc — city bootstrap.
 //
@@ -65,12 +67,15 @@ type BootstrapState =
   | { phase: 'mount' };
 
 export function CityBootstrap() {
-  // Parse once and memoize: `parseCityFromPath` returns a fresh object every
-  // call, so without a stable identity the effect below (keyed on `parsed`)
-  // would re-run on every render -> setState -> re-render, a runaway loop. The
-  // URL does not change under us (the parsed-city branch mounts a router; the
-  // bare-`/` branch hard-navigates), so an empty dep array is correct.
-  const parsed = useMemo(() => parseCityFromPath(window.location.pathname), []);
+  // Parsed once from the URL, then set again (state, vk lane 6) when the
+  // bare-`/` branch rewrites the URL in place. The effect below is keyed on
+  // the retry nonce only and reads `parsed` through a ref, so that rewrite
+  // does not refetch the cities or loop.
+  const [parsed, setParsed] = useState<ParsedCity | null>(() =>
+    parseCityFromPath(window.location.pathname),
+  );
+  const parsedRef = useRef(parsed);
+  parsedRef.current = parsed;
   const [state, setState] = useState<BootstrapState>({ phase: 'loading' });
   // Bumped by the Retry button to re-run the cities fetch without a full page
   // reload (gascity-dashboard-ux-no-cities-dead-end).
@@ -82,6 +87,7 @@ export function CityBootstrap() {
 
   useEffect(() => {
     let cancelled = false;
+    const parsed = parsedRef.current;
     setState({ phase: 'loading' });
     supervisorApi()
       .listCities()
@@ -99,10 +105,20 @@ export function CityBootstrap() {
           setState({ phase: 'empty' });
           return;
         }
-        // Full navigation (not client-side) so the app remounts under the
-        // chosen city's basename with the active city set deterministically.
-        // The view path, query and hash survive (RB13).
-        window.location.replace(bareRedirectTarget(first.name, window.location));
+        // No hard redirect (vk lane 6): a reload inside the Discord Activity
+        // frame loses the SDK handshake. Rewrite the URL in place and mount
+        // under the chosen city's basename. The view path, query (the
+        // Activity's frame_id/instance_id) and hash survive (RB13).
+        const target = bareRedirectTarget(first.name, window.location);
+        const next = parseCityFromPath(new URL(target, 'http://bootstrap.invalid').pathname);
+        if (next === null) {
+          hardNavigate(target);
+          return;
+        }
+        window.history.replaceState(null, '', target);
+        parsedRef.current = next;
+        setParsed(next);
+        setState({ phase: 'mount' });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -121,7 +137,7 @@ export function CityBootstrap() {
     return () => {
       cancelled = true;
     };
-  }, [parsed, retryNonce]);
+  }, [retryNonce]);
 
   if (parsed !== null && state.phase === 'mount') {
     // Make the active city available to every city-scoped fetch before the
@@ -231,14 +247,9 @@ function NoCitiesBody() {
       <p className="text-body text-fg-muted">
         <code>gc init</code> bootstraps the city directory, registers it with the supervisor, and
         starts the orchestrator. Then refresh this page. See the{' '}
-        <a
-          href={GETTING_STARTED_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary hover:underline focus-mark"
-        >
+        <ExternalLink href={GETTING_STARTED_URL} className="text-primary hover:underline focus-mark">
           getting-started guide
-        </a>{' '}
+        </ExternalLink>{' '}
         for the full walkthrough.
       </p>
     </div>
