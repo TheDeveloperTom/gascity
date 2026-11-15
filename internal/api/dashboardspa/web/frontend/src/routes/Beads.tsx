@@ -121,7 +121,16 @@ export function BeadsPage() {
   // into their task's card (never cards of their own).
   const rows = useMemo(() => data?.items ?? [], [data]);
   const routeBeads = useMemo(() => data?.route_items ?? EMPTY_BEADS, [data]);
-  const routeIndex = useMemo(() => buildRouteIndex(routeBeads), [routeBeads]);
+  // A truncated window may hide a live run, so only a complete one lets the
+  // board read "no live run" as "its run stopped" (review I6).
+  const routesComplete =
+    data === undefined ||
+    typeof data.upstream_total !== 'number' ||
+    data.upstream_fetched >= data.upstream_total;
+  const routeIndex = useMemo(
+    () => buildRouteIndex(routeBeads, { routesComplete }),
+    [routeBeads, routesComplete],
+  );
   const stopCards = useMemo(() => stopCardsByTask(rows), [rows]);
   const totalShown = data?.total ?? 0;
   const upstreamTotal = data?.upstream_total;

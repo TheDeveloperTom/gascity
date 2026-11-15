@@ -181,6 +181,43 @@ describe('Merged means closed (coordinator ruling I4)', () => {
   });
 });
 
+describe('a stopped run shows on its open task (review I6)', () => {
+  function stageWith(t: SupervisorBead, routeBeads: SupervisorBead[], routesComplete: boolean) {
+    const graph = buildBeadGraph([t]);
+    const node = graph.nodes.get(t.id);
+    if (!node) throw new Error('missing node');
+    return deriveTaskStage(node, buildRouteIndex(routeBeads, { routesComplete }), new Map());
+  }
+
+  it('marks an in-progress task with no live run as route stopped', () => {
+    // mark-in-progress ran, then the run ended (scope abort closes every
+    // member and the root), so no open route bead names the task any more.
+    const result = stageWith(task({ status: 'in_progress' }), [], true);
+    const mark = result.marks.find((m) => m.kind === 'route-stopped');
+    expect(mark?.tone).toBe('attention');
+    expect(mark?.label).toBe('route stopped');
+  });
+
+  it('does not infer a stop when the route window was truncated', () => {
+    const result = stageWith(task({ status: 'in_progress' }), [], false);
+    expect(result.marks.map((m) => m.kind)).not.toContain('route-stopped');
+  });
+
+  it('does not mark a task whose run is live', () => {
+    const result = stageWith(task({ status: 'in_progress' }), [root(), ...routeFrom(3)], true);
+    expect(result.marks.map((m) => m.kind)).not.toContain('route-stopped');
+  });
+
+  it('shows a visible failed run once, as route failed, and never as ready', () => {
+    const failed = root({ status: 'closed' }, { 'gc.outcome': 'fail' });
+    const result = stageWith(task(), [failed], true);
+    const kinds = result.marks.map((m) => m.kind);
+    expect(kinds).toContain('route-failed');
+    expect(kinds).not.toContain('route-stopped');
+    expect(kinds).not.toContain('ready');
+  });
+});
+
 describe('columns move forward only (coordinator ruling I5)', () => {
   it('a task with a PR stays in PR while a pr-accept run reviews it', () => {
     const accept = root({}, { 'gc.formula_name': 'devwork-pr-accept' });

@@ -52,10 +52,16 @@ const MERGED = bead('dw-9', {
 });
 
 const beadQueries: URLSearchParams[] = [];
+/** Extra beads the unscoped open window returns in one test. */
+let windowExtra: SupervisorBead[] = [];
+/** Store total the open window reports; above the item count = truncated. */
+let windowTotal: number | null = null;
 
 beforeEach(() => {
   setActiveCity('test-city');
   beadQueries.length = 0;
+  windowExtra = [];
+  windowTotal = null;
   invalidate('beads:board:');
   invalidate('sessions');
   invalidate('agents');
@@ -76,7 +82,8 @@ beforeEach(() => {
         const status = url.searchParams.get('status');
         if (status === 'closed') return json({ items: [MERGED], total: 1 });
         if (status === 'in_progress') return json({ items: [TASK, ROOT, STEP, ORPHAN], total: 4 });
-        return json({ items: [TASK, ROOT, STEP, NEXT, ORPHAN], total: 5 });
+        const items = [TASK, ROOT, STEP, NEXT, ORPHAN, ...windowExtra];
+        return json({ items, total: windowTotal ?? items.length });
       }
       if (url.pathname === '/v0/city/test-city/bead/gcg-2') return json(STEP);
       if (url.pathname === '/v0/city/test-city/sessions') return json({ items: [], total: 0 });
@@ -97,6 +104,28 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe('BeadsPage stopped runs (review I6)', () => {
+  const STRANDED = bead('dw-5', { title: 'Run ended under me', status: 'in_progress' });
+
+  it('marks an in-progress task with no live run as route stopped', async () => {
+    windowExtra = [STRANDED];
+    renderPage();
+    await screen.findByText('Run ended under me');
+    const card = screen.getByTitle('Select dw-5').closest('li');
+    expect(card?.getAttribute('data-route-attention')).toBe('route-stopped');
+    expect(within(card as HTMLElement).getByText('route stopped')).toBeTruthy();
+  });
+
+  it('does not guess a stop when the fetch window was truncated', async () => {
+    windowExtra = [STRANDED];
+    windowTotal = 5000;
+    renderPage();
+    await screen.findByText('Run ended under me');
+    const card = screen.getByTitle('Select dw-5').closest('li');
+    expect(card?.getAttribute('data-route-attention')).toBeNull();
+  });
 });
 
 describe('BeadsPage stage board', () => {

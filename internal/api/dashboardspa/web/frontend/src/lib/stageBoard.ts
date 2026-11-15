@@ -69,7 +69,13 @@ const TDD_REFUSAL_KEY = 'devwork.tdd_refusal';
 const PR_NUMBER_KEY = 'devwork.pr_number';
 const PR_URL_KEY = 'devwork.pr_url';
 
-export type StageMarkKind = 'blocked' | 'ready' | 'stopped' | 'route-failed' | 'tdd-refused';
+export type StageMarkKind =
+  | 'blocked'
+  | 'ready'
+  | 'stopped'
+  | 'route-failed'
+  | 'route-stopped'
+  | 'tdd-refused';
 
 export interface StageMark {
   kind: StageMarkKind;
@@ -102,6 +108,11 @@ interface Route {
 }
 
 export interface RouteIndex {
+  /**
+   * True when the fetched route beads cover every live run (the open window
+   * was not truncated). Only then may an absent run be read as a stopped one.
+   */
+  routesComplete: boolean;
   routesFor(taskId: string): readonly Route[];
   /** Live roots whose task is not among `taskIds` (they never get a card). */
   orphanRoots(taskIds: ReadonlySet<string>): SupervisorBead[];
@@ -127,7 +138,10 @@ export function routeTaskId(root: SupervisorBead): string | null {
   return null;
 }
 
-export function buildRouteIndex(routeBeads: readonly SupervisorBead[]): RouteIndex {
+export function buildRouteIndex(
+  routeBeads: readonly SupervisorBead[],
+  options: { routesComplete?: boolean } = {},
+): RouteIndex {
   const membersByRoot = new Map<string, SupervisorBead[]>();
   const roots: SupervisorBead[] = [];
   for (const bead of routeBeads) {
@@ -152,6 +166,7 @@ export function buildRouteIndex(routeBeads: readonly SupervisorBead[]): RouteInd
   }
   for (const list of byTask.values()) list.sort(byRoutePreference);
   return {
+    routesComplete: options.routesComplete ?? true,
     routesFor: (taskId) => byTask.get(taskId) ?? [],
     orphanRoots: (taskIds) =>
       roots.filter((root) => {
@@ -296,6 +311,24 @@ export function deriveTaskStage(
         label: 'route failed',
         title: `Run ${route.root.id} ended failed; the task is still open.`,
       });
+    } else if (
+      task.status === 'in_progress' &&
+      (route !== null || index.routesComplete)
+    ) {
+      // Our route marks the task in progress (mark-in-progress) and closes it
+      // at the end; a scope abort closes the root and every step. So an
+      // in-progress task that no live run names had its run stop under it.
+      // The API cannot look a task's closed root up, so this is inferred from
+      // the open window, and only when that window was complete (review I6).
+      marks.push({
+        kind: 'route-stopped',
+        tone: 'attention',
+        label: 'route stopped',
+        title:
+          route !== null
+            ? `Run ${route.root.id} ended; the task is still in progress.`
+            : 'In progress, but no run is working on it: its run ended without closing the task.',
+      });
     }
   } else {
     const position = routePosition(route);
@@ -314,9 +347,9 @@ export function deriveTaskStage(
 
   if (task.status === 'blocked') marks.push({ kind: 'blocked', tone: 'warn', label: 'blocked' });
   // `ready` (every need closed) only helps a task no run has picked up yet; a
-  // queued run already says where the task stands.
-  const hasLiveRoute = route !== null && route.root.status !== 'closed';
-  if (stage === 'waiting' && node.ready && !hasLiveRoute)
+  // queued run already says where the task stands, and a visible ended run
+  // means the task was picked up (review I6).
+  if (stage === 'waiting' && node.ready && route === null)
     marks.push({ kind: 'ready', tone: 'quiet', label: 'ready' });
 
   const stopCard = stopCards.get(task.id);
