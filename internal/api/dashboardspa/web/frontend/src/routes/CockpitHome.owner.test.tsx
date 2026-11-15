@@ -3,7 +3,9 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import type { AttentionContributor, AttentionItem, OwnerReadiness } from '../attention/compose';
+import { composeAttention } from '../attention/compose';
 import { AttentionProvider } from '../attention/context';
+import { createAttentionContributors } from '../attention/registry';
 import { invalidate } from '../api/cache';
 import { setLocale } from '../i18n';
 import type { RunSummarySubscription } from '../runs/runSummarySubscription';
@@ -104,9 +106,7 @@ describe('<CockpitHomePage> owner home', () => {
 
   it('order is plate, tasks, city, usage', () => {
     const { container } = home();
-    const order = Array.from(
-      container.querySelectorAll('h2, details > summary'),
-    )
+    const order = Array.from(container.querySelectorAll('h2, details > summary'))
       .filter((el) => el.tagName === 'SUMMARY' || el.closest('details') === null)
       .map((el) => el.textContent);
     expect(order).toEqual([
@@ -154,14 +154,44 @@ describe('<CockpitHomePage> owner home', () => {
     expect(await within(agents).findByText('2 из 15 работают')).toBeTruthy();
   });
 
-  it('a lamp that is not healthy becomes a city problem', async () => {
+  // Review I-4: Home's «Неполадки» is the attention model's city slice, the
+  // same number the rail's Health pill (city.total) and Health's list read.
+  it('lamp problems come from the city slice, so Home counts what the model counts', async () => {
+    const status = await mocks.cityStatus();
+    const contributors = createAttentionContributors({
+      liveFeed: 'closed',
+      health: {
+        cityStatus: {
+          ...status,
+          store_health: { ...status.store_health, last_gc_status: 'failed' },
+        },
+      },
+    });
+    const model = composeAttention(contributors);
+    render(
+      <MemoryRouter>
+        <AttentionProvider contributors={contributors}>
+          <CockpitHomePage />
+        </AttentionProvider>
+      </MemoryRouter>,
+    );
+    const problems = screen.getByText('Problems', { selector: 'dt' })
+      .nextElementSibling as HTMLElement;
+    expect(problems.querySelector('[data-count]')?.textContent).toBe(String(model.city.total));
+    expect(model.city.total).toBe(2);
+    expect(within(problems).getByText('Task store maintenance failed')).toBeTruthy();
+    expect(within(problems).getByText('Live updates are disconnected')).toBeTruthy();
+  });
+
+  it('Home derives no lamp problem of its own', async () => {
     const status = await mocks.cityStatus();
     mocks.cityStatus.mockResolvedValue({
       ...status,
       store_health: { ...status.store_health, last_gc_status: 'failed' },
     });
     home();
-    expect(await screen.findByText('Task store maintenance failed')).toBeTruthy();
+    expect(await screen.findByText('2 of 15 working')).toBeTruthy();
+    expect(screen.queryByText('Task store maintenance failed')).toBeNull();
   });
 
   it('plate stays loading while the owner reads are pending', () => {

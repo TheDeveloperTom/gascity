@@ -200,9 +200,10 @@ export function useLiveAttentionContributors(
           health: health.data,
           mail: mail.data,
           runs,
+          liveFeed: options.liveFeed,
         }),
       ),
-    [activity.data, agents.data, beadsData, health.data, mail.data, runs],
+    [activity.data, agents.data, beadsData, health.data, mail.data, runs, options.liveFeed],
   );
   const ownerReadiness = useMemo(
     () => deriveOwnerReadiness(beadsData, mail.data, configState),
@@ -514,14 +515,23 @@ async function fetchActivityAttention(cityName: string | null): Promise<Activity
   return facts;
 }
 
+// Async so a client without `cityStatus` becomes a rejected leg, not a
+// synchronous throw out of the allSettled argument list.
+async function readCityStatus(cityName: string) {
+  return supervisorApiForRequestBudget(HEALTH_ATTENTION_SUPERVISOR_TIMEOUT_MS).cityStatus(cityName);
+}
+
 async function fetchHealthAttention(cityName: string | null): Promise<HealthAttentionFacts> {
   if (cityName === null) return {};
-  const [system, supervisor, trend] = await Promise.allSettled([
+  const [system, supervisor, trend, cityStatus] = await Promise.allSettled([
     api.systemHealth(),
     supervisorApiForRequestBudget(HEALTH_ATTENTION_SUPERVISOR_TIMEOUT_MS).cityHealth(cityName),
     api.doltTrend(),
+    readCityStatus(cityName),
   ]);
   const facts: HealthAttentionFacts = {};
+  // Best-effort: a failed status read adds no lamp problem; Home names it.
+  if (cityStatus.status === 'fulfilled') facts.cityStatus = cityStatus.value;
   const dashboardErrors: string[] = [];
 
   if (system.status === 'fulfilled') {

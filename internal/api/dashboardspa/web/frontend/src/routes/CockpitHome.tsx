@@ -27,8 +27,7 @@ import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
 import { useCachedData } from '../hooks/useCachedData';
 import { useTaskStages } from '../hooks/useTaskStages';
-import { t, tn } from '../i18n';
-import { useRunSummary } from '../runs/runSummarySubscription';
+import { t } from '../i18n';
 import { SUPERVISOR_REQUEST_TIMEOUT_MS, supervisorApi } from '../supervisor/client';
 
 const POLL_MS = 15_000;
@@ -54,7 +53,6 @@ export function CockpitHomePage() {
   const sessionsState = useCachedData<ListBodySessionResponse>(`cockpit:sessions:${cityKey}`, () =>
     supervisorApi().listSessions(activeCityOrThrow('cockpit sessions read')),
   );
-  const runSummary = useRunSummary();
   const attention = useAttentionModel();
   const taskStages = useTaskStages();
 
@@ -67,14 +65,6 @@ export function CockpitHomePage() {
   const statusReading = useFrozenWhilePaused(useReadingSnapshot(statusState, cityKey), paused);
   const runsReading = useFrozenWhilePaused(useReadingSnapshot(runsState, cityKey), paused);
   const sessionsReading = useFrozenWhilePaused(useReadingSnapshot(sessionsState, cityKey), paused);
-  const runProjection = useFrozenWhilePaused(
-    {
-      source: runSummary.source,
-      loading: runSummary.loading,
-      sseState: runSummary.sseState,
-    },
-    paused,
-  );
 
   const usage = usageReading.data;
   const status = statusReading.data;
@@ -160,13 +150,10 @@ export function CockpitHomePage() {
   const statusStale = status !== undefined && statusReading.stale;
   const statusPartial = status?.partial === true;
   const statusProvenance = statusStale ? 'stale' : statusPartial ? 'partial' : null;
-  // HO-11 superseded: the systems lamps live on as city problems. A lamp that
-  // is not healthy becomes one city item; an unread or stale status is listed
-  // as unreadable, never as healthy and never as a zero.
-  const lampIssues = useMemo(
-    () => cityLampIssues(runProjection.sseState, status, statusProvenance),
-    [runProjection.sseState, status, statusProvenance],
-  );
+  // HO-11 superseded: the systems lamps live on as city problems in the
+  // attention model (review I-4), so Home, the rail and Health count one
+  // slice. An unread or stale status is listed here as unreadable, never as
+  // healthy and never as a zero.
   const statusUnreadable: AttentionItem | null =
     status === undefined
       ? statusReading.loading
@@ -179,11 +166,8 @@ export function CockpitHomePage() {
             statusProvenance === 'stale' ? t('City status is stale') : t('City status is partial'),
           );
   const cityIssues = useMemo(
-    () => [
-      ...lampIssues,
-      ...attention.city.items.filter((item) => item.severity !== 'unavailable'),
-    ],
-    [attention.city.items, lampIssues],
+    () => attention.city.items.filter((item) => item.severity !== 'unavailable'),
+    [attention.city.items],
   );
   const cityUnreadable = useMemo(
     () => [
@@ -413,68 +397,6 @@ function unreadableItem(id: string, title: string): AttentionItem {
   return { id: `home:${id}`, domain: 'health', severity: 'unavailable', title, href: '/health' };
 }
 
-function cityIssue(id: string, title: string, href: string): AttentionItem {
-  return { id: `home:${id}`, domain: 'health', severity: 'watch', title, href };
-}
-
-/**
- * The former systems lamps, as city problems (HO-11 superseded). Healthy and
- * still-connecting lamps add nothing; the mail lamp is gone because the
- * owner's mail is on the plate.
- */
-function cityLampIssues(
-  sseState: string,
-  status: StatusBody | undefined,
-  provenance: 'stale' | 'partial' | null,
-): AttentionItem[] {
-  const issues: AttentionItem[] = [];
-  if (sseState !== 'open' && sseState !== 'connecting') {
-    issues.push(
-      cityIssue(
-        'feed',
-        sseState === 'degraded'
-          ? t('Live updates are degraded')
-          : t('Live updates are disconnected'),
-        '/activity',
-      ),
-    );
-  }
-  if (status === undefined || provenance !== null) return issues;
-  if (status.store_health !== undefined) {
-    const store = storeHealthLabel(status.store_health);
-    if (store === 'maintenance failed') {
-      issues.push(cityIssue('store', t('Task store maintenance failed'), '/health'));
-    } else if (store === 'maintenance overdue') {
-      issues.push(cityIssue('store', t('Task store maintenance is overdue'), '/health'));
-    }
-  }
-  if (status.agents.quarantined > 0) {
-    issues.push(
-      cityIssue(
-        'agents-quarantined',
-        tn(status.agents.quarantined, {
-          one: '{n} agent quarantined',
-          other: '{n} agents quarantined',
-        }),
-        '/agents',
-      ),
-    );
-  }
-  if (status.agents.suspended > 0) {
-    issues.push(
-      cityIssue(
-        'agents-suspended',
-        tn(status.agents.suspended, {
-          one: '{n} agent suspended',
-          other: '{n} agents suspended',
-        }),
-        '/agents',
-      ),
-    );
-  }
-  return issues;
-}
-
 function usePoll(
   refresh: () => Promise<void>,
   loading: boolean,
@@ -569,12 +491,6 @@ function readingNote<T>(
   }
   if (domainNote) return domainNote;
   return undefined;
-}
-
-function storeHealthLabel(storeHealth: NonNullable<StatusBody['store_health']>): string {
-  const lastMaintenanceStatus = storeHealth.last_gc_status?.trim();
-  if (lastMaintenanceStatus && lastMaintenanceStatus !== 'success') return 'maintenance failed';
-  return storeHealth.warning ? 'maintenance overdue' : 'healthy';
 }
 
 function formatCount(value: number | null | undefined): string {
