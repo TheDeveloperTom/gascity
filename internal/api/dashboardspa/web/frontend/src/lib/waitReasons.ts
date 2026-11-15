@@ -25,6 +25,11 @@ const GATE_BLOCKER_KEY = 'gc.cross_store_blocker';
 
 export const MAX_CAUSES = 3;
 
+/**
+ * `since` is when the wait began, as far as the beads tell (the blocker's,
+ * gate's or drain's last update): «Застряло» lists a cause only once it is
+ * older than an hour (dashboard v3, V1 b).
+ */
 export type WaitCause =
   | {
       kind: 'card';
@@ -32,9 +37,16 @@ export type WaitCause =
       milestone: string | null;
       blocker: { id: string; title: string | null };
       runHref: string | null;
+      since?: string;
     }
-  | { kind: 'decision'; tasks: number; gate: { id: string; title: string } }
-  | { kind: 'queue'; tasks: number; milestone: string | null; runHref: string | null }
+  | { kind: 'decision'; tasks: number; gate: { id: string; title: string }; since?: string }
+  | {
+      kind: 'queue';
+      tasks: number;
+      milestone: string | null;
+      runHref: string | null;
+      since?: string;
+    }
   | { kind: 'no-runs'; ready: number };
 
 export interface WaitInput {
@@ -74,8 +86,14 @@ export function milestoneOf(bead: SupervisorBead): string | null {
   return null;
 }
 
+function sinceOf(bead: SupervisorBead | undefined): { since?: string } {
+  if (bead === undefined) return {};
+  const at = bead.updated_at ?? bead.created_at;
+  return at.length > 0 ? { since: at } : {};
+}
+
 /** Ids a bead waits on: `needs` and `blocks` dependencies (never parent-child). */
-function blockerIds(bead: SupervisorBead): string[] {
+export function blockerIds(bead: SupervisorBead): string[] {
   const ids = new Set<string>(bead.needs ?? []);
   for (const dep of bead.dependencies ?? []) {
     if (dep.type === 'blocks' && dep.depends_on_id.length > 0) ids.add(dep.depends_on_id);
@@ -139,12 +157,14 @@ export function queueCauses(input: WaitInput): readonly WaitCause[] {
         if (waits && rootId.length > 0) heldRoots.add(rootId);
       }
       const blockerId = meta(gate, GATE_BLOCKER_KEY);
+      const blocker = byId.get(blockerId);
       causes.push({
         kind: 'card',
         tasks: heldRoots.size > 0 ? heldRoots.size : drainCount,
         milestone,
-        blocker: { id: blockerId, title: byId.get(blockerId)?.title ?? null },
+        blocker: { id: blockerId, title: blocker?.title ?? null },
         runHref,
+        ...sinceOf(blocker ?? gate),
       });
     }
     const running = itemRoots.some((r) => r.status === 'in_progress');
@@ -155,6 +175,7 @@ export function queueCauses(input: WaitInput): readonly WaitCause[] {
         tasks: waiting > 0 ? waiting : drainCount,
         milestone,
         runHref,
+        ...sinceOf(drain),
       });
     }
   }
@@ -166,6 +187,7 @@ export function queueCauses(input: WaitInput): readonly WaitCause[] {
       kind: 'decision',
       tasks: waiting.length,
       gate: { id: gate.id, title: gate.title },
+      ...sinceOf(gate),
     });
   }
 
@@ -210,6 +232,22 @@ export function cardWait(
 
 export function holdsCount(taskId: string, tasks: readonly SupervisorBead[]): number {
   return tasks.filter((t) => isOpen(t) && t.id !== taskId && blockerIds(t).includes(taskId)).length;
+}
+
+/** Reverse blocker index, built once: blocker id → the open tasks that wait on it. */
+export function buildWaitersIndex(
+  tasks: readonly SupervisorBead[],
+): ReadonlyMap<string, readonly string[]> {
+  const index = new Map<string, string[]>();
+  for (const task of tasks) {
+    if (!isOpen(task)) continue;
+    for (const id of blockerIds(task)) {
+      const list = index.get(id);
+      if (list) list.push(task.id);
+      else index.set(id, [task.id]);
+    }
+  }
+  return index;
 }
 
 export function waitCauseText(cause: WaitCause): string {

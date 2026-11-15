@@ -11,9 +11,9 @@ import {
   type StageId,
 } from './stageBoard';
 import {
+  buildWaitersIndex,
   cardWait,
   explainIdle,
-  holdsCount,
   milestoneOf,
   MILESTONE_LABEL_PREFIX,
   type CardWait,
@@ -64,6 +64,10 @@ export interface BoardData {
   routeItems: readonly SupervisorBead[];
   serviceItems: readonly SupervisorBead[];
   routesComplete: boolean;
+  /** Size of the open window upstream, when the read reported it. */
+  upstreamTotal?: number;
+  /** How many open beads the read fetched. */
+  upstreamFetched?: number;
 }
 
 export interface BoardFilters {
@@ -81,6 +85,12 @@ export interface BoardModel {
   idle: IdleExplanation;
   orphanRuns: number;
   matched: number;
+  /**
+   * The one reverse blocker index of this model: task id → the open tasks
+   * that wait on it (`needs` and `blocks` edges). Card hold counts and the
+   * «Застряло» blocker check both read it (board-review Minor 4).
+   */
+  waitersOf: ReadonlyMap<string, readonly string[]>;
 }
 
 function cityRef(): ProjectRef {
@@ -198,6 +208,7 @@ export function buildBoardModel(
   const stopCards = stopCardsByTask(tasks);
   const taskIds = new Set(tasks.map((b) => b.id));
   const heads = headingEpics(tasks);
+  const waitersOf = buildWaitersIndex(tasks);
 
   // RB8: a stop card folds into its task when that task is a card.
   const cardBeads = tasks.filter((bead) => {
@@ -219,7 +230,7 @@ export function buildBoardModel(
       project: prefixComplete ? projectOf(bead, rigs) : cityRef(),
       tag: null,
       wait: cardWait(bead, card.stage, byId),
-      holds: holdsCount(bead.id, tasks),
+      holds: waitersOf.get(bead.id)?.length ?? 0,
       isTest: isTestBead(bead),
     };
   };
@@ -307,5 +318,6 @@ export function buildBoardModel(
     ),
     orphanRuns,
     matched,
+    waitersOf,
   };
 }

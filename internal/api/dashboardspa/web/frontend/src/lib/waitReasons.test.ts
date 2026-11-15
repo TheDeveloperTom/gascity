@@ -5,10 +5,12 @@ import { setLocale } from '../i18n';
 import { m04Idle } from '../test/fixtures/m04Idle';
 import type { TaskStage } from './stageBoard';
 import {
+  buildWaitersIndex,
   cardWait,
   explainIdle,
   holdsCount,
   milestoneOf,
+  queueCauses,
   waitCauseText,
   type WaitCause,
 } from './waitReasons';
@@ -68,8 +70,14 @@ describe('explainIdle', () => {
             title: 'Пакет этапа M04: исполнимый план по мастер-плану §4/§7',
           },
           runHref: RUN_HREF,
+          since: '2026-11-14T18:49:00Z',
         },
-        { kind: 'decision', tasks: 1, gate: { id: 'dw-ssmbcp', title: DECISION_TITLE } },
+        {
+          kind: 'decision',
+          tasks: 1,
+          gate: { id: 'dw-ssmbcp', title: DECISION_TITLE },
+          since: '2026-11-14T18:49:00Z',
+        },
       ],
     });
   });
@@ -87,6 +95,7 @@ describe('explainIdle', () => {
       tasks: 3,
       milestone: 'M04',
       runHref: RUN_HREF,
+      since: '2026-11-14T18:49:00Z',
     });
   });
 
@@ -205,6 +214,29 @@ describe('holdsCount', () => {
       bead('dw-4', { status: 'closed', dependencies: [blocks('dw-4', 'dw-4xn4b')] }),
     ];
     expect(holdsCount('dw-4xn4b', tasks)).toBe(3);
+  });
+
+  it('one reverse blocker index agrees with holdsCount', () => {
+    const tasks = [
+      bead('dw-1', { dependencies: [blocks('dw-1', 'dw-4xn4b')] }),
+      bead('dw-2', { needs: ['dw-4xn4b', 'dw-1'] }),
+      bead('dw-3', { dependencies: [blocks('dw-3', 'dw-4xn4b')] }),
+      bead('dw-4', { status: 'closed', dependencies: [blocks('dw-4', 'dw-4xn4b')] }),
+    ];
+    const index = buildWaitersIndex(tasks);
+    expect(index.get('dw-4xn4b')).toEqual(['dw-1', 'dw-2', 'dw-3']);
+    expect(index.get('dw-1')).toEqual(['dw-2']);
+    expect(index.get('dw-4xn4b')?.length).toBe(holdsCount('dw-4xn4b', tasks));
+  });
+});
+
+describe('cause age', () => {
+  it('each idle cause carries when its wait began', () => {
+    const causes = queueCauses(m04Idle());
+    const card = causes.find((c) => c.kind === 'card');
+    const decision = causes.find((c) => c.kind === 'decision');
+    expect(card?.since).toBe('2026-11-14T18:49:00Z');
+    expect(decision?.since).toBe('2026-11-14T18:49:00Z');
   });
 });
 

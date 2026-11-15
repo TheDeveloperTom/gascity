@@ -95,7 +95,8 @@ describe('Header left rail', () => {
       <ThemeProvider>
         <ViewingAsProvider>
           <AttentionProvider contributors={[]}>
-            <MemoryRouter initialEntries={['/']}>
+            {/* Dashboard v3: `/` is a wide owner page; a debug page keeps the measure. */}
+            <MemoryRouter initialEntries={['/runs']}>
               <Layout>
                 <p>page</p>
               </Layout>

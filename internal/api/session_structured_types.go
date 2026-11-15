@@ -672,7 +672,7 @@ func narrowSessionStructuredToolInput(input *SessionStructuredToolInput) *Sessio
 	out := &SessionStructuredToolInput{Kind: input.Kind}
 	switch input.Kind {
 	case "command":
-		out.Command, out.Arguments = input.Command, input.Arguments
+		out.Command, out.Arguments, out.Description = input.Command, input.Arguments, input.Description
 	case "stdin":
 		out.TaskID, out.Text, out.LinkedCommand = input.TaskID, input.Text, input.LinkedCommand
 	case "code":

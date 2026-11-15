@@ -54,21 +54,20 @@ const OWNER_LOADING: OwnerReadiness = { state: 'loading' };
 const OWNER_READY: OwnerReadiness = { state: 'ready' };
 
 /**
- * The owner slice is only trustworthy once both of its sources were read: the
- * decision queue (O1) and the operator mail (O2). Until then it is loading;
- * a failed source is named, so the plate never claims an all-clear (R12).
+ * The owner slice holds owner questions only (dashboard v3), so it is
+ * trustworthy once the decision queue was read. Until then it is loading; a
+ * failed read is named, so the plate never claims an all-clear (R12). Mail is
+ * the city's and no longer holds the owner slice back; the parameter stays
+ * for callers.
  */
 export function deriveOwnerReadiness(
   beads: BeadsAttentionFacts | undefined,
-  mail: MailAttentionFacts | undefined,
+  _mail?: MailAttentionFacts,
 ): OwnerReadiness {
-  if (beads === undefined || mail === undefined) return OWNER_LOADING;
+  if (beads === undefined) return OWNER_LOADING;
   const reasons: string[] = [];
   if (beads.decisionsError !== undefined && beads.decisionsError.length > 0) {
     reasons.push('Questions from the Mayor could not be read');
-  }
-  if (mail.error !== undefined && mail.error.length > 0) {
-    reasons.push('Your mail could not be read');
   }
   return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
 }

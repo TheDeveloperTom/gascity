@@ -6325,8 +6325,9 @@ type SessionStructuredToolInputCode struct {
 
 // SessionStructuredToolInputCommand defines model for SessionStructuredToolInputCommand.
 type SessionStructuredToolInputCommand struct {
-	Arguments *[]SessionStructuredArgument `json:"arguments,omitempty"`
-	Command   string                       `json:"command"`
+	Arguments   *[]SessionStructuredArgument `json:"arguments,omitempty"`
+	Command     string                       `json:"command"`
+	Description *string                      `json:"description,omitempty"`
 
 	// Kind Provider-neutral input kind such as command, code, patch, glob, fetch, search, file, arguments, or text.
 	Kind string `json:"kind"`

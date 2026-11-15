@@ -957,6 +957,30 @@ describe('supervisor client wrapper', () => {
     );
   });
 
+  it('passes a transcript tail through to the query', async () => {
+    const fetchSpy = vi.fn(
+      async (_input: RequestInfo | URL) =>
+        new Response(
+          JSON.stringify({
+            id: 'gc-session-1',
+            template: 'mayor',
+            provider: 'claude',
+            format: 'conversation',
+            turns: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const api = createSupervisorApi({
+      baseUrl: 'http://gc-supervisor.test',
+      fetch: fetchSpy as typeof fetch,
+    });
+    await api.sessionTranscript('test-city', 'gc-session-1', 'structured', { tail: 1 });
+    expect(requestedUrl(fetchSpy.mock.calls[0]?.[0])).toBe(
+      'http://gc-supervisor.test/v0/city/test-city/session/gc-session-1/transcript?format=structured&tail=1',
+    );
+  });
+
   it('calls supervisor workflow snapshots through the generated SDK with scope query params', async () => {
     const fetchSpy = vi.fn(
       async (_input: RequestInfo | URL) =>

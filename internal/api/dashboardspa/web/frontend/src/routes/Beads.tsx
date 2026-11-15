@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { formatApiError } from '../api/client';
@@ -22,6 +22,15 @@ import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel } from '../lib/boardModel';
 import { readOpenGroups, writeOpenGroups } from '../lib/openGroups';
 import { resolveRigName, rigNameOptions } from '../lib/rigNames';
+import {
+  BOARD_RECENT_CLOSED_LIMIT,
+  BOARD_REFRESH_COALESCE_MS,
+  boardDataOf,
+  rigsCacheKey,
+  sessionsCacheKey,
+  sharedRead,
+  useBoardData,
+} from '../hooks/useBoardData';
 import { useCachedData } from '../hooks/useCachedData';
 import { useGcEventRefresh } from '../hooks/useGcEvents';
 import { listSupervisorAgents, type SupervisorAgent } from '../supervisor/agentReads';
@@ -35,17 +44,9 @@ import { listSupervisorSessions } from '../supervisor/sessionReads';
 // synopsis, scope label, status chips or rig select. The project and test
 // filters are client-side and never remembered; open Waiting groups are.
 
-// The board's refresh is a full list refetch (~1.3MB on a busy city). A busy
-// city emits bead.* events roughly every few seconds, so the default ~2.5s
-// coalesce window still drives a near-continuous full refetch — wasteful under
-// normal churn and, when the supervisor's task query spikes to 14-21s, enough
-// to keep superseding each in-flight slow fetch before it lands. Coalesce the
-// board's SSE-driven refresh into a much wider trailing window so churn yields
-// at most one refetch per window and a latency spike can no longer empty it.
-const BOARD_REFRESH_COALESCE_MS = 10_000;
-// Stage board (2026-11-15): Merged shows, by default, the tasks of each rig
-// store closed most recently (review I2: by close time, not creation).
-const RECENT_CLOSED_LIMIT = 100;
+// The board's refresh is a full list refetch (~1.3MB on a busy city); its
+// coalesce window and closed window live with the shared read
+// (hooks/useBoardData: BOARD_REFRESH_COALESCE_MS, BOARD_RECENT_CLOSED_LIMIT).
 const EMPTY_BEADS: readonly SupervisorBead[] = [];
 
 // Form controls per the Signal & Pavement input recipe (DESIGN-PLAN §7).
@@ -85,32 +86,58 @@ export function BeadsPage() {
   const [newRig, setNewRig] = useState('');
   const [newAgent, setNewAgent] = useState('');
 
-  const { data, loading, error, refresh } = useCachedData(
-    `beads:board:${cityCacheKey}:${showAllHistory ? 'all' : 'open'}`,
+  // Dashboard v3: the open board is the one shared read (useBoardData), so
+  // Главная and «Задачи» count from the same window. «Вся история» keeps its
+  // own wider read; while it is off, that read stays idle.
+  const board = useBoardData();
+  const history = useCachedData(
+    `beads:board:${cityCacheKey}:${showAllHistory ? 'all' : 'history-off'}`,
     () =>
-      listSupervisorBeads({
-        includeClosed: showAllHistory,
-        withRoutes: true,
-        recentClosed: { limit: RECENT_CLOSED_LIMIT },
-      }),
+      showAllHistory
+        ? listSupervisorBeads({
+            includeClosed: true,
+            withRoutes: true,
+            recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
+          })
+        : Promise.resolve(null),
   );
+  const historyData = useMemo(() => boardDataOf(history.data), [history.data]);
+  const data = showAllHistory ? historyData : board.data;
+  const loading = showAllHistory ? history.loading : board.loading;
+  const error = showAllHistory ? history.error : board.error;
+  const refreshHistory = history.refresh;
+  const refreshBoard = board.refresh;
+  const refresh = showAllHistory ? refreshHistory : refreshBoard;
+  // Leaving «Вся история» reads the open board afresh, so the view it returns
+  // to is current rather than the window from before the history was opened.
+  const wasHistory = useRef(showAllHistory);
+  useEffect(() => {
+    if (wasHistory.current && !showAllHistory) void refreshBoard();
+    wasHistory.current = showAllHistory;
+  }, [showAllHistory, refreshBoard]);
   // Rows are tasks only; route roots and steps travel beside them and fold
   // into their task's card, and service beads only name blockers (B2).
   const rows = useMemo(() => data?.items ?? EMPTY_BEADS, [data]);
-  const routeBeads = useMemo(() => data?.route_items ?? EMPTY_BEADS, [data]);
-  const serviceItems = useMemo(() => data?.service_items ?? EMPTY_BEADS, [data]);
+  const routeBeads = useMemo(() => data?.routeItems ?? EMPTY_BEADS, [data]);
+  const serviceItems = useMemo(() => data?.serviceItems ?? EMPTY_BEADS, [data]);
   // A truncated window may hide a live run, so only a complete one lets the
   // board read "no live run" as "its run stopped" (review I6).
-  const routesComplete = data?.routes_complete ?? false;
-  const upstreamTotal = data?.upstream_total;
-  const upstreamFetched = data?.upstream_fetched;
+  const routesComplete = data?.routesComplete ?? false;
+  const upstreamTotal = data?.upstreamTotal;
+  const upstreamFetched = data?.upstreamFetched;
   const hasLoadedBoard = data !== undefined;
 
-  const sessions = useCachedData(`sessions:${cityCacheKey}`, listSupervisorSessions);
+  // Same cache keys and one shared request as useBoardData; read here for
+  // the full rig records (paths) and the sessions' partial flag.
+  const sessionsKey = sessionsCacheKey(cityName);
+  const sessions = useCachedData(sessionsKey, () =>
+    sharedRead(sessionsKey, listSupervisorSessions),
+  );
   const sessionItems = useMemo(() => sessions.data?.items ?? [], [sessions.data]);
   const agents = useCachedData(`agents:${cityCacheKey}`, listSupervisorAgents);
   const agentItems = useMemo(() => agents.data?.items ?? [], [agents.data]);
-  const rigs = useCachedData(`rigs:${cityCacheKey}`, listSupervisorRigs);
+  const rigsKey = rigsCacheKey(cityName);
+  const rigs = useCachedData(rigsKey, () => sharedRead(rigsKey, listSupervisorRigs));
   const rigItems = useMemo(() => rigs.data?.items ?? [], [rigs.data]);
 
   // The New bead form lists the supervisor's authoritative rig names, never
@@ -139,9 +166,15 @@ export function BeadsPage() {
     }
   }, [creating, filteredDispatchAgents, newAgent]);
 
-  useGcEventRefresh([GC_EVENT_PREFIX.bead], () => void refresh(), {
-    coalesceMs: BOARD_REFRESH_COALESCE_MS,
-  });
+  // useBoardData refreshes the open board on bead events; the history read
+  // refreshes here, only while it is shown.
+  useGcEventRefresh(
+    [GC_EVENT_PREFIX.bead],
+    () => {
+      if (showAllHistory) void refreshHistory();
+    },
+    { coalesceMs: BOARD_REFRESH_COALESCE_MS },
+  );
 
   useEffect(() => {
     if (selectedBeadParam !== null) setSelectedId(selectedBeadParam);

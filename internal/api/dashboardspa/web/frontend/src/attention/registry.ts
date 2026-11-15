@@ -21,6 +21,7 @@ import { agentNeedsYouReasonLabel } from './agentNeedsYou';
 import { eventTitle } from './eventTitles';
 import { agentDisplayName } from '../lib/agentNames';
 import { t } from '../i18n';
+import { ownerQuestionOf } from '../lib/ownerQuestions';
 import type {
   AgentResponse,
   Bead,
@@ -177,9 +178,6 @@ export const GC_ESCALATION_LABEL = 'gc:escalation';
  */
 const DECISION_DECIDE_META_KEY = 'decision.decide';
 const DECISION_CHAT_META_KEYS = ['decision.chat_url', 'decision.slack_url'] as const;
-
-/** The wire actor a worker names when it waits on "a human" — the owner here. */
-const OWNER_WIRE_ACTOR = 'human';
 
 export function createAttentionContributors(
   facts: AttentionContributorFacts = {},
@@ -383,8 +381,9 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
   for (const need of selectAgentsNeedingYou(facts.items ?? [], pendingSignals)) {
     items.push(
       domainAttention('agents', {
+        // Dashboard v3: an agent waiting for input is the city's to handle;
+        // the owner slice holds owner questions only.
         id: `agents:${need.name}:needs-you`,
-        ...(need.reason === 'awaiting-input' ? { audience: 'owner' as const } : {}),
         ref: need.name,
         title: `${agentDisplayName(need.name)} ${t(agentNeedsYouReasonLabel(need.reason))}`,
         summary: need.detail,
@@ -451,9 +450,6 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
   // is the membership SSOT the /beads page also reads, so the nav badge count
   // and the page count cannot disagree.
   const generic = (facts.items ?? []).filter((bead) => !isMayorDecision(bead, facts.decisionLabel));
-  const ownerAliases = new Set(
-    [OWNER_WIRE_ACTOR, ...(facts.operatorAliases ?? [])].map((alias) => alias.trim().toLowerCase()),
-  );
   for (const row of selectBeadsNeedingAttention(
     {
       beads: generic,
@@ -468,15 +464,14 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     },
     nowMs,
   )) {
+    // Dashboard v3: ready, unclaimed work belongs on «Задачи» («Старое, никто
+    // не берёт»), never on Здоровье or Главная; a bead waiting on a person is
+    // the city's, since the owner slice holds owner questions only.
+    if (row.reason === 'ready-unclaimed') continue;
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
-    const waitsOnOwner =
-      row.reason === 'waiting-human' &&
-      row.waitingOn !== undefined &&
-      ownerAliases.has(row.waitingOn.trim().toLowerCase());
     items.push(
       builder('beads', {
         id: `beads:${row.beadId}:${row.reason}`,
-        ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
         ref: row.beadId,
         title: row.title,
         summary: withoutLeadingTitle(row.summary, row.title, row.reason),
@@ -543,9 +538,13 @@ function isMayorDecision(bead: Bead, decisionLabel: string): boolean {
 function mayorDecisionAttention(bead: Bead): AttentionItem {
   const decide = bead.metadata?.[DECISION_DECIDE_META_KEY];
   const chatHref = decisionChatHref(bead);
+  // Dashboard v3: only a marked owner question (label + decision.question_id)
+  // is the owner's; a legacy decision bead stays with the city until the
+  // Mayor backfills it (V8, Task 5).
+  const isOwnerQuestion = ownerQuestionOf(bead) !== null;
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,
-    audience: 'owner',
+    ...(isOwnerQuestion ? { audience: 'owner' as const } : {}),
     ref: bead.id,
     ...(chatHref === null ? {} : { externalHref: chatHref }),
     title: bead.title,
@@ -608,8 +607,9 @@ function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly At
     const stale = staleAgeMs !== null && staleAgeMs >= MAIL_UNREAD_STALE_MS;
     items.push(
       domainAttention('mail', {
+        // Dashboard v3: operator mail is the city's; the owner slice holds
+        // owner questions only.
         id: `mail:${message.id}:${stale ? 'unread-stale' : 'unread'}`,
-        audience: 'owner',
         title: message.subject,
         summary: stale
           ? `from ${message.from}, unread for ${formatElapsed(staleAgeMs)}`

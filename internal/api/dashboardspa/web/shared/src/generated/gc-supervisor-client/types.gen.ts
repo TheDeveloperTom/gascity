@@ -4935,6 +4935,7 @@ export type SessionStructuredToolInputCode = {
 export type SessionStructuredToolInputCommand = {
     arguments?: Array<SessionStructuredArgument> | null;
     command: string;
+    description?: string;
     /**
      * Provider-neutral input kind such as command, code, patch, glob, fetch, search, file, arguments, or text.
      */

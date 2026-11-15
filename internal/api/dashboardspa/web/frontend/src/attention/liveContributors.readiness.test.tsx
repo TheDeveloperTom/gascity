@@ -139,16 +139,15 @@ describe('useLiveAttentionContributors owner readiness', () => {
     invalidate('attention:');
   });
 
-  it('loading until decisions and mail resolve', async () => {
+  // Dashboard v3: the owner slice is owner questions only, so its readiness
+  // waits on the decision queue and never on mail.
+  it('loading until decisions resolve; mail does not hold it', async () => {
     const mail = deferred<unknown>();
     mockSupervisorApi.listMail.mockReturnValue(mail.promise);
     const { result } = renderHook(() => useLiveAttentionContributors(operator, undefined));
     expect(result.current.ownerReadiness).toEqual({ state: 'loading' });
-    // Beads resolve first; mail is still pending, so still loading.
-    await waitFor(() => expect(result.current.beadSnapshot).toBeDefined());
-    expect(result.current.ownerReadiness).toEqual({ state: 'loading' });
-    mail.resolve({ total: 0, items: [] });
     await waitFor(() => expect(result.current.ownerReadiness).toEqual({ state: 'ready' }));
+    mail.resolve({ total: 0, items: [] });
   });
 
   it('decision queue failure is degraded with its reason', async () => {
@@ -162,7 +161,7 @@ describe('useLiveAttentionContributors owner readiness', () => {
     await waitFor(() =>
       expect(result.current.ownerReadiness).toEqual({
         state: 'degraded',
-        reasons: ['Questions from the Mayor could not be read', 'Your mail could not be read'],
+        reasons: ['Questions from the Mayor could not be read'],
       }),
     );
   });

@@ -1,9 +1,20 @@
 import { readBrowserStorage, writeBrowserStorage } from '../lib/browserStorage';
-import { RU } from './ru';
+import { RU as RU_CORE, type RuPlural } from './ru';
+import { RU_BOARD } from './ru.board';
+import { RU_DEBUG } from './ru.debug';
+import { RU_HOME } from './ru.home';
 
 // A small gettext-style layer: the English string is the key, Russian lives
-// in `ru.ts`, and a key with no Russian entry falls back to English (and is
-// recorded so a completeness test can list it).
+// in `ru.ts` plus one dictionary per dashboard-v3 lane (`ru.home.ts`,
+// `ru.board.ts`, `ru.debug.ts`), and a key with no Russian entry falls back to
+// English (and is recorded so a completeness test can list it).
+
+const RU: Readonly<Record<string, string | RuPlural>> = {
+  ...RU_CORE,
+  ...RU_HOME,
+  ...RU_BOARD,
+  ...RU_DEBUG,
+};
 
 export type Locale = 'en' | 'ru';
 export type Vars = Readonly<Record<string, string | number>>;
@@ -12,17 +23,19 @@ export type PluralForms = { one: string; other: string };
 export const LOCALE_STORAGE_KEY = 'gascity:locale';
 const COMPONENT = 'i18n';
 
+// The owner reads Russian (dashboard v3): `ru` is the default, and English
+// applies only when it is the stored choice. The browser language no longer
+// decides; the parameter stays so callers keep one signature.
 export function resolveInitialLocale(
   stored: string | null,
-  navigatorLanguage: string | undefined,
+  _navigatorLanguage: string | undefined,
 ): Locale {
   if (stored === 'en' || stored === 'ru') return stored;
-  const primary = (navigatorLanguage ?? '').toLowerCase().split('-')[0];
-  return primary === 'ru' ? 'ru' : 'en';
+  return 'ru';
 }
 
 function readInitialLocale(): Locale {
-  if (typeof window === 'undefined') return 'en';
+  if (typeof window === 'undefined') return 'ru';
   const stored = readBrowserStorage('localStorage', LOCALE_STORAGE_KEY, COMPONENT);
   return resolveInitialLocale(
     stored.status === 'found' ? stored.value : null,

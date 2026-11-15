@@ -2558,6 +2558,7 @@ export const zSessionStructuredToolInputCode = z.object({
 export const zSessionStructuredToolInputCommand = z.object({
     arguments: z.array(zSessionStructuredArgument).nullish(),
     command: z.string(),
+    description: z.string().optional(),
     kind: z.literal('command')
 });
 

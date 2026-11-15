@@ -165,6 +165,7 @@ export interface SupervisorApi {
     cityName: string,
     sessionId: string,
     format?: SessionTranscriptFormat,
+    options?: { tail?: number },
   ): Promise<SessionTranscriptGetResponse>;
   workflowRun(
     cityName: string,
@@ -510,12 +511,15 @@ export function createSupervisorApi(options: CreateSupervisorApiOptions = {}): S
         'gc supervisor session respond response was empty',
       );
     },
-    sessionTranscript(cityName, sessionId, format) {
+    sessionTranscript(cityName, sessionId, format, options) {
       return unwrapSupervisorResult<SessionTranscriptGetResponse>(
         getV0CityByCityNameSessionByIdTranscript({
           client,
           path: { cityName, id: sessionId },
-          query: { format: format ?? 'conversation' },
+          query: {
+            format: format ?? 'conversation',
+            ...(options?.tail === undefined ? {} : { tail: String(options.tail) }),
+          },
         }) as Promise<SupervisorResult<SessionTranscriptGetResponse>>,
         'gc supervisor transcript response was empty',
       );

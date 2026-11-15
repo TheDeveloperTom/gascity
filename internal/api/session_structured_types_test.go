@@ -411,6 +411,22 @@ func TestHistorySnapshotStructuredMessagesUseWorkerCarriedContentText(t *testing
 	}
 }
 
+// The dashboard reads what an agent is doing now from a Bash call's
+// description (dashboard v3, ruling V6), so the command variant keeps it.
+func TestNarrowCommandInputKeepsDescription(t *testing.T) {
+	got := sessionStructuredToolInputFromWorker(&worker.StructuredToolInput{
+		Kind:        "command",
+		Command:     "npm test",
+		Description: "Run frontend tests",
+	})
+	if got == nil || got.Kind != "command" || got.Command != "npm test" {
+		t.Fatalf("narrowed command input = %#v, want kind command with its command", got)
+	}
+	if got.Description != "Run frontend tests" {
+		t.Fatalf("narrowed command description = %q, want %q", got.Description, "Run frontend tests")
+	}
+}
+
 func mustMarshalForStructuredTest(t *testing.T, value any) json.RawMessage {
 	t.Helper()
 	out, err := json.Marshal(value)

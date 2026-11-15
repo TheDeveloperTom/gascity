@@ -63,7 +63,7 @@ var structuredToolInputSchemaVariants = []structuredSchemaVariant{
 		name:   "SessionStructuredToolInputUnknown",
 		fields: []string{"text", "command", "linked_command", "code", "patch", "file_path", "language", "url", "prompt", "task_id", "task_type", "task_status", "description", "question", "options", "query", "pattern", "plan", "explanation", "steps", "todos", "arguments"},
 	},
-	{value: "command", name: "SessionStructuredToolInputCommand", fields: []string{"command", "arguments"}, required: []string{"command"}},
+	{value: "command", name: "SessionStructuredToolInputCommand", fields: []string{"command", "arguments", "description"}, required: []string{"command"}},
 	{value: "stdin", name: "SessionStructuredToolInputStdin", fields: []string{"task_id", "text", "linked_command"}},
 	{value: "code", name: "SessionStructuredToolInputCode", fields: []string{"code", "language"}, required: []string{"code"}},
 	{value: "patch", name: "SessionStructuredToolInputPatch", fields: []string{"patch", "file_path", "language"}, required: []string{"patch"}},

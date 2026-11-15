@@ -11246,6 +11246,9 @@
           "command": {
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
           "kind": {
             "const": "command",
             "description": "Provider-neutral input kind such as command, code, patch, glob, fetch, search, file, arguments, or text.",
