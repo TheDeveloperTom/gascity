@@ -9,7 +9,7 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'as of {time}': 'на {time}',
   'Card of {owner}': 'Карточка {owner}',
   'Data from {owner} city as of this time': 'Данные из города {owner} на это время',
-  '{owner} Mac is offline since {time}': 'Мак {owner} не на связи с {time}',
+  '{owner} Mac is offline since {time}': 'Мак {owner} не в сети с {time}',
   'The other city’s board could not be read.': 'Доску другого города не удалось прочитать.',
   'read only': 'только чтение',
   'A task from {owner} city, read only. Only {name} can change it.':
@@ -104,4 +104,16 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'Task {id} not found — maybe closed or from another city':
     'Задача {id} не найдена — возможно, закрыта или из другого города',
   '← Board': '← Доска',
+  // BOARD-LIVE L7: live labels, delivery, tickets, owner topic questions
+  'data as of {time}; {name} was online until {seen} — changes may be missing':
+    'данные на {time}; {name} был в сети до {seen} — изменений может не хватать',
+  '{owner} city does not accept our key — pair the cities again':
+    'Город {owner} не принимает наш ключ — города нужно связать заново',
+  'not delivered: {name} is offline': 'не доставлено: {name} не в сети',
+  'not delivered: the other city is offline': 'не доставлено: другой город не в сети',
+  'Waiting for your answer in Discord': 'Ждёт твоего ответа в Discord',
+  'Answer in Discord': 'Ответить в Discord',
+  'Question for you': 'Вопрос тебе',
+  'Answer recorded: {choice}': 'Ответ записан: {choice}',
+  'Questions from the Mayors': 'Вопросы от Мэров',
 };

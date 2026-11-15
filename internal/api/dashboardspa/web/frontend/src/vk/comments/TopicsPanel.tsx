@@ -11,11 +11,15 @@ import {
   commentErrorText,
   markTopicRead,
   postTopicAction,
+  type PendingOwnerQuestion,
   type TopicAction,
+  type TopicActionResult,
   type TopicTarget,
 } from '../../supervisor/peerCommentWrites';
-import { Link } from 'react-router';
 import { cn } from '../cn';
+import { ExternalLink } from '../ExternalLink';
+import { TopicQuestionCard } from '../needs/TopicQuestion';
+import { TopicTicket } from './TopicTicket';
 import { authorName, CommentComposer, CommentList } from './CommentThread';
 
 // vk-final part 4: «Обсуждения Мэров» with the peer city (frames
@@ -168,7 +172,7 @@ function TopicView({
   nowMs: number;
   writable: boolean;
   ownLogin: string | null;
-  send: (target: TopicTarget, action: TopicAction) => Promise<void>;
+  send: (target: TopicTarget, action: TopicAction) => Promise<TopicActionResult | undefined>;
   onBack: () => void;
   composerRef: RefObject<HTMLTextAreaElement>;
 }) {
@@ -193,10 +197,24 @@ function TopicView({
   const lastId = topic.messages.at(-1)?.id;
   const resolution = topic.resolution;
   const [error, setError] = useState<string | null>(null);
+  // BOARD-LIVE C5: a needs_human continue/resolve waits for the owner's
+  // answer (202). Nothing changes here until the city says so (no optimistic
+  // state); the line points at the question in Discord.
+  const [waitingOwner, setWaitingOwner] = useState<PendingOwnerQuestion | null>(null);
   const act = (action: TopicAction, then?: () => void) => {
     setError(null);
-    send(target, action).then(then, (err: unknown) => setError(commentErrorText(err)));
+    send(target, action).then(
+      (result) => {
+        if (result?.pending != null) {
+          setWaitingOwner(result.pending);
+          return;
+        }
+        then?.();
+      },
+      (err: unknown) => setError(commentErrorText(err)),
+    );
   };
+  const question = topic.ownerQuestion?.status === 'pending' ? topic.ownerQuestion : null;
 
   return (
     <section aria-label={t('Topic')} className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -220,20 +238,28 @@ function TopicView({
             </span>
           </div>
         </div>
-        {/* Review I-2: «Сделать задачей» starts only from the owner's button in
-            Discord (BOARD-LIVE L11), so no peer text ever leaves here. The
-            dashboard shows the ticket the Mayor linked, on OUR board. */}
-        {topic.ticket !== null && (
-          <Link
-            to={`/beads?${new URLSearchParams({ bead: topic.ticket }).toString()}`}
-            className="inline-flex h-11 items-center rounded-sm border border-vk-border bg-vk-bg-secondary px-2.5 text-sm text-vk-text-high focus-mark md:h-8"
-          >
-            {t('Task {id}', { id: topic.ticket })}
-          </Link>
-        )}
+        {/* Review I-2: «Сделать задачей» starts only from the owner's button
+            (BOARD-LIVE L11), so no peer text ever leaves here. The dashboard
+            shows the ticket the Mayor linked. */}
+        <TopicTicket topic={topic} />
       </div>
 
       <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+        {question !== null && <TopicQuestionCard question={question} />}
+        {waitingOwner !== null && (
+          <p
+            role="status"
+            data-testid="owner-question-pending"
+            className="m-0 flex flex-wrap items-center gap-2 rounded-sm border border-warn/40 bg-warn/10 p-2 text-[13px] text-vk-text-high"
+          >
+            <span>{t('Waiting for your answer in Discord')}</span>
+            {waitingOwner.jumpUrl !== null && (
+              <ExternalLink href={waitingOwner.jumpUrl} className="underline underline-offset-2 focus-mark">
+                {t('Answer in Discord')}
+              </ExternalLink>
+            )}
+          </p>
+        )}
         {topic.status === 'paused' && topic.pausedReason === 'needs_human' && (
           <NeedsHumanBanner
             writable={writable}
@@ -359,7 +385,9 @@ function TopicView({
             label={t('Message to the topic')}
             placeholder={t('Step in: write to the topic…')}
             hint={t('both Mayors and {name} will see it', { name: peer.name })}
-            onSubmit={(text) => send(target, { action: 'message', text })}
+            onSubmit={async (text) => {
+              await send(target, { action: 'message', text });
+            }}
             errorText={commentErrorText}
             textareaRef={composerRef}
           />
@@ -397,8 +425,9 @@ export function TopicsPanel({
   }, [open, onClose]);
 
   const send = useCallback(async (target: TopicTarget, action: TopicAction) => {
-    await postTopicAction(target, action);
+    const result = await postTopicAction(target, action);
     void refreshPeerBoards();
+    return result;
   }, []);
 
   if (!open) return null;

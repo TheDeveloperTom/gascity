@@ -88,6 +88,25 @@ describe('peer topic writes', () => {
     expect(lastCall().body).toEqual({ city: 'rich', topic_id: 'tp-1' });
   });
 
+  // BOARD-LIVE C5: a needs_human pause asks the owner instead of acting
+  it('continue/resolve 202 pending owner_question returns the question; a plain 2xx returns none', async () => {
+    const target = { city: 'me', topicId: 'tp-1' };
+    fetchMock.mockResolvedValueOnce(
+      json({ pending: 'owner_question', question_id: 'q-1', jump_url: 'https://discord.com/channels/1/2/3' }, 202),
+    );
+    expect(await postTopicAction(target, { action: 'continue' })).toEqual({
+      pending: { questionId: 'q-1', jumpUrl: 'https://discord.com/channels/1/2/3' },
+    });
+    fetchMock.mockResolvedValueOnce(
+      json({ pending: 'owner_question', question_id: 'q-2', jump_url: 'https://evil.example/x' }, 202),
+    );
+    expect(await postTopicAction(target, { action: 'resolve', reason: 'resolved', summary: 'x' })).toEqual({
+      pending: { questionId: 'q-2', jumpUrl: null },
+    });
+    fetchMock.mockResolvedValueOnce(json({ topic: {} }, 200));
+    expect(await postTopicAction(target, { action: 'continue' })).toEqual({ pending: null });
+  });
+
   it('a read stamp POSTs /v1/topics/read {city, topic_id, at}', async () => {
     fetchMock.mockResolvedValue(json({ ok: true }, 200));
     await markTopicRead({ city: 'rich', topicId: 'tp-1' }, '2026-11-15T18:52:00Z');

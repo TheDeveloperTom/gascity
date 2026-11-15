@@ -13,10 +13,12 @@ import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadBoard } from '../components/beads/BeadBoard';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
-import { asOfClock, boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
+import { boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
 import { usePeerBoards } from '../hooks/usePeerBoards';
 import type { PeerCard } from '../supervisor/peerBoardReads';
 import { topicsForCard } from '../lib/peerTopics';
+import { peerStatusLines } from '../lib/peerLive';
+import { questionsForCard } from '../lib/topicQuestions';
 import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
@@ -300,7 +302,7 @@ export function BeadsPage() {
   // CardConversation from these trusted facts only (security scan 15.11).
   const ownLogin = peerBoards.result?.ownLogin ?? null;
   const ownCard = useMemo(() => {
-    const none = { rig: null, topics: [] } as const;
+    const none = { rig: null, topics: [], questions: [] } as const;
     const id = selectedId;
     if (id === null || isPeerKey(id)) return none;
     const rig = rigItems.find((r) => {
@@ -308,7 +310,13 @@ export function BeadsPage() {
       return prefix.length > 0 && id.startsWith(`${prefix}-`);
     });
     if (rig === undefined) return none;
-    return { rig: rig.name, topics: topicsForCard(peerBoards.result, { mine: true, city: ownLogin, rig: rig.name, id }) };
+    const ref = { mine: true, city: ownLogin, rig: rig.name, id };
+    return {
+      rig: rig.name,
+      topics: topicsForCard(peerBoards.result, ref),
+      // BOARD-LIVE L7: the owner's question about this card (one of three views)
+      questions: questionsForCard(peerBoards.result, ref),
+    };
   }, [selectedId, rigItems, peerBoards.result, ownLogin]);
   const openTopicFromCard = useCallback(
     (login: string, topicId: string) => {
@@ -545,18 +553,20 @@ export function BeadsPage() {
             })}
           </div>
         )}
-        {peerSources
-          .filter((peer) => peer.stale)
-          .map((peer) => (
+        {/* BOARD-LIVE L7: «не в сети с», «данные на … — изменений может не
+            хватать», a refused pair key (lib/peerLive; our clock, not his) */}
+        {peerSources.flatMap((peer) =>
+          peerStatusLines(peer).map((line) => (
             <p
-              key={peer.owner}
+              key={`${peer.owner}:${line}`}
               role="status"
               className="mt-3 flex items-center gap-2 rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 font-vk-sans text-[15px] text-vk-text-high"
             >
               <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-warn" />
-              {t("{owner} Mac is offline since {time}", { owner: peer.label, time: asOfClock(peer.asOf) })}
+              {line}
             </p>
-          ))}
+          )),
+        )}
         {peerBoards.error !== null && (
           <p className="mt-3 font-vk-sans text-sm text-vk-text-low">
             {t('The other city’s board could not be read.')}
@@ -634,6 +644,12 @@ export function BeadsPage() {
             rig: selectedPeer.card.rig,
             id: selectedPeer.card.bead.id,
           })}
+          questions={questionsForCard(peerBoards.result, {
+            mine: false,
+            city: selectedPeer.peer.login,
+            rig: selectedPeer.card.rig,
+            id: selectedPeer.card.bead.id,
+          })}
           peers={[selectedPeer.peer]}
           card={{
             city: selectedPeer.peer.login,
@@ -667,6 +683,7 @@ export function BeadsPage() {
       <CardConversation
         key={`own:${ownSelectedId ?? ''}`}
         topics={ownCard.topics}
+        questions={ownCard.questions}
         peers={peerSources}
         card={{ city: ownLogin, rig: ownCard.rig ?? '', id: ownSelectedId ?? '', title: selectedBead?.title ?? '' }}
         ours

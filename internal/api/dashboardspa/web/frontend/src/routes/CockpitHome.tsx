@@ -21,8 +21,9 @@ import {
 import { burnPerHour, pipelineSegments, tokensPerMinute } from '../components/cockpit/model';
 import { Button } from '../components/Button';
 import { CityStrip, type CityAgents } from '../components/home/CityStrip';
-import { useNeedsModel } from '../lib/needsFromMe';
+import { ownQuestionIdsOf, useNeedsModel } from '../lib/needsFromMe';
 import { topicNeedsOf } from '../lib/peerTopics';
+import { peerNeedsCount, pendingTopicQuestions } from '../lib/topicQuestions';
 import { usePeerBoards } from '../hooks/usePeerBoards';
 import { NeedsShelves } from '../vk/needs/Shelf';
 import { StatusShape } from '../components/icons';
@@ -61,6 +62,16 @@ export function CockpitHomePage() {
   // vk-final part 4: Mayor topics that need the owner or have unread messages.
   const peerBoards = usePeerBoards();
   const topicNeeds = useMemo(() => topicNeedsOf(peerBoards.result, Date.now()), [peerBoards.result]);
+  // BOARD-LIVE L7: the owner's plain topic questions, each counted once
+  const ownQuestionIds = useMemo(() => ownQuestionIdsOf(needs), [needs]);
+  const topicQuestions = useMemo(
+    () => pendingTopicQuestions(peerBoards.result, ownQuestionIds),
+    [peerBoards.result, ownQuestionIds],
+  );
+  const peerCount = useMemo(
+    () => peerNeedsCount(peerBoards.result, ownQuestionIds, Date.now()),
+    [peerBoards.result, ownQuestionIds],
+  );
 
   usePoll(usageState.refresh, usageState.loading, pausedRef);
   usePoll(statusState.refresh, statusState.loading, pausedRef);
@@ -235,9 +246,11 @@ export function CockpitHomePage() {
       {/* vk lane 3: «Нужно от меня», «Работает», «Тихо» (Attention / Phone-Needs). */}
       <div className="mb-10 min-w-0">
         <NeedsShelves
-          model={{ ...needs, count: needs.count + topicNeeds.filter((n) => n.counts).length }}
+          model={needs}
           stages={taskStages}
           topicNeeds={topicNeeds}
+          topicQuestions={topicQuestions}
+          peerCount={peerCount}
         />
       </div>
 

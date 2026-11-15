@@ -3,14 +3,15 @@ import { getActiveCity } from '../api/cityBase';
 import { useNowOrNull } from '../contexts/NowContext';
 import { peerSourcesOf, type PeerBoardSource } from '../lib/boardOwner';
 import { listPeerBoards, type PeerBoardsResult } from '../supervisor/peerBoardReads';
+import { subscribePeerStream } from '../supervisor/peerStream';
 
-// vk-final: the peers' boards as board sources. ONE shared poller for every
-// consumer (board, «Нужно от меня», the badge): a plain GET every 30 s while
-// the page is visible (the city syncs in ~30–60 s). No event stream, so it
-// never takes one of the browser's six connections. A write calls
-// refreshPeerBoards() so its result shows at once.
+// vk-final: the peers' boards as board sources. ONE shared reader for every
+// consumer (board, «Нужно от меня», the badge). BOARD-LIVE L7: it follows our
+// peer-boards service's change stream (supervisor/peerStream: `changed` →
+// one GET after 200 ms; 3 s polling when the stream cannot open), one
+// EventSource for the whole page. A write calls refreshPeerBoards() so its
+// result shows at once.
 
-export const PEER_BOARDS_POLL_MS = 30_000;
 const STALE_STEP_MS = 15_000;
 
 export interface PeerBoardsState {
@@ -29,7 +30,7 @@ interface Snapshot {
 
 let snapshot: Snapshot = { city: null, result: null, error: null };
 const listeners = new Set<() => void>();
-let timer: ReturnType<typeof setInterval> | null = null;
+let stream: { city: string; stop: () => void } | null = null;
 let inflight: Promise<void> | null = null;
 let controller: AbortController | null = null;
 
@@ -61,20 +62,29 @@ function read(): Promise<void> {
   return inflight;
 }
 
+/** (Re)opens the change stream for the active city; one per page. */
+function ensureStream(): void {
+  const city = getActiveCity();
+  if (stream !== null && stream.city === city) return;
+  stopStream();
+  if (city === null) return;
+  stream = { city, stop: subscribePeerStream(city, () => void read()) };
+}
+
+function stopStream(): void {
+  stream?.stop();
+  stream = null;
+}
+
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);
   if (listeners.size === 1) {
     void read();
-    timer = setInterval(() => {
-      if (typeof document === 'undefined' || !document.hidden) void read();
-    }, PEER_BOARDS_POLL_MS);
+    ensureStream();
   }
   return () => {
     listeners.delete(fn);
-    if (listeners.size === 0 && timer !== null) {
-      clearInterval(timer);
-      timer = null;
-    }
+    if (listeners.size === 0) stopStream();
   };
 }
 
@@ -94,8 +104,7 @@ export function resetPeerBoardsForTests(): void {
   controller?.abort();
   controller = null;
   inflight = null;
-  if (timer !== null) clearInterval(timer);
-  timer = null;
+  stopStream();
   listeners.clear();
   snapshot = { city: null, result: null, error: null };
 }
@@ -107,7 +116,10 @@ export function usePeerBoards(): PeerBoardsState {
   const city = getActiveCity();
   // A city switch: drop the other city's boards and read this one's.
   useEffect(() => {
-    if (snap.city !== null && snap.city !== city) void refreshPeerBoards();
+    if (snap.city !== null && snap.city !== city) {
+      ensureStream();
+      void refreshPeerBoards();
+    }
   }, [snap.city, city]);
   // Staleness moves in 15 s steps, so the 1 s app tick never rebuilds the
   // board model; the sources keep their identity between steps.

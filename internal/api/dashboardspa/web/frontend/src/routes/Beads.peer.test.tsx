@@ -205,24 +205,43 @@ describe('BeadsPage with Richard’s board', () => {
     expect(within(direct).getByRole('heading', { name: 'Ключ Clerk' })).toBeTruthy();
   });
 
-  it('a snapshot older than stale_after_seconds shows «Мак Ричарда не на связи с HH:MM»', async () => {
+  it('a snapshot older than stale_after_seconds shows «Мак Ричарда не в сети с HH:MM»', async () => {
     const at = minutesAgo(30); // > 1500 s
     peerResponse = () => json(peerBody({ snapshotAt: at }));
     renderPage();
-    expect(await screen.findByText(`Мак Ричарда не на связи с ${clock(at)}`)).toBeTruthy();
+    expect(await screen.findByText(`Мак Ричарда не в сети с ${clock(at)}`)).toBeTruthy();
   });
 
   it('the threshold comes from the service: 2 minutes old is stale at stale_after_seconds 60', async () => {
     const at = minutesAgo(2);
     peerResponse = () => json({ ...peerBody({ snapshotAt: at }), stale_after_seconds: 60 });
     renderPage();
-    expect(await screen.findByText(`Мак Ричарда не на связи с ${clock(at)}`)).toBeTruthy();
+    expect(await screen.findByText(`Мак Ричарда не в сети с ${clock(at)}`)).toBeTruthy();
   });
 
   it('a fresh snapshot shows no offline banner', async () => {
     renderPage();
     await screen.findByText('Изменение схемы users');
-    expect(screen.queryByText(/не на связи/)).toBeNull();
+    expect(screen.queryByText(/не в сети/)).toBeNull();
+  });
+
+  // BOARD-LIVE L7: with a live block, «not online» is our own connection state
+  it('a live peer offline shows «Мак Ричарда не в сети с HH:MM» from Tailscale LastSeen', async () => {
+    const seen = minutesAgo(5);
+    peerResponse = () =>
+      json(
+        peerBody({
+          live: {
+            version: 3,
+            as_of: minutesAgo(6),
+            connection: { state: 'offline', since: minutesAgo(4) },
+            peer_online: false,
+            peer_last_seen: seen,
+          },
+        }),
+      );
+    renderPage();
+    expect(await screen.findByText(`Мак Ричарда не в сети с ${clock(seen)}`)).toBeTruthy();
   });
 
   // ---- part 4 (owner, 15.11): a card conversation is a Mayor topic ------

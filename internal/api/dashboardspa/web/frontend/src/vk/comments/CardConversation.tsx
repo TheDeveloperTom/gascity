@@ -5,8 +5,9 @@ import { refreshPeerBoards } from '../../hooks/usePeerBoards';
 import { t } from '../../i18n';
 import type { PeerBoardSource } from '../../lib/boardOwner';
 import type { CardTopic } from '../../lib/peerTopics';
-import type { PeerComment, PeerTopic } from '../../supervisor/peerBoardReads';
+import type { PeerComment, PeerTopic, TopicQuestion } from '../../supervisor/peerBoardReads';
 import { commentErrorText, postCardMessage } from '../../supervisor/peerCommentWrites';
+import { TopicQuestionCard } from '../needs/TopicQuestion';
 import { CardTopics } from './CardTopics';
 import { CommentComposer, CommentList } from './CommentThread';
 
@@ -27,6 +28,8 @@ import { CommentComposer, CommentList } from './CommentThread';
 export interface CardConversationProps {
   /** Topics linked to this card, newest activity first (topicsForCard, trusted keys). */
   topics: readonly CardTopic[];
+  /** The owner's pending questions about this card (lib/topicQuestions questionsForCard). */
+  questions?: readonly TopicQuestion[];
   /** His card: [him]. Our card: every peer board. */
   peers: readonly PeerBoardSource[];
   /** The card as the city addresses it; `city` null = unknown (no box). */
@@ -40,6 +43,7 @@ export interface CardConversationProps {
 }
 
 const NONE: readonly PeerComment[] = [];
+const NO_QUESTIONS: readonly TopicQuestion[] = [];
 /** A served copy may carry a server time a little before our click (clock skew). */
 const PENDING_SKEW_MS = 120_000;
 
@@ -81,7 +85,16 @@ function stateChip(topic: PeerTopic): string {
   return topic.status === 'resolved' ? t('Topic state: resolved') : t('Topic state: open');
 }
 
-export function CardConversation({ topics, peers, card, ours, nowMs, onOpenTopic, children }: CardConversationProps) {
+export function CardConversation({
+  topics,
+  questions = NO_QUESTIONS,
+  peers,
+  card,
+  ours,
+  nowMs,
+  onOpenTopic,
+  children,
+}: CardConversationProps) {
   const pickId = useId();
   const readOnly = useReadOnly();
   const [pending, setPending] = useState<readonly PeerComment[]>(NONE);
@@ -119,13 +132,22 @@ export function CardConversation({ topics, peers, card, ours, nowMs, onOpenTopic
       {
         id: `pending-${Date.now()}`,
         mine: true,
-        author: { kind: 'person', city: null, name: t('You'), agent: null, displayName: null, avatarUrl: null },
+        author: {
+          kind: 'person',
+          city: null,
+          name: t('You'),
+          agent: null,
+          displayName: null,
+          avatarUrl: null,
+          roleCaption: null,
+        },
         text,
         summary: null,
         createdAt: new Date().toISOString(),
         state: 'queued',
         reason: null,
         reopened: false,
+        undelivered: null,
       },
     ]);
     void refreshPeerBoards();
@@ -133,6 +155,10 @@ export function CardConversation({ topics, peers, card, ours, nowMs, onOpenTopic
 
   const thread = (
     <section aria-label={t('Card conversation')} className="flex flex-col gap-2 border-t border-vk-border pt-2">
+      {/* BOARD-LIVE L7: the owner's question about this card (one of its three views) */}
+      {questions.map((q) => (
+        <TopicQuestionCard key={q.questionId} question={q} />
+      ))}
       {current !== null && (
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
           <span className="min-w-0 flex-1 text-vk-text-normal [overflow-wrap:anywhere]">{current.topic.title}</span>
@@ -151,7 +177,13 @@ export function CardConversation({ topics, peers, card, ours, nowMs, onOpenTopic
       {messages.length === 0 ? (
         <p className="text-sm text-vk-text-low">{t('Nobody has written about this card yet.')}</p>
       ) : (
-        <CommentList comments={messages} nowMs={nowMs} peerLabel={toPeer?.label ?? peers[0]?.label ?? ''} acks={acks} />
+        <CommentList
+          comments={messages}
+          nowMs={nowMs}
+          peerLabel={toPeer?.label ?? peers[0]?.label ?? ''}
+          acks={acks}
+          {...(toPeer !== null ? { peerName: toPeer.name } : {})}
+        />
       )}
       {others.length > 0 && <CardTopics topics={others} onOpen={onOpenTopic} />}
     </section>

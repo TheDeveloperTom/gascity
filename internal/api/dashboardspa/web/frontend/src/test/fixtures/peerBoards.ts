@@ -216,11 +216,44 @@ export function peerTopics() {
   ];
 }
 
+/**
+ * BOARD-LIVE L10 `owner_q.question_views` row (C3): one plain owner question
+ * about a topic; our city service computes it from OUR files.
+ */
+export const QUESTION_LINE_1 = 'Мэры договорились: общий конфиг сборки меняет Ричард.';
+export const QUESTION_LINE_2 = 'У нас изменится: наша задача подождёт его изменения.';
+export const QUESTION_JUMP = 'https://discord.com/channels/111/222/333';
+export function ownerQuestion(over: Record<string, unknown> = {}) {
+  return {
+    question_id: 'q-7f3a9c',
+    text: `${QUESTION_LINE_1}\n${QUESTION_LINE_2}`,
+    options: ['Да', 'Нет', 'Обсудить', 'Сделать задачей'],
+    status: 'pending',
+    answer: null,
+    topic: 'rich/tp-aaaaaaaaaaaaaaaaaaaa',
+    card: null,
+    jump_url: QUESTION_JUMP,
+    ...over,
+  };
+}
+
 export function peerBody(
-  overrides: { snapshotAt?: string; cards?: unknown[]; threads?: unknown[]; topics?: unknown[] } = {},
+  overrides: {
+    snapshotAt?: string;
+    cards?: unknown[];
+    threads?: unknown[];
+    topics?: unknown[];
+    /** BOARD-LIVE C4 `live` block of the peer (absent = an old peer). */
+    live?: unknown;
+    people?: unknown[];
+    fetchedAt?: string;
+    /** Top-level additions (own_login, owner_questions …). */
+    top?: Record<string, unknown>;
+  } = {},
 ) {
   const at = overrides.snapshotAt ?? PEER_SNAPSHOT_AT;
   return {
+    ...(overrides.top ?? {}),
     schema: 'devwork.peer-boards/1',
     heartbeat_seconds: 900,
     stale_after_seconds: 1500,
@@ -236,7 +269,9 @@ export function peerBody(
         snapshot_at: at,
         generated_at: at,
         changed_at: '2026-11-15T18:40:00Z',
-        fetched_at: at,
+        fetched_at: overrides.fetchedAt ?? at,
+        ...(overrides.live === undefined ? {} : { live: overrides.live }),
+        ...(overrides.people === undefined ? {} : { people: overrides.people }),
         fetch_error: null,
         fetch_failed_at: null,
         dropped_cards: 0,

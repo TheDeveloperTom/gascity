@@ -1,7 +1,7 @@
 // The ONE seam for «Мои / Ричарда» (vk lane 4, owner; vk-final part 3 plugs
 // in the peer boards). Other lanes import it.
 
-import type { PeerBoardsResult, PeerCard } from '../supervisor/peerBoardReads';
+import type { PeerBoardsResult, PeerCard, PeerLive } from '../supervisor/peerBoardReads';
 
 export type CardOwner = 'me' | `peer:${string}`;
 export type OwnerFilter = 'all' | CardOwner;
@@ -26,9 +26,16 @@ export interface PeerBoardSource extends BoardSource {
   avatar: string;
   /** ISO time of the snapshot (`generated_at`, else `snapshot_at`). */
   asOf: string;
-  /** The snapshot is older than the service's `stale_after_seconds`. */
+  /**
+   * Not current. With a live block (BOARD-LIVE): the connection is not live.
+   * An old peer: the snapshot is older than the service's `stale_after_seconds`.
+   */
   stale: boolean;
   cards: readonly PeerCard[];
+  /** BOARD-LIVE C4: the live connection; null for a peer not yet upgraded. */
+  live: PeerLive | null;
+  /** When our client last received the board (our clock). */
+  fetchedAt: string | null;
 }
 
 const MINE: BoardSource = { owner: 'me', label: 'Mine', available: true };
@@ -51,8 +58,15 @@ export function peerSourcesOf(result: PeerBoardsResult, nowMs: number): PeerBoar
       avatar: peer.person.initial,
       available: true,
       asOf: peer.asOf,
-      stale: !Number.isFinite(at) || nowMs - at > result.staleAfterSeconds * 1000,
+      // Review Focus 4: with a live block, «current» is our own connection
+      // state, never an age measured against the peer's clock.
+      stale:
+        peer.live !== null
+          ? peer.live.state !== 'live'
+          : !Number.isFinite(at) || nowMs - at > result.staleAfterSeconds * 1000,
       cards: peer.cards,
+      live: peer.live,
+      fetchedAt: peer.fetchedAt,
     };
   });
 }

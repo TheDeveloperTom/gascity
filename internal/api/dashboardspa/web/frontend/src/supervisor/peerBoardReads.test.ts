@@ -167,6 +167,7 @@ describe('listPeerBoards', () => {
       agent: null,
       displayName: null,
       avatarUrl: null,
+      roleCaption: null,
     });
     expect(mayor!.mine).toBe(false);
     expect(mine!.mine).toBe(true);
@@ -179,6 +180,7 @@ describe('listPeerBoards', () => {
       agent: null,
       displayName: null,
       avatarUrl: null,
+      roleCaption: null,
     });
     expect(nameOnly!.state).toBe('queued');
     expect(thread.comments.map((c) => c.createdAt)).toEqual([...thread.comments.map((c) => c.createdAt)].sort());
@@ -263,7 +265,7 @@ describe('listPeerBoards', () => {
       {
         messageId: 'm-1',
         kind: 'ack',
-        by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null, displayName: null, avatarUrl: null },
+        by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null, displayName: null, avatarUrl: null, roleCaption: null },
       },
     ]);
     expect(paused).toMatchObject({ status: 'paused', pausedReason: 'needs_human', mine: true });

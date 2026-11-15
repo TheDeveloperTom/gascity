@@ -7,7 +7,9 @@ import type { TaskStages } from '../../hooks/useTaskStages';
 import { t, tn } from '../../i18n';
 import type { NeedsModel } from '../../lib/needsFromMe';
 import type { TopicNeed } from '../../lib/peerTopics';
+import type { PendingTopicQuestion } from '../../lib/topicQuestions';
 import { NeedItem } from './NeedItem';
+import { TopicQuestionCard } from './TopicQuestion';
 
 // «Нужно от меня» (vk lane 3, Attention / Phone-Needs frames): three shelves,
 // one column at every width. «Нужно от меня» is open, «Работает» is open,
@@ -104,21 +106,52 @@ function TopicNeeds({ needs }: { needs: readonly TopicNeed[] }) {
   );
 }
 
+/** BOARD-LIVE L7: the owner's plain topic questions (one of their three views). */
+function TopicQuestions({ items }: { items: readonly PendingTopicQuestion[] }) {
+  const headId = useId();
+  return (
+    <section aria-labelledby={headId} className="mt-4 min-w-0">
+      <h3 id={headId} className="pb-2 text-label font-semibold text-vk-text-low">
+        {t('Questions from the Mayors')}
+      </h3>
+      <ul className="flex min-w-0 flex-col gap-2">
+        {items.map(({ question, href }) => (
+          <li key={question.questionId} className="flex min-w-0 flex-col gap-1">
+            <TopicQuestionCard question={question} />
+            {href !== null && (
+              <Link to={href} className="focus-mark self-start text-sm text-vk-text-low underline underline-offset-2">
+                {t('Open the topic view')}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function NeedsShelves({
   model,
   stages,
   topicNeeds = [],
+  topicQuestions = [],
+  peerCount,
 }: {
   model: NeedsModel;
   stages: TaskStages;
   topicNeeds?: readonly TopicNeed[];
+  /** Pending owner questions about Mayor topics (BOARD-LIVE L10/L7). */
+  topicQuestions?: readonly PendingTopicQuestion[];
+  /** What the peer boards add to the count (lib/topicQuestions peerNeedsCount). */
+  peerCount?: number;
 }) {
   const stuckId = useId();
+  const count = model.count + (peerCount ?? 0);
   return (
     <div className="flex min-w-0 flex-col gap-2 font-vk-sans">
       <Shelf
         title={t('Needs from me')}
-        {...(model.state === 'ready' || model.count > 0 ? { count: model.count } : {})}
+        {...(model.state === 'ready' || count > 0 ? { count } : {})}
       >
         {model.needs.length > 0 && (
           <ul className="flex min-w-0 flex-col gap-2">
@@ -135,9 +168,13 @@ export function NeedsShelves({
               {t('Could not read the board')}
             </Link>
           </Status>
-        ) : model.needs.length === 0 && model.stalls.length === 0 && topicNeeds.length === 0 ? (
+        ) : model.needs.length === 0 &&
+          model.stalls.length === 0 &&
+          topicNeeds.length === 0 &&
+          topicQuestions.length === 0 ? (
           <Status>{t('Nothing needs you right now.')}</Status>
         ) : null}
+        {topicQuestions.length > 0 && <TopicQuestions items={topicQuestions} />}
         {topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
         {model.stalls.length > 0 && (
           <section aria-labelledby={stuckId} className="mt-4 min-w-0">

@@ -120,6 +120,48 @@ describe('Discord identity (owner 15.11)', () => {
     expect(within(mayor).getByTestId('glyph-mayor')).toBeTruthy();
   });
 
+  // BOARD-LIVE L5/L7: the city's role caption («Мэр Артёма» = «Мэр » +
+  // genitive, from OUR people.json; a person's caption is the name).
+  it('role caption renders under display name; avatar only from AVATAR_PATH_RE', () => {
+    const thread = peerThread();
+    thread.comments[0]!.author = { ...RICH_MAYOR_DISCORD, role_caption: 'Мэр Ричарда (город)' } as never;
+    thread.comments[2]!.author = { ...RICHARD_DISCORD, role_caption: 'Ричард' } as never;
+    // a person whose Discord name IS the caption: the name shows once
+    thread.comments[1]!.author = { kind: 'person', city: 'me', name: 'Артём', display_name: 'Артём', role_caption: 'Артём' } as never;
+    // an avatar on another origin is dropped
+    thread.comments[4]!.author = { ...DEPUTY_DISCORD, avatar_url: 'https://cdn.discordapp.com/avatars/1/x.png' } as never;
+    renderList({ comments: parsePeerBoards(peerBody({ threads: [thread] })).peers[0]!.threads[0]!.comments });
+    const mayor = items()[0]!;
+    const name = within(mayor).getByText('Richard’s Mayor');
+    const caption = within(mayor).getByText('Мэр Ричарда (город)');
+    expect(caption.getAttribute('data-testid')).toBe('role-caption');
+    // under: the name and the caption share one column, caption after the name
+    expect(name.parentElement).toBe(caption.parentElement);
+    expect(name.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(name.parentElement?.className).toContain('flex-col');
+    const richard = items()[2]!;
+    expect(within(richard).getByText('richard.dev')).toBeTruthy();
+    expect(within(richard).getByTestId('role-caption').textContent).toBe('Ричард');
+    const me = items()[1]!;
+    expect(within(me).getAllByText('Артём')).toHaveLength(1);
+    expect(within(me).queryByTestId('role-caption')).toBeNull();
+    const deputy = items().find((el) => within(el).queryByText('Deputy') !== null)!;
+    expect(within(deputy).queryByTestId('avatar-image')).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('own queued message with undelivered peer_offline shows «не доставлено: Ричард не в сети»', () => {
+    const thread = peerThread();
+    (thread.comments[5] as Record<string, unknown>).undelivered = 'peer_offline';
+    renderList({ comments: parsePeerBoards(peerBody({ threads: [thread] })).peers[0]!.threads[0]!.comments, peerName: 'Ричард' });
+    const queued = items().at(-1)!;
+    expect(within(queued).getByText('не доставлено: Ричард не в сети')).toBeTruthy();
+    expect(within(queued).queryByText('ждёт доставки')).toBeNull();
+    // a delivered one of mine is unaffected
+    expect(within(items()[1]!).getByText('доставлено')).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
+  });
+
   it('no identity: today’s rendering (glyph or initials, role as the name)', () => {
     renderList();
     expect(within(items()[0]!).queryByTestId('avatar-image')).toBeNull();

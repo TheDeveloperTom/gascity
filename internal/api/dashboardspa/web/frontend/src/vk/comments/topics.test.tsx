@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectMissing, resetMissing, setLocale } from '../../i18n';
 import { asOfClock, peerSourcesOf } from '../../lib/boardOwner';
 import { parsePeerBoards } from '../../supervisor/peerBoardReads';
-import { peerBody, peerTopics } from '../../test/fixtures/peerBoards';
+import { ownerQuestion, peerBody, peerTopics, QUESTION_JUMP } from '../../test/fixtures/peerBoards';
+import { setActivityRole } from '../../embed/activitySession';
+import { resetActivityPlumbingForTests } from '../../lib/apiBase';
 import { TopicsPanel } from './TopicsPanel';
 import type * as PeerCommentWrites from '../../supervisor/peerCommentWrites';
 import type * as ActivitySession from '../../embed/activitySession';
@@ -132,25 +134,24 @@ describe('TopicsPanel thread', () => {
     expect(writes.action).toHaveBeenCalledWith(OPEN, { action: 'message', text: 'Да, перезагружайте' });
   });
 
-  // Review I-2: a ticket from a topic starts only from the owner's button in
-  // Discord (BOARD-LIVE L11); the dashboard never hands the peer's title or
-  // text to our Mayor. It shows the linked ticket when there is one.
-  it('no «Сделать задачей» here, and nothing goes to the discuss route', async () => {
+  // Review I-2 / N-2: a ticket from a topic starts only from the owner's
+  // button (BOARD-LIVE L11); the dashboard never hands the peer's title or
+  // text to our Mayor. No discuss-style «Сделать задачей» here; inside the
+  // Activity, the topic's owner question carries the four answer buttons,
+  // and a click on any of them goes to the answer route, never to discuss.
+  it('no discuss «Сделать задачей»; inside the Activity every click answers and nothing goes to the discuss route', async () => {
     const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
+    vi.stubEnv('VITE_EMBED', '1');
+    setActivityRole('owner');
+    // without a question: no «Сделать задачей» at all
     setup('tp-aaaaaaaaaaaaaaaaaaaa');
     expect(within(pane()).queryByRole('button', { name: /Сделать задачей/ })).toBeNull();
     expect(within(pane()).queryByRole('link', { name: /Сделать задачей/ })).toBeNull();
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
-    });
-    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('/api/activity/discuss'))).toBe(false);
-    vi.unstubAllGlobals();
-  });
-
-  it('a linked ticket shows as «Задача dw-x1», opening that card on our board', () => {
+    cleanup();
+    // with the owner's question on the topic: click every button inside it
     const topics = peerTopics();
-    (topics[0] as Record<string, unknown>).ticket = 'dw-x1';
+    (topics[0] as Record<string, unknown>).owner_question = ownerQuestion();
     const result = parsePeerBoards(peerBody({ topics }));
     render(
       <MemoryRouter>
@@ -166,7 +167,63 @@ describe('TopicsPanel thread', () => {
         />
       </MemoryRouter>,
     );
-    const link = within(pane()).getByRole('link', { name: 'Задача dw-x1' });
+    const question = within(pane()).getByTestId('topic-question');
+    for (const label of ['Сделать задачей', 'Обсудить']) {
+      await act(async () => {
+        fireEvent.click(within(question).getByRole('button', { name: label }));
+      });
+    }
+    const urls = fetchSpy.mock.calls.map(([u]) => String(u));
+    expect(urls.filter((u) => u.endsWith('/api/activity/answer')).length).toBeGreaterThan(0);
+    expect(urls.some((u) => u.includes('/api/activity/discuss'))).toBe(false);
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))).toEqual({ qid: 'q-7f3a9c', choice: 3 });
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    setActivityRole(null);
+    resetActivityPlumbingForTests();
+  });
+
+  it('needs_human resolve 202 shows owner-question line with jump link and no optimistic state', async () => {
+    writes.action.mockResolvedValue({ pending: { questionId: 'q-9', jumpUrl: QUESTION_JUMP } });
+    setup('tp-bbbbbbbbbbbbbbbbbbbb');
+    await act(async () => {
+      fireEvent.click(within(pane()).getByRole('button', { name: 'Решено ✓' }));
+    });
+    fireEvent.change(within(pane()).getByRole('textbox', { name: 'Итог в одну строку' }), {
+      target: { value: 'обновляю я' },
+    });
+    await act(async () => {
+      fireEvent.click(within(pane()).getByRole('button', { name: 'Закрыть обсуждение' }));
+    });
+    const line = within(pane()).getByTestId('owner-question-pending');
+    expect(line.textContent).toContain('Ждёт твоего ответа в Discord');
+    expect(within(line).getByRole('link').getAttribute('href')).toBe(QUESTION_JUMP);
+    // nothing pretends it is resolved: the banner stays, the topic is not closed
+    expect(within(pane()).queryByTestId('topic-resolved')).toBeNull();
+    expect(within(pane()).getByText('Мэры не договорились — нужен человек')).toBeTruthy();
+    expect(within(pane()).getByRole('button', { name: 'Решено ✓' })).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('a linked ticket on our own topic shows as «→ задача dw-x1», opening that card on our board', () => {
+    const topics = peerTopics();
+    (topics[1] as Record<string, unknown>).ticket = 'dw-x1';
+    const result = parsePeerBoards(peerBody({ topics }));
+    render(
+      <MemoryRouter>
+        <TopicsPanel
+          open
+          onClose={vi.fn()}
+          peer={peerSourcesOf(result, NOW)[0]!}
+          topics={result.peers[0]!.topics}
+          selectedTopicId="tp-bbbbbbbbbbbbbbbbbbbb"
+          onSelectTopic={vi.fn()}
+          nowMs={NOW}
+          ownLogin="me"
+        />
+      </MemoryRouter>,
+    );
+    const link = within(pane()).getByRole('link', { name: '→ задача dw-x1' });
     expect(link.getAttribute('href')).toBe('/beads?bead=dw-x1');
     expect(collectMissing()).toEqual([]);
   });

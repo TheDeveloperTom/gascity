@@ -12,6 +12,7 @@ const RESULT: PeerBoardsResult = {
   ownLogin: null,
   heartbeatSeconds: 900,
   staleAfterSeconds: 1500,
+  ownerQuestions: [],
   peers: [
     {
       login: 'rich',
@@ -22,6 +23,9 @@ const RESULT: PeerBoardsResult = {
       fetchError: null,
       threads: [],
       topics: [],
+      fetchedAt: null,
+      live: null,
+      people: [],
       cards: [{ rig: 'crm-api', bead: { id: 'dw-1', title: 't', status: 'open', issue_type: 'task', created_at: '2026-11-15T10:00:00Z' } }],
     },
   ],

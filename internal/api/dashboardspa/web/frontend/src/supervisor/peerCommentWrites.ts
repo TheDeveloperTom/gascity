@@ -161,24 +161,52 @@ export async function postCardMessage(card: CardRefBody, text: string, to?: stri
   return { opened };
 }
 
+/**
+ * BOARD-LIVE C5 (round 2): `continue` / `resolve` on a needs_human pause do
+ * not act; the city asks the owner and answers
+ * `202 {"pending":"owner_question","question_id","jump_url"}`.
+ */
+export interface PendingOwnerQuestion {
+  questionId: string;
+  /** The question's Discord message (https Discord only); null if absent. */
+  jumpUrl: string | null;
+}
+
+export interface TopicActionResult {
+  /** Set when the city is waiting for the owner's answer instead. */
+  pending: PendingOwnerQuestion | null;
+}
+
+const DISCORD_JUMP = /^https:\/\/(?:discord\.com|discordapp\.com)\/channels\/\d+\/\d+(?:\/\d+)?$/;
+
+function pendingOf(payload: unknown): PendingOwnerQuestion | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const p = payload as Record<string, unknown>;
+  if (p.pending !== 'owner_question' || typeof p.question_id !== 'string' || p.question_id.length === 0) return null;
+  const jump = typeof p.jump_url === 'string' && DISCORD_JUMP.test(p.jump_url) ? p.jump_url : null;
+  return { questionId: p.question_id, jumpUrl: jump };
+}
+
 /** One person action on a topic: message, resolve or continue. */
-export async function postTopicAction(target: TopicTarget, action: TopicAction): Promise<void> {
+export async function postTopicAction(target: TopicTarget, action: TopicAction): Promise<TopicActionResult> {
   const base = { city: target.city, topic_id: target.topicId };
   switch (action.action) {
     case 'message':
       await post('topics/message', { ...base, text: clean(action.text) });
-      return;
+      return { pending: null };
     case 'resolve':
-      await post('topics/resolve', {
-        ...base,
-        reason: action.reason,
-        summary: clean(action.summary),
-        ...(action.decidingMessageId === undefined ? {} : { deciding_message_id: action.decidingMessageId }),
-      });
-      return;
+      return {
+        pending: pendingOf(
+          await post('topics/resolve', {
+            ...base,
+            reason: action.reason,
+            summary: clean(action.summary),
+            ...(action.decidingMessageId === undefined ? {} : { deciding_message_id: action.decidingMessageId }),
+          }),
+        ),
+      };
     case 'continue':
-      await post('topics/continue', base);
-      return;
+      return { pending: pendingOf(await post('topics/continue', base)) };
   }
 }
 

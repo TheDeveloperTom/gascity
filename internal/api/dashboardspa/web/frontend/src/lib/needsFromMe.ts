@@ -5,7 +5,7 @@ import type { AttentionItem } from '../attention/compose';
 import { useAttentionModel } from '../attention/context';
 import { useBoardData } from '../hooks/useBoardData';
 import { usePeerBoards } from '../hooks/usePeerBoards';
-import { topicNeedsOf } from './peerTopics';
+import { peerNeedsCount } from './topicQuestions';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
@@ -42,6 +42,8 @@ export interface NeedItem {
   href: string | null;
   /** An ask's chat thread (https), when it has one. */
   externalHref?: string;
+  /** A question's bridge id (`decision.question_id`): one question counts once. */
+  questionId?: string;
 }
 
 export interface StallItem extends NeedItem {
@@ -155,6 +157,7 @@ export function needsFromBoard(
         waitedMs: askedMs === null ? null : Math.max(0, nowMs - askedMs),
         ...holdsOf(q.beadId, model.waitersOf, byId),
         href: beadHref(q.beadId),
+        questionId: q.questionId,
       };
     })
     .sort((a, b) => (b.waitedMs ?? -1) - (a.waitedMs ?? -1));
@@ -251,14 +254,21 @@ export function useNeedsModel(): NeedsModel {
   );
 }
 
+/** The bridge ids of the owner questions our own board already lists. */
+export function ownQuestionIdsOf(model: NeedsModel): ReadonlySet<string> {
+  return new Set(model.needs.flatMap((n) => (n.questionId === undefined ? [] : [n.questionId])));
+}
+
 /**
  * Count for the red «Нужно от меня» badge (top nav and phone tab). vk-final:
- * plus every paused Mayor topic («Мэры не договорились — нужен человек»).
- * Peer cards never count (SYNC-PLAN review focus 2).
+ * plus every paused Mayor topic («Мэры не договорились — нужен человек»);
+ * BOARD-LIVE L7: plus every pending owner topic question, each once
+ * (lib/topicQuestions peerNeedsCount). Peer cards never count (SYNC-PLAN
+ * review focus 2).
  */
 export function useNeedsFromMeCount(): number {
-  const own = useNeedsModel().count;
+  const model = useNeedsModel();
   const { result } = usePeerBoards();
-  const paused = useMemo(() => topicNeedsOf(result, Date.now()).filter((n) => n.counts).length, [result]);
-  return own + paused;
+  const peer = useMemo(() => peerNeedsCount(result, ownQuestionIdsOf(model), Date.now()), [result, model]);
+  return model.count + peer;
 }

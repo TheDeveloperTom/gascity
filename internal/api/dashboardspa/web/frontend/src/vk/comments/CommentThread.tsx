@@ -128,6 +128,31 @@ export function authorName(author: CommentAuthor, side: Side, names: AuthorNames
   return author.name;
 }
 
+/**
+ * The caption under a Discord display name (BOARD-LIVE L5): the city's
+ * `role_caption` («Мэр Артёма»; built by OUR city from OUR people.json), else
+ * the role worked out here. For a person the caption is the name, so it is
+ * dropped when it repeats the display name (the name shows once).
+ */
+export function roleCaptionOf(author: CommentAuthor, side: Side, names: AuthorNames): string | null {
+  const caption = author.kind === 'agent' ? authorRole(author, side, names) : (author.roleCaption ?? authorRole(author, side, names));
+  const shown = author.displayName?.trim().toLocaleLowerCase() ?? '';
+  return caption.trim().toLocaleLowerCase() === shown ? null : caption;
+}
+
+function AuthorIdentity({ displayName, caption }: { displayName: string; caption: string | null }) {
+  return (
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="font-medium text-vk-text-high [overflow-wrap:anywhere]">{displayName}</span>
+      {caption !== null && (
+        <span data-testid="role-caption" className="text-xs font-light text-vk-text-low">
+          {caption}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function commentTime(iso: string, nowMs: number): string {
   const at = Date.parse(iso);
   if (Number.isFinite(at) && nowMs - at >= 0 && nowMs - at < JUST_NOW_MS) return t('just now');
@@ -161,8 +186,18 @@ function ClockIcon() {
 }
 
 /** «доставлено ✓ / ждёт доставки / не доставлено»: only on the owner's own comments. */
-function DeliveryState({ comment }: { comment: PeerComment }) {
+function DeliveryState({ comment, peerName }: { comment: PeerComment; peerName: string | undefined }) {
   if (!comment.mine || comment.author.kind !== 'person' || comment.state === null) return null;
+  if (comment.undelivered === 'peer_offline' && comment.state !== 'delivered') {
+    // BOARD-LIVE C5: still in our outbox because the peer's Mac is offline
+    return (
+      <span className="text-sm font-light text-warn">
+        {peerName !== undefined
+          ? t('not delivered: {name} is offline', { name: peerName })
+          : t('not delivered: the other city is offline')}
+      </span>
+    );
+  }
   if (comment.state === 'delivered') {
     return (
       <span className="inline-flex items-center gap-[3px] text-sm font-light text-vk-success">
@@ -197,6 +232,8 @@ export interface CommentListProps extends AuthorNames {
   itemRef?: (comment: PeerComment) => Ref<HTMLDivElement> | undefined;
   /** Extra line under a message (e.g. «спросил Артёма → ждёт ответа»). */
   noteOf?: (comment: PeerComment) => ReactNode;
+  /** The peer person's name («Ричард»), for «не доставлено: Ричард не в сети». */
+  peerName?: string;
 }
 
 /** The thread: VK CommentItem rows, grouped by consecutive author. */
@@ -209,6 +246,7 @@ export function CommentList({
   unread,
   itemRef,
   noteOf,
+  peerName,
 }: CommentListProps) {
   return (
     <div className="flex flex-col gap-2">
@@ -236,13 +274,11 @@ export function CommentList({
               <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
                 <AuthorAvatar author={comment.author} side={side} />
                 {comment.author.displayName !== null ? (
-                  // Discord identity: the display name, then the role as a caption
-                  <>
-                    <span className="font-medium text-vk-text-high">{comment.author.displayName}</span>
-                    <span className="text-xs font-light text-vk-text-low">
-                      {authorRole(comment.author, side, { peerLabel, myLabel })}
-                    </span>
-                  </>
+                  // Discord identity: the display name, the role caption under it
+                  <AuthorIdentity
+                    displayName={comment.author.displayName}
+                    caption={roleCaptionOf(comment.author, side, { peerLabel, myLabel })}
+                  />
                 ) : (
                   <span className="font-medium text-vk-text-low">
                     {authorName(comment.author, side, { peerLabel, myLabel })}
@@ -258,7 +294,7 @@ export function CommentList({
                 {comment.mine && comment.author.kind === 'person' && comment.state !== null && (
                   <>
                     <span className="font-medium text-vk-text-low">·</span>
-                    <DeliveryState comment={comment} />
+                    <DeliveryState comment={comment} peerName={peerName} />
                   </>
                 )}
                 {unread?.has(comment.id) && (
@@ -270,7 +306,7 @@ export function CommentList({
             )}
             {grouped && comment.mine && comment.author.kind === 'person' && comment.state !== null && (
               <div className="text-sm">
-                <DeliveryState comment={comment} />
+                <DeliveryState comment={comment} peerName={peerName} />
               </div>
             )}
             <p
