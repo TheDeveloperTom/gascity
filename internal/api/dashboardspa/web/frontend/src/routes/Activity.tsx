@@ -6,6 +6,7 @@ import { getActiveCity } from '../api/cityBase';
 import { useAttentionModel } from '../attention/context';
 import { attentionRowProps, resourceAttentionSeverity } from '../attention/routeHighlight';
 import { Button } from '../components/Button';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge, type StatusTone } from '../components/StatusBadge';
 import type { TypedEventStreamEnvelope } from 'gas-city-dashboard-shared/gc-supervisor';
@@ -86,18 +87,13 @@ export function ActivityPage() {
         title="Activity"
         synopsis={activitySynopsis(mode, eventType)}
         meta={
-          <>
-            {error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {error}
-              </span>
-            )}
-            <Button size="sm" onClick={() => void refresh()} disabled={loading}>
-              {loading ? 'Refreshing' : 'Refresh'}
-            </Button>
-          </>
+          <Button size="sm" onClick={() => void refresh()} disabled={loading}>
+            {loading ? 'Refreshing' : 'Refresh'}
+          </Button>
         }
       />
+
+      <PageAlerts messages={[error]} />
 
       <ActivityModeNav active={mode} eventType={eventType} />
       {eventsVisible && (
@@ -112,7 +108,7 @@ export function ActivityPage() {
         />
       )}
 
-      <div className="mt-10 space-y-12">
+      <div className="mt-8 space-y-10">
         {shouldShow(mode, 'events') && (
           <EventsSection
             events={data?.events ?? null}
@@ -216,9 +212,12 @@ function ActivityModeNav({
   active: ActivityMode;
   eventType: string | null;
 }) {
+  // Segmented links (DESIGN-PLAN §7): the same Links and hrefs, one group,
+  // the current mode tinted and marked aria-current. This nav sits outside
+  // PageHeader so the rail stays the only `header nav`.
   return (
     <nav aria-label="Activity modes">
-      <ul className="flex flex-wrap gap-2">
+      <ul className="inline-flex rounded-md border border-rule bg-surface-raised p-0.5">
         {MODES.map(({ mode, label }) => {
           const isActive = active === mode;
           return (
@@ -227,10 +226,8 @@ function ActivityModeNav({
                 to={modeHref(mode, eventType)}
                 aria-current={isActive ? 'page' : undefined}
                 className={[
-                  'inline-flex items-center rounded-sm border px-2.5 py-1 text-label uppercase tracking-wider transition-colors duration-150 ease-out-quart focus-mark',
-                  isActive
-                    ? 'border-fg text-fg'
-                    : 'border-rule text-fg-muted hover:text-fg hover:bg-surface-tint',
+                  'inline-flex h-8 items-center rounded px-3 text-label font-semibold transition-colors duration-150 ease-out-quart focus-mark',
+                  isActive ? 'bg-surface-tint text-fg' : 'text-fg-muted hover:text-fg',
                 ].join(' ')}
               >
                 {label}
@@ -261,8 +258,8 @@ function ActivityFilters({
   textFilter: string | null;
 }) {
   return (
-    <div className="mt-6 flex flex-wrap items-end gap-4">
-      <label className="grid gap-1 text-label uppercase tracking-wider text-fg-muted">
+    <div className="mt-5 flex flex-wrap items-end gap-x-4 gap-y-3">
+      <label className={FILTER_LABEL}>
         Event window
         <select
           aria-label="Event window"
@@ -276,7 +273,7 @@ function ActivityFilters({
               DEFAULT_EVENT_WINDOW,
             )
           }
-          className="min-w-36 rounded-sm border border-rule bg-surface px-2 py-1 text-body normal-case tracking-normal text-fg focus-mark"
+          className={`${FILTER_CONTROL} min-w-36`}
         >
           {EVENT_WINDOWS.map((window) => (
             <option key={window.value} value={window.value}>
@@ -285,7 +282,7 @@ function ActivityFilters({
           ))}
         </select>
       </label>
-      <label className="grid gap-1 text-label uppercase tracking-wider text-fg-muted">
+      <label className={FILTER_LABEL}>
         Event type
         <input
           aria-label="Event type"
@@ -294,10 +291,10 @@ function ActivityFilters({
             setActivitySearchParam(setSearchParams, searchParams, 'type', event.currentTarget.value)
           }
           placeholder="session.crashed"
-          className="min-w-44 rounded-sm border border-rule bg-surface px-2 py-1 text-body normal-case tracking-normal text-fg placeholder:text-fg-faint focus-mark"
+          className={`${FILTER_CONTROL} min-w-44`}
         />
       </label>
-      <label className="grid gap-1 text-label uppercase tracking-wider text-fg-muted">
+      <label className={FILTER_LABEL}>
         Event actor
         <input
           aria-label="Event actor"
@@ -311,10 +308,10 @@ function ActivityFilters({
             )
           }
           placeholder="supervisor"
-          className="min-w-40 rounded-sm border border-rule bg-surface px-2 py-1 text-body normal-case tracking-normal text-fg placeholder:text-fg-faint focus-mark"
+          className={`${FILTER_CONTROL} min-w-40`}
         />
       </label>
-      <label className="grid gap-1 text-label uppercase tracking-wider text-fg-muted">
+      <label className={FILTER_LABEL}>
         Signal severity
         <select
           aria-label="Signal severity"
@@ -328,7 +325,7 @@ function ActivityFilters({
               'all',
             )
           }
-          className="min-w-36 rounded-sm border border-rule bg-surface px-2 py-1 text-body normal-case tracking-normal text-fg focus-mark"
+          className={`${FILTER_CONTROL} min-w-36`}
         >
           {EVENT_SIGNAL_FILTERS.map((signal) => (
             <option key={signal.value} value={signal.value}>
@@ -337,7 +334,7 @@ function ActivityFilters({
           ))}
         </select>
       </label>
-      <label className="grid min-w-56 flex-1 gap-1 text-label uppercase tracking-wider text-fg-muted">
+      <label className={`${FILTER_LABEL} min-w-56 flex-1`}>
         Search activity
         <input
           aria-label="Search activity"
@@ -346,7 +343,7 @@ function ActivityFilters({
             setActivitySearchParam(setSearchParams, searchParams, 'q', event.currentTarget.value)
           }
           placeholder="actor, subject, or message"
-          className="rounded-sm border border-rule bg-surface px-2 py-1 text-body normal-case tracking-normal text-fg placeholder:text-fg-faint focus-mark"
+          className={FILTER_CONTROL}
         />
       </label>
     </div>
@@ -374,35 +371,17 @@ function EventsSection({
       meta={events === null ? null : `${events.total} events`}
     >
       {error !== undefined && (
-        <p className="text-body text-accent" role="alert">
+        <p className={ERROR_LINE} role="alert">
           Event history unavailable: {error}.
         </p>
       )}
       {events?.partial === true && (
-        <p className="text-body text-warn">
+        <p className="text-label text-warn">
           Event history incomplete{partialErrors.length > 0 ? `: ${partialErrors.join('; ')}` : '.'}
         </p>
       )}
       <ActivityTable label="Supervisor events">
-        <thead>
-          <tr className="border-b border-rule text-label uppercase tracking-wider text-fg-muted">
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Time
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Signal
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Type
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Subject
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Detail
-            </th>
-          </tr>
-        </thead>
+        <HeadRow columns={['Time', 'Signal', 'Type', 'Subject', 'Detail']} fill="Detail" />
         <tbody>
           {items.length === 0 ? (
             <EmptyRow colSpan={5}>
@@ -420,20 +399,18 @@ function EventsSection({
                 // Audit-forwarded events all arrive at seq 0; index breaks ties.
                 key={`${event.seq}:${event.type}:${index}`}
                 {...attentionRowProps(attentionSeverity(event))}
-                className={`border-b border-rule ${
-                  attentionRowProps(attentionSeverity(event)).className ?? ''
-                }`}
+                className={`${ROW} ${attentionRowProps(attentionSeverity(event)).className ?? ''}`}
               >
-                <td className="py-3 pr-6 align-baseline text-fg-muted">
+                <td className={`${CELL} whitespace-nowrap text-fg-muted`}>
                   <TimeStamp ts={event.ts} />
                 </td>
-                <td className="py-3 pr-6 align-baseline">
+                <td className={`${CELL} whitespace-nowrap`}>
                   <EventSignalBadge signal={supervisorEventSignal(event)} />
                 </td>
-                <td className="py-3 pr-6 align-baseline font-medium text-fg">{event.type}</td>
-                <td className="py-3 pr-6 align-baseline text-fg-muted">{event.subject ?? '·'}</td>
-                <td className="py-3 pr-6 align-baseline text-fg-muted">
-                  {supervisorEventDetail(event)}
+                <td className={`${CELL} whitespace-nowrap font-medium text-fg`}>{event.type}</td>
+                <td className={`${CELL} whitespace-nowrap ${ID_TAG}`}>{event.subject ?? '·'}</td>
+                <td className={`${CELL} text-fg-muted [overflow-wrap:anywhere]`}>
+                  {eventDetailCell(event)}
                 </td>
               </tr>
             ))
@@ -462,24 +439,12 @@ function DeploysSection({
       meta={deploys?.failed_marker === true ? 'failed marker present' : (deploys?.source ?? null)}
     >
       {error !== undefined && (
-        <p className="text-body text-accent" role="alert">
+        <p className={ERROR_LINE} role="alert">
           Deploy history unavailable: {error}.
         </p>
       )}
       <ActivityTable label="Deploy history">
-        <thead>
-          <tr className="border-b border-rule text-label uppercase tracking-wider text-fg-muted">
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Time
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Status
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Detail
-            </th>
-          </tr>
-        </thead>
+        <HeadRow columns={['Time', 'Status', 'Detail']} fill="Detail" />
         <tbody>
           {items.length === 0 ? (
             <EmptyRow colSpan={3}>
@@ -490,17 +455,17 @@ function DeploysSection({
               <tr
                 key={`${deploy.at}:${deploy.detail}`}
                 {...attentionRowProps(attentionSeverity(deploy))}
-                className={`border-b border-rule ${
-                  attentionRowProps(attentionSeverity(deploy)).className ?? ''
-                }`}
+                className={`${ROW} ${attentionRowProps(attentionSeverity(deploy)).className ?? ''}`}
               >
-                <td className="py-3 pr-6 align-baseline text-fg-muted">
+                <td className={`${CELL} whitespace-nowrap text-fg-muted`}>
                   <TimeStamp ts={deploy.at} />
                 </td>
-                <td className="py-3 pr-6 align-baseline">
+                <td className={`${CELL} whitespace-nowrap`}>
                   <DeployStatusBadge deploy={deploy} />
                 </td>
-                <td className="py-3 pr-6 align-baseline text-fg-muted">{deploy.detail}</td>
+                <td className={`${CELL} w-full text-fg-muted [overflow-wrap:anywhere]`}>
+                  {deploy.detail}
+                </td>
               </tr>
             ))
           )}
@@ -523,27 +488,12 @@ function CommitsSection({
   return (
     <ActivitySection title="Git commits" meta={commits === null ? null : commits.view}>
       {error !== undefined && (
-        <p className="text-body text-accent" role="alert">
+        <p className={ERROR_LINE} role="alert">
           Git commits unavailable: {error}.
         </p>
       )}
       <ActivityTable label="Git commits">
-        <thead>
-          <tr className="border-b border-rule text-label uppercase tracking-wider text-fg-muted">
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Time
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Commit
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Author
-            </th>
-            <th scope="col" className="pb-3 pr-6 text-left font-medium">
-              Subject
-            </th>
-          </tr>
-        </thead>
+        <HeadRow columns={['Time', 'Commit', 'Author', 'Subject']} fill="Subject" />
         <tbody>
           {items.length === 0 ? (
             <EmptyRow colSpan={4}>
@@ -560,17 +510,28 @@ function CommitsSection({
 
 function CommitRow({ commit }: { commit: GitCommit }) {
   return (
-    <tr className="border-b border-rule">
-      <td className="py-3 pr-6 align-baseline text-fg-muted">
+    <tr className={ROW}>
+      <td className={`${CELL} whitespace-nowrap text-fg-muted`}>
         <TimeStamp ts={commit.date} />
       </td>
-      <td className="py-3 pr-6 align-baseline font-medium text-fg">{commit.short_sha}</td>
-      <td className="py-3 pr-6 align-baseline text-fg-muted">{commit.author}</td>
-      <td className="py-3 pr-6 align-baseline text-fg-muted">{commit.subject}</td>
+      <td className={`${CELL} whitespace-nowrap ${ID_TAG}`}>{commit.short_sha}</td>
+      <td className={`${CELL} whitespace-nowrap text-fg-muted`}>{commit.author}</td>
+      <td className={`${CELL} w-full text-fg [overflow-wrap:anywhere]`}>{commit.subject}</td>
     </tr>
   );
 }
 
+// Table recipe (DESIGN-PLAN §7), kept local: these tables are plain markup
+// with pinned aria-labels, not the shared sortable Table.
+const CELL = 'px-4 py-3 align-top';
+const ROW = 'border-b border-rule last:border-0';
+const ID_TAG = 'font-mono text-[0.8125rem] text-fg-muted';
+const ERROR_LINE = 'text-body text-accent';
+const FILTER_LABEL = 'grid gap-1.5 text-label font-medium text-fg-muted';
+const FILTER_CONTROL =
+  'h-9 rounded border border-rule bg-surface-raised px-3 text-body font-normal text-fg placeholder:text-fg-faint focus-mark';
+
+// Section title outside the panel, the panel holds the table.
 function ActivitySection({
   children,
   meta,
@@ -581,23 +542,23 @@ function ActivitySection({
   title: string;
 }) {
   return (
-    <section aria-labelledby={sectionId(title)} className="space-y-4">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 id={sectionId(title)} className="text-headline font-semibold tracking-tight text-fg">
+    <section aria-labelledby={sectionId(title)}>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id={sectionId(title)} className="text-title font-semibold text-fg">
           {title}
         </h2>
         {meta !== null && (
-          <span className="text-label uppercase tracking-wider text-fg-muted">{meta}</span>
+          <span className="min-w-0 truncate text-label text-fg-muted tnum">{meta}</span>
         )}
       </div>
-      {children}
+      <div className="space-y-3">{children}</div>
     </section>
   );
 }
 
 function ActivityTable({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-lg border border-rule bg-surface-raised">
       <table aria-label={label} className="w-full text-body tnum">
         {children}
       </table>
@@ -605,14 +566,44 @@ function ActivityTable({ children, label }: { children: ReactNode; label: string
   );
 }
 
+// `fill` names the column that takes the leftover width; the others size to
+// their content, so a mostly empty Detail column no longer pushes ids apart.
+function HeadRow({ columns, fill }: { columns: ReadonlyArray<string>; fill: string }) {
+  return (
+    <thead>
+      <tr className="border-b border-rule text-label font-medium text-fg-muted">
+        {columns.map((column) => (
+          <th
+            key={column}
+            scope="col"
+            className={`px-4 py-2.5 text-left font-medium ${column === fill ? 'w-full' : 'whitespace-nowrap'}`}
+          >
+            {column}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
 function EmptyRow({ children, colSpan }: { children: ReactNode; colSpan: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="py-10 text-center text-fg-muted italic">
+      <td colSpan={colSpan} className="px-4 py-10 text-center text-fg-muted">
         {children}
       </td>
     </tr>
   );
+}
+
+/**
+ * The Detail cell of a supervisor event. Empty when it would only repeat the
+ * Subject (most events carry no message, so the detail falls back to the
+ * subject); otherwise the message, or the type when there is no subject (R14).
+ */
+export function eventDetailCell(event: TypedEventStreamEnvelope): string {
+  const detail = supervisorEventDetail(event);
+  return detail === (event.subject ?? '') ? '' : detail;
 }
 
 function TimeStamp({ ts }: { ts: string }) {
@@ -622,7 +613,11 @@ function TimeStamp({ ts }: { ts: string }) {
 function EventSignalBadge({ signal }: { signal: SupervisorEventSignal }) {
   const tone: StatusTone =
     signal === 'attention' ? 'stuck' : signal === 'watch' ? 'warn' : 'neutral';
-  return <StatusBadge tone={tone} label={signal} />;
+  // Only a signal gets a filled pill; a plain event stays quiet text so the
+  // few attention and watch rows stand out (colour is a signal, §3.4).
+  return (
+    <StatusBadge tone={tone} label={signal} variant={tone === 'neutral' ? 'inline' : 'pill'} />
+  );
 }
 
 function DeployStatusBadge({ deploy }: { deploy: DeployRecord }) {

@@ -14,6 +14,14 @@ import { Field } from '../Field';
 import { Modal } from '../Modal';
 import { StatusBadge } from '../StatusBadge';
 
+// Input recipe (DESIGN-PLAN §7); the fill differs between the editable
+// fields and the fixed sender.
+const INPUT_CLASS =
+  'h-9 w-full rounded border border-rule px-3 text-body placeholder:text-fg-faint focus-mark';
+
+// Sentences in a status line wrap instead of truncating.
+const WRAP_LABEL = 'items-start [&>span]:whitespace-normal [&>svg]:mt-1';
+
 interface ComposeModalProps {
   open: boolean;
   onClose: () => void;
@@ -72,7 +80,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
       widthClass="max-w-2xl"
       footer={
         <>
-          <Button tone="quiet" size="sm" onClick={onClose}>
+          <Button size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button
@@ -97,7 +105,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
                 : `${displayLabel(OPERATOR_ALIAS, OPERATOR_ALIAS)} (reading-as does not change sender)`
             }
             disabled
-            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg-muted italic"
+            className={`${INPUT_CLASS} cursor-not-allowed bg-surface-tint text-fg-muted`}
           />
         </Field>
         <Field label="To (alias)" variant="form">
@@ -107,7 +115,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="mayor, mechanic, scix-worker, …"
-            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg placeholder:text-fg-faint focus-mark transition-colors"
+            className={`${INPUT_CLASS} bg-surface-raised text-fg`}
           />
         </Field>
         <Field label="Subject" variant="form">
@@ -116,7 +124,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             maxLength={200}
-            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg focus-mark transition-colors"
+            className={`${INPUT_CLASS} bg-surface-raised text-fg`}
           />
         </Field>
         <Field label="Body" variant="form">
@@ -125,17 +133,21 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             onChange={(e) => setBody(e.target.value)}
             rows={10}
             maxLength={16 * 1024}
-            className="w-full bg-surface-tint border border-rule rounded-sm px-3 py-2 text-body text-fg focus-mark resize-y"
+            className="w-full resize-y rounded border border-rule bg-surface-raised px-3 py-2 text-reading text-fg placeholder:text-fg-faint focus-mark"
           />
         </Field>
         {readOnly && <ReadOnlyBadge />}
         {!viewingAs.isOperator && (
           <StatusBadge
             tone="warn"
+            variant="inline"
+            className={WRAP_LABEL}
             label={`Reading as ${displayLabel(viewingAs.alias, OPERATOR_ALIAS)}. Sends from this modal are structurally locked to the operator regardless.`}
           />
         )}
-        {error && <StatusBadge tone="stuck" label={error} />}
+        {error && (
+          <StatusBadge tone="stuck" variant="inline" className={WRAP_LABEL} label={error} />
+        )}
       </div>
     </Modal>
   );

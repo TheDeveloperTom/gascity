@@ -79,20 +79,23 @@ export function attentionBlockProps(
   };
 }
 
+// A section in trouble is a panel whose border takes the signal colour. The
+// caller owns the panel shape (`rounded-lg border bg-surface-raised`) and
+// falls back to `border-rule` when this returns no class.
 export function attentionSectionProps(
   severity: BadgeSeverity | null,
 ): AttentionAttributes<HTMLElement> {
   if (severity === null) return {};
-  const toneClass =
-    severity === 'attention' ? 'border-accent bg-accent/5' : 'border-warn bg-warn/5';
   return {
     'data-attention-severity': severity,
-    className: `border-l-2 pl-4 -ml-4 py-1 ${toneClass}`,
+    className: severity === 'attention' ? 'border-accent/60' : 'border-warn/60',
   };
 }
 
+// Light signal tint on a row; it deepens one step on hover. This is the row's
+// state (DESIGN-PLAN §3.4), not a pressable affordance.
 function attentionHighlightClass(severity: BadgeSeverity): string {
   return severity === 'attention'
-    ? 'bg-accent/10 hover:bg-accent/15'
-    : 'bg-warn/10 hover:bg-warn/15';
+    ? 'bg-accent/[0.07] hover:bg-accent/10'
+    : 'bg-warn/[0.08] hover:bg-warn/[0.12]';
 }

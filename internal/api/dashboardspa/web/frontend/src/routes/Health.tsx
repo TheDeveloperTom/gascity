@@ -16,6 +16,7 @@ import { getActiveCity } from '../api/cityBase';
 import { useAttentionModel } from '../attention/context';
 import { attentionSectionProps, prefixedAttentionSeverity } from '../attention/routeHighlight';
 import { Button } from '../components/Button';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge, type StatusTone } from '../components/StatusBadge';
 import type {
@@ -67,17 +68,14 @@ export function HealthPage() {
     localToolVersions.loading ||
     doltNomsTrend.loading ||
     rigStoreHealth.loading;
-  const error =
-    [
-      systemHealth.error,
-      supervisorHealth.error,
-      supervisorStatusCache.error,
-      localToolVersions.error,
-      doltNomsTrend.error,
-      rigStoreHealth.error,
-    ]
-      .filter((value): value is string => value !== null)
-      .join('; ') || null;
+  const errors = [
+    systemHealth.error,
+    supervisorHealth.error,
+    supervisorStatusCache.error,
+    localToolVersions.error,
+    doltNomsTrend.error,
+    rigStoreHealth.error,
+  ];
   const refresh = useCallback(async () => {
     await Promise.all([
       refreshSystemHealth(),
@@ -133,184 +131,225 @@ export function HealthPage() {
           hasAnyData ? buildSynopsis(health, supervisor) : 'Reading state from the supervisor.'
         }
         meta={
-          <>
-            {error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {error}
-              </span>
-            )}
-            <Button size="sm" onClick={() => void refresh()}>
-              {sourceLoading && !hasAnyData ? 'Loading' : 'Refresh'}
-            </Button>
-          </>
+          <Button size="sm" onClick={() => void refresh()}>
+            {sourceLoading && !hasAnyData ? 'Loading' : 'Refresh'}
+          </Button>
         }
       />
 
+      <PageAlerts messages={errors} />
+
       {hasAnyData ? (
-        <div className="space-y-12">
-          <Section
-            title="Supervisor"
-            attention={supervisorAttention}
-            {...(supervisor ? { status: supervisorStatus(supervisor) } : {})}
-          >
-            {supervisor === null ? (
-              <p className="text-body text-fg-muted italic">Loading supervisor state.</p>
-            ) : supervisor.status === 'available' ? (
-              <KvList>
-                {/* izgc F7/F8: city + version are optional per supervisor's
+        <>
+          <HealthOverview
+            items={[
+              ...(supervisor ? [{ name: 'Supervisor', status: supervisorStatus(supervisor) }] : []),
+              ...(hostHealthStatus ? [{ name: 'Host', status: hostHealthStatus }] : []),
+              ...(rigStoreSummary ? [{ name: 'Bead stores', status: rigStoreSummary }] : []),
+            ]}
+          />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Section
+              title="Supervisor"
+              attention={supervisorAttention}
+              {...(supervisor ? { status: supervisorStatus(supervisor) } : {})}
+            >
+              {supervisor === null ? (
+                <p className={NOTE}>Loading supervisor state.</p>
+              ) : supervisor.status === 'available' ? (
+                <KvList>
+                  {/* izgc F7/F8: city + version are optional per supervisor's
                     OpenAPI. Absence is itself a wire-drift signal — render
                     in 'warn' tone rather than coalescing to a glanceable
                     em-dash, so the operator notices the regression. */}
-                {supervisor.data.city !== undefined ? (
-                  <Kv label="City" value={supervisor.data.city} />
-                ) : (
-                  <Kv label="City" value="not reported by supervisor" tone="warn" />
-                )}
-                {supervisor.data.version !== undefined ? (
-                  <Kv label="Version" value={supervisor.data.version} />
-                ) : (
-                  <Kv label="Version" value="not reported by supervisor" tone="warn" />
-                )}
-                <Kv label="Uptime" value={formatDuration(supervisor.data.uptime_sec)} />
-                <Kv label="Status" value={supervisor.data.status} />
-              </KvList>
-            ) : (
-              <p className="text-body text-accent">
-                Supervisor not reachable. The dashboard shell stays up; live data is stale.
-              </p>
-            )}
-          </Section>
+                  {supervisor.data.city !== undefined ? (
+                    <Kv label="City" value={supervisor.data.city} />
+                  ) : (
+                    <Kv label="City" value="not reported by supervisor" tone="warn" />
+                  )}
+                  {supervisor.data.version !== undefined ? (
+                    <Kv label="Version" value={supervisor.data.version} />
+                  ) : (
+                    <Kv label="Version" value="not reported by supervisor" tone="warn" />
+                  )}
+                  <Kv label="Uptime" value={formatDuration(supervisor.data.uptime_sec)} />
+                  <Kv label="Status" value={supervisor.data.status} />
+                </KvList>
+              ) : (
+                <p className="text-body text-accent">
+                  Supervisor not reachable. The dashboard shell stays up; live data is stale.
+                </p>
+              )}
+            </Section>
 
-          <Section
-            title="Host"
-            attention={hostAttention}
-            {...(hostHealthStatus ? { status: hostHealthStatus } : {})}
-          >
-            {healthState === null ? (
-              <p className="text-body text-fg-muted italic">Loading dashboard host health.</p>
-            ) : health === null ? (
-              <p className="text-body text-accent">
-                Dashboard host health unavailable{healthError ? `: ${healthError}` : ''}.
-              </p>
-            ) : (
-              <KvList>
-                <Kv
-                  label="CPUs"
-                  value={formatPositiveInteger(health.host.cpu_count)}
-                  {...(!isPositiveInteger(health.host.cpu_count) ? { tone: 'warn' as const } : {})}
-                />
-                <Kv
-                  label="Load (1m, 5m, 15m)"
-                  value={formatLoadAverages(health)}
-                  {...(!hasValidHostComputeTelemetry(health) ||
-                  loadAverage1(health) > health.host.cpu_count
-                    ? { tone: 'warn' as const }
-                    : {})}
-                />
-                <Kv
-                  label="Memory free"
-                  value={formatMemoryFree(health)}
-                  {...(hostMemoryFreeRatio === null || hostMemoryFreeRatio < 0.1
-                    ? { tone: 'warn' as const }
-                    : {})}
-                />
-                <Kv
-                  label="Host uptime"
-                  value={formatHealthMetricDuration(health.host.uptime)}
-                  {...(!hasPositiveMetricValue(health.host.uptime)
-                    ? { tone: 'warn' as const }
-                    : {})}
-                />
-              </KvList>
-            )}
-          </Section>
+            <Section
+              title="Host"
+              attention={hostAttention}
+              {...(hostHealthStatus ? { status: hostHealthStatus } : {})}
+            >
+              {healthState === null ? (
+                <p className={NOTE}>Loading dashboard host health.</p>
+              ) : health === null ? (
+                <p className="text-body text-accent">
+                  Dashboard host health unavailable{healthError ? `: ${healthError}` : ''}.
+                </p>
+              ) : (
+                <KvList>
+                  <Kv
+                    label="CPUs"
+                    value={formatPositiveInteger(health.host.cpu_count)}
+                    {...(!isPositiveInteger(health.host.cpu_count)
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                  <Kv
+                    label="Load (1m, 5m, 15m)"
+                    value={formatLoadAverages(health)}
+                    {...(!hasValidHostComputeTelemetry(health) ||
+                    loadAverage1(health) > health.host.cpu_count
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                  <Kv
+                    label="Memory free"
+                    value={formatMemoryFree(health)}
+                    {...(hostMemoryFreeRatio === null || hostMemoryFreeRatio < 0.1
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                  <Kv
+                    label="Host uptime"
+                    value={formatHealthMetricDuration(health.host.uptime)}
+                    {...(!hasPositiveMetricValue(health.host.uptime)
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                </KvList>
+              )}
+            </Section>
 
-          <Section title="Admin process" attention={adminAttention}>
-            {healthState === null ? (
-              <p className="text-body text-fg-muted italic">Loading dashboard process health.</p>
-            ) : health === null ? (
-              <p className="text-body text-accent">
-                Dashboard process health unavailable{healthError ? `: ${healthError}` : ''}.
-              </p>
-            ) : (
-              <KvList>
-                <Kv
-                  label="PID"
-                  value={formatPositiveInteger(health.admin.pid)}
-                  {...(!isPositiveInteger(health.admin.pid) ? { tone: 'warn' as const } : {})}
-                />
-                <Kv
-                  label="Uptime"
-                  value={formatPositiveDuration(health.admin.uptime_sec)}
-                  {...(!isPositiveFinite(health.admin.uptime_sec) ? { tone: 'warn' as const } : {})}
-                />
-                <Kv
-                  label="RSS"
-                  value={formatHealthMetricSize(health.admin.rss)}
-                  {...(!hasPositiveMetricValue(health.admin.rss) ? { tone: 'warn' as const } : {})}
-                />
-                <Kv
-                  label="Heap used"
-                  value={formatPositiveSize(health.admin.heap_used_bytes)}
-                  {...(!isPositiveFinite(health.admin.heap_used_bytes)
-                    ? { tone: 'warn' as const }
-                    : {})}
-                />
-                <Kv label="Node" value={health.admin.node_version} />
-              </KvList>
-            )}
-          </Section>
+            <Section title="Admin process" attention={adminAttention}>
+              {healthState === null ? (
+                <p className={NOTE}>Loading dashboard process health.</p>
+              ) : health === null ? (
+                <p className="text-body text-accent">
+                  Dashboard process health unavailable{healthError ? `: ${healthError}` : ''}.
+                </p>
+              ) : (
+                <KvList>
+                  <Kv
+                    label="PID"
+                    value={formatPositiveInteger(health.admin.pid)}
+                    {...(!isPositiveInteger(health.admin.pid) ? { tone: 'warn' as const } : {})}
+                  />
+                  <Kv
+                    label="Uptime"
+                    value={formatPositiveDuration(health.admin.uptime_sec)}
+                    {...(!isPositiveFinite(health.admin.uptime_sec)
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                  <Kv
+                    label="RSS"
+                    value={formatHealthMetricSize(health.admin.rss)}
+                    {...(!hasPositiveMetricValue(health.admin.rss)
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                  <Kv
+                    label="Heap used"
+                    value={formatPositiveSize(health.admin.heap_used_bytes)}
+                    {...(!isPositiveFinite(health.admin.heap_used_bytes)
+                      ? { tone: 'warn' as const }
+                      : {})}
+                  />
+                  <Kv label="Runtime" value={health.admin.node_version} />
+                </KvList>
+              )}
+            </Section>
 
-          <Section title="Tool versions">
-            <ToolVersionsTable state={localTools} />
-          </Section>
+            <Section title="Tool versions">
+              <ToolVersionsTable state={localTools} />
+            </Section>
 
-          <Section title="Diagnostics">
-            <div className="space-y-8">
-              <DoltUsageBlock usage={doltUsageOf(status)} />
-              <BeadsUsageBlock usage={beadsUsageOf(status)} />
-            </div>
-          </Section>
+            <Section title="Diagnostics">
+              <div className="space-y-6">
+                <DoltUsageBlock usage={doltUsageOf(status)} />
+                <BeadsUsageBlock usage={beadsUsageOf(status)} />
+              </div>
+            </Section>
 
-          <Section
-            title="Bead stores · per rig"
-            meta={rigStoreMeta(rigStores)}
-            {...(rigStoreSummary ? { status: rigStoreSummary } : {})}
-          >
-            <RigStoreHealthBlock report={rigStores} />
-          </Section>
+            <Section
+              title="Bead stores by rig"
+              meta={rigStoreMeta(rigStores)}
+              {...(rigStoreSummary ? { status: rigStoreSummary } : {})}
+            >
+              <RigStoreHealthBlock report={rigStores} />
+            </Section>
 
-          <Section title="Store thresholds">
-            <ConfigComparison comparison={configComparisonOf(status)} />
-          </Section>
+            <Section title="Store thresholds">
+              <ConfigComparison comparison={configComparisonOf(status)} />
+            </Section>
 
-          <Section
-            title="Dolt-noms · 24 h"
-            attention={doltNomsAttention}
-            meta={trend && trend.samples.length > 0 ? `${trend.samples.length} samples` : undefined}
-          >
-            {trend === null ? (
-              <p className="text-body text-fg-muted italic">Loading.</p>
-            ) : !trend.available ? (
-              <p className="text-body text-fg-muted italic">
-                Dolt-noms metric unavailable: {doltUnavailableCopy(trend.reason)}.
-              </p>
-            ) : trend.samples.length === 0 ? (
-              <p className="text-body text-fg-muted italic">
-                No samples yet. Backend just started; next sample in ten minutes or less.
-              </p>
-            ) : (
-              <Sparkline samples={trend.samples} />
-            )}
-          </Section>
-        </div>
+            <Section
+              title="Dolt storage, last 24 hours"
+              attention={doltNomsAttention}
+              meta={
+                trend && trend.samples.length > 0 ? `${trend.samples.length} samples` : undefined
+              }
+            >
+              {trend === null ? (
+                <p className={NOTE}>Loading.</p>
+              ) : !trend.available ? (
+                <p className={NOTE}>
+                  Dolt-noms metric unavailable: {doltUnavailableCopy(trend.reason)}.
+                </p>
+              ) : trend.samples.length === 0 ? (
+                <p className={NOTE}>
+                  No samples yet. Backend just started; next sample in ten minutes or less.
+                </p>
+              ) : (
+                <Sparkline samples={trend.samples} />
+              )}
+            </Section>
+          </div>
+        </>
       ) : (
-        <p className="text-body text-fg-muted italic">Loading.</p>
+        <p className={NOTE}>Loading.</p>
       )}
     </section>
   );
 }
 
+// Empty, loading and unavailable lines: muted and upright (R5).
+const NOTE = 'text-body text-fg-muted';
+
+// Status overview (R13): the three statuses the page already computes, as
+// plain pills in one row. Not interactive; each section below repeats its own.
+function HealthOverview({
+  items,
+}: {
+  items: ReadonlyArray<{ name: string; status: { tone: StatusTone; label: string } }>;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <ul aria-label="Health overview" className="mb-6 flex flex-wrap gap-2">
+      {items.map(({ name, status }) => (
+        <li key={name} className="min-w-0">
+          <StatusBadge
+            tone={status.tone}
+            label={`${name} ${status.label === 'attention' ? 'need attention' : status.label}`}
+            className="px-3 py-1 text-body"
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// A panel per section. Its border takes the attention signal when one is
+// set (attentionSectionProps), otherwise the plain rule. The h2's closest
+// <section> is this element, which carries data-attention-severity.
 function Section({
   title,
   status,
@@ -324,28 +363,27 @@ function Section({
   attention?: ReturnType<typeof prefixedAttentionSeverity>;
   children: ReactNode;
 }) {
+  const attentionProps = attentionSectionProps(attention ?? null);
   return (
-    <section {...attentionSectionProps(attention ?? null)}>
-      <header className="flex items-baseline justify-between gap-4 mb-4 pb-2 border-b border-rule">
-        <h2 className="text-headline font-semibold text-fg">{title}</h2>
-        <div className="flex items-baseline gap-4">
-          {meta && (
-            <span className="text-label uppercase tracking-wider text-fg-muted">{meta}</span>
-          )}
+    <section
+      {...attentionProps}
+      className={`min-w-0 rounded-lg border bg-surface-raised ${attentionProps.className ?? 'border-rule'}`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-rule px-4 py-3">
+        <h2 className="text-title font-semibold text-fg">{title}</h2>
+        <div className="flex min-w-0 items-center gap-3">
+          {meta && <span className="text-label text-fg-muted tnum">{meta}</span>}
           {status && <StatusBadge tone={status.tone} label={status.label} />}
         </div>
-      </header>
-      {children}
+      </div>
+      <div className="px-4 py-4">{children}</div>
     </section>
   );
 }
 
 function KvList({ children }: { children: ReactNode }) {
-  // Two-column typeset list. Label left, value right, hairlines
-  // between rows. Tabular numerals for value alignment.
-  return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-8 gap-y-3 max-w-prose">{children}</dl>
-  );
+  // Two-column list: label left, value right. Tabular numerals align values.
+  return <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2">{children}</dl>;
 }
 
 function Kv({ label, value, tone }: { label: string; value: string; tone?: 'warn' | 'stuck' }) {
@@ -353,7 +391,9 @@ function Kv({ label, value, tone }: { label: string; value: string; tone?: 'warn
   return (
     <>
       <dt className="text-body text-fg-muted">{label}</dt>
-      <dd className={`text-body tnum font-medium ${valueColor}`}>{value}</dd>
+      <dd className={`text-body tnum font-medium [overflow-wrap:anywhere] ${valueColor}`}>
+        {value}
+      </dd>
     </>
   );
 }
@@ -371,12 +411,10 @@ interface ConfigComparisonRow {
 
 function ToolVersionsTable({ state }: { state: LocalToolVersionsState | null }) {
   if (state === null) {
-    return <p className="text-body text-fg-muted italic">Loading tool versions.</p>;
+    return <p className="text-body text-fg-muted">Loading tool versions.</p>;
   }
   if (state.status === 'unavailable') {
-    return (
-      <p className="text-body text-fg-muted italic">Tool versions unavailable: {state.error}.</p>
-    );
+    return <p className="text-body text-fg-muted">Tool versions unavailable: {state.error}.</p>;
   }
   // gc first (it frames the section), then the tools the operator most often
   // checks. A plain passthrough of each installed version — gc owns version-floor
@@ -387,9 +425,9 @@ function ToolVersionsTable({ state }: { state: LocalToolVersionsState | null }) 
     { label: 'dolt', tool: state.data.dolt },
   ];
   return (
-    <div className="grid grid-cols-[1fr_max-content] gap-x-8 gap-y-3 max-w-prose">
-      <div className="text-label uppercase tracking-wider text-fg-muted">Tool</div>
-      <div className="text-label uppercase tracking-wider text-fg-muted text-right">Installed</div>
+    <div className="grid grid-cols-[1fr_max-content] gap-x-8 gap-y-3">
+      <div className="text-label font-medium text-fg-muted">Tool</div>
+      <div className="text-label font-medium text-fg-muted text-right">Installed</div>
       {rows.map((row) => (
         <ToolVersionRow key={row.label} label={row.label} tool={row.tool} />
       ))}
@@ -423,7 +461,7 @@ function DoltUsageBlock({ usage }: { usage: DiagnosticDatum<StatusStoreHealth> }
   const u = usage.value;
   return (
     <div className="space-y-2">
-      <h3 className="text-label uppercase tracking-wider text-fg-muted">Dolt usage</h3>
+      <h3 className="text-body font-semibold text-fg">Dolt usage</h3>
       {usage.stale !== undefined && <StaleNote message={usage.stale} />}
       <KvList>
         <Kv label="On-disk size" value={formatHumanSize(statusNumber(u.size_bytes))} />
@@ -452,7 +490,7 @@ function BeadsUsageBlock({ usage }: { usage: DiagnosticDatum<StatusWorkCounts> }
   const u = usage.value;
   return (
     <div className="space-y-2">
-      <h3 className="text-label uppercase tracking-wider text-fg-muted">Beads usage</h3>
+      <h3 className="text-body font-semibold text-fg">Beads usage</h3>
       {usage.stale !== undefined && <StaleNote message={usage.stale} />}
       <KvList>
         <Kv label="Open" value={u.open.toString()} />
@@ -465,11 +503,11 @@ function BeadsUsageBlock({ usage }: { usage: DiagnosticDatum<StatusWorkCounts> }
 
 function RigStoreHealthBlock({ report }: { report: RigStoreHealthReport | null }) {
   if (report === null) {
-    return <p className="text-body text-fg-muted italic">Loading per-rig store health.</p>;
+    return <p className="text-body text-fg-muted">Loading per-rig store health.</p>;
   }
   if (!report.available && report.rigs.length === 0) {
     return (
-      <p className="text-body text-fg-muted italic">
+      <p className="text-body text-fg-muted">
         Per-rig store health unavailable: {rigStoreUnavailableCopy(report.reason)}.
       </p>
     );
@@ -477,9 +515,9 @@ function RigStoreHealthBlock({ report }: { report: RigStoreHealthReport | null }
   // Sort worst-first so a degraded store is never buried below healthy ones.
   const rigs = [...report.rigs].sort((a, b) => rollupRank(b.rollup) - rollupRank(a.rollup));
   return (
-    <div className="space-y-6 max-w-prose">
+    <div className="space-y-6">
       {!report.available && (
-        <p className="text-body text-warn italic">
+        <p className="text-body text-warn">
           Showing the last sample; refresh failed: {rigStoreUnavailableCopy(report.reason)}.
         </p>
       )}
@@ -517,7 +555,7 @@ function RigStoreRow({ rig }: { rig: RigStoreHealth }) {
           ))}
         </ul>
       )}
-      {rig.note !== undefined && <p className="text-label text-fg-muted italic">{rig.note}</p>}
+      {rig.note !== undefined && <p className="text-label text-fg-muted">{rig.note}</p>}
     </div>
   );
 }
@@ -575,19 +613,15 @@ function rigStoreUnavailableCopy(reason: RigStoreHealthUnavailableReason): strin
 
 function ConfigComparison({ comparison }: { comparison: DiagnosticDatum<ConfigComparisonRow[]> }) {
   if (comparison.status === 'unavailable') {
-    return (
-      <p className="text-body text-fg-muted italic">Comparison unavailable: {comparison.reason}.</p>
-    );
+    return <p className="text-body text-fg-muted">Comparison unavailable: {comparison.reason}.</p>;
   }
   return (
     <div className="space-y-2">
       {comparison.stale !== undefined && <StaleNote message={comparison.stale} />}
-      <div className="grid grid-cols-[1fr_max-content_max-content] gap-x-8 gap-y-3 max-w-prose">
-        <div className="text-label uppercase tracking-wider text-fg-muted">Setting</div>
-        <div className="text-label uppercase tracking-wider text-fg-muted text-right">
-          Recommended
-        </div>
-        <div className="text-label uppercase tracking-wider text-fg-muted text-right">Loaded</div>
+      <div className="grid grid-cols-[1fr_max-content_max-content] gap-x-8 gap-y-3">
+        <div className="text-label font-medium text-fg-muted">Setting</div>
+        <div className="text-label font-medium text-fg-muted text-right">Recommended</div>
+        <div className="text-label font-medium text-fg-muted text-right">Loaded</div>
         {comparison.value.map((row) => (
           <ComparisonRow key={row.label} row={row} />
         ))}
@@ -602,9 +636,7 @@ function ComparisonRow({ row }: { row: ConfigComparisonRow }) {
     <div className={`contents ${tone}`} data-comparison-row={row.label}>
       <div className={`text-body ${tone}`}>
         {row.label}
-        {!row.withinRecommendation && (
-          <span className="text-label uppercase tracking-wider text-warn"> · over</span>
-        )}
+        {!row.withinRecommendation && <span className="text-label text-warn"> · over</span>}
       </div>
       <div className="text-body tnum text-fg-muted text-right">{row.recommended}</div>
       <div className={`text-body tnum font-medium text-right ${tone}`}>{row.loaded}</div>
@@ -615,8 +647,8 @@ function ComparisonRow({ row }: { row: ConfigComparisonRow }) {
 function UnavailableNote({ heading, reason }: { heading: string; reason: string }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-label uppercase tracking-wider text-fg-muted">{heading}</h3>
-      <p className="text-body text-fg-muted italic">Unavailable: {reason}.</p>
+      <h3 className="text-body font-semibold text-fg">{heading}</h3>
+      <p className="text-body text-fg-muted">Unavailable: {reason}.</p>
     </div>
   );
 }
@@ -624,7 +656,7 @@ function UnavailableNote({ heading, reason }: { heading: string; reason: string 
 // Warn-toned "showing last sample" line for cached diagnostics whose latest read
 // failed, matching the rig-store-health stale affordance.
 function StaleNote({ message }: { message: string }) {
-  return <p className="text-body text-warn italic">{message}</p>;
+  return <p className="text-body text-warn">{message}</p>;
 }
 
 function Sparkline({ samples }: { samples: { ts: string; bytes: number }[] }) {
@@ -643,7 +675,7 @@ function Sparkline({ samples }: { samples: { ts: string; bytes: number }[] }) {
     })
     .join(' ');
   return (
-    <div className="space-y-3 max-w-prose">
+    <div className="space-y-3">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
@@ -658,7 +690,7 @@ function Sparkline({ samples }: { samples: { ts: string; bytes: number }[] }) {
           points={points}
         />
       </svg>
-      <div className="flex items-baseline justify-between text-label uppercase tracking-wider text-fg-muted tnum">
+      <div className="flex items-baseline justify-between text-label font-medium text-fg-muted tnum">
         <span>min {formatHumanSize(min)}</span>
         <span>max {formatHumanSize(max)}</span>
       </div>
