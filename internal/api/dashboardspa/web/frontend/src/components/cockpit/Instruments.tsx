@@ -362,6 +362,14 @@ const LAMP_TONE: Record<LampState, string> = {
   unknown: 'text-fg-muted',
 };
 
+// The value text: a healthy reading is quiet ink (the green shape already
+// says healthy); only a warning keeps its signal colour.
+const LAMP_VALUE_TONE: Record<LampState, string> = {
+  healthy: 'text-fg-muted',
+  warning: 'text-warn',
+  unknown: 'text-fg-muted',
+};
+
 function sentenceCase(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
@@ -383,7 +391,7 @@ export function StatusLamps({ lamps }: { lamps: readonly StatusLamp[] }) {
               <span className="text-body text-fg group-hover:text-primary group-hover:underline">
                 {sentenceCase(lamp.label)}
               </span>
-              <span className={`text-label ${LAMP_TONE[lamp.state]}`}>{lamp.value}</span>
+              <span className={`text-label ${LAMP_VALUE_TONE[lamp.state]}`}>{lamp.value}</span>
             </span>
           </Link>
         </li>
