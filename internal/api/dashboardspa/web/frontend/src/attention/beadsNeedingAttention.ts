@@ -169,15 +169,40 @@ export function selectBeadsNeedingAttention(
   // waiting-human is checked first: a held bead may also be open+unassigned
   // (a gate bead) or look stalled (a parked worker), and the operator-facing
   // fact in every such case is WHO it waits on.
+  // A task its live run is working on is judged by the run's steps, not by
+  // its own assignee: the route does the work, so the task has none (review
+  // I3). Its stalled step reports once, under the task.
+  const routed = tasksWithLiveRoute(inputs.routeItems ?? []);
   for (const bead of inputs.beads) {
     const row =
       waitingHumanRow(bead, nowMs) ??
       readyUnclaimedRow(bead, nowMs) ??
-      stalledRow(bead, inputs.sessions, nowMs);
+      (routed.has(bead.id) ? null : stalledRow(bead, inputs.sessions, nowMs));
     if (row !== null) rows.push(row);
   }
   rows.push(...stalledRouteRows(inputs, nowMs));
-  return rows;
+  return uniqueRows(rows);
+}
+
+function tasksWithLiveRoute(routeItems: readonly Bead[]): Set<string> {
+  const out = new Set<string>();
+  for (const bead of routeItems) {
+    if (!isRouteRoot(bead) || bead.status === 'closed') continue;
+    const taskId = routeTaskId(bead);
+    if (taskId !== null) out.add(taskId);
+  }
+  return out;
+}
+
+/** One row per bead and reason: the first wins, so ids stay unique. */
+function uniqueRows(rows: readonly BeadAttentionRow[]): BeadAttentionRow[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.beadId}:${row.reason}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // A stalled route step is reported once, under its task's title: the owner

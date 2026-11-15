@@ -100,6 +100,60 @@ describe('selectBeadsNeedingAttention, owner pass', () => {
     }
   });
 
+  // Review I3: one row per task, and a task worked by its run is not stalled
+  // for lacking an assignee.
+  it('an in-flight task and its stalled step give one row', () => {
+    const task = bead({ id: 'dw-work', title: 'Bead read', status: 'in_progress' });
+    const root = bead({
+      id: 'R',
+      status: 'in_progress',
+      metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-work' },
+    });
+    const stepBead = bead({
+      id: 'R.2',
+      title: 'Verify the test fails',
+      status: 'in_progress',
+      metadata: { 'gc.root_bead_id': 'R' },
+    });
+    const rows = selectBeadsNeedingAttention(
+      {
+        beads: [task],
+        escalations: [],
+        sessions: [],
+        routeItems: [root, stepBead],
+        taskTitles: new Map([['dw-work', 'Bead read']]),
+      },
+      NOW,
+    );
+    expect(rows.map((row) => `${row.beadId}:${row.reason}`)).toEqual(['dw-work:stalled']);
+    expect(rows[0]?.summary).toContain('Verify the test fails');
+  });
+
+  it('a task worked by a live run is not stalled for lacking an assignee', () => {
+    const task = bead({ id: 'dw-ok', status: 'in_progress' });
+    const root = bead({
+      id: 'R',
+      status: 'in_progress',
+      metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-ok' },
+    });
+    const running = bead({
+      id: 'R.1',
+      status: 'in_progress',
+      assignee: 'worker',
+      metadata: { 'gc.root_bead_id': 'R' },
+    });
+    const rows = selectBeadsNeedingAttention(
+      {
+        beads: [task],
+        escalations: [],
+        sessions: [{ id: 's1', session_name: 'worker', state: 'active', last_active: '2026-06-05T11:59:00Z' }],
+        routeItems: [root, running],
+      },
+      NOW,
+    );
+    expect(rows).toEqual([]);
+  });
+
   it('waiting row names its actor', () => {
     const rows = selectBeadsNeedingAttention(
       {
