@@ -16,7 +16,7 @@ test.describe('beads stage board', () => {
   });
 
   test('places every task in its route stage', async ({ page }) => {
-    const board = page.getByRole('region', { name: 'dw', exact: true });
+    const board = page.getByRole('region', { name: 'Board', exact: true });
     const expected: Array<[string, string]> = [
       ['Waiting', STAGE_TASKS.waiting.title],
       ['Waiting', STAGE_TASKS.blocked.title],

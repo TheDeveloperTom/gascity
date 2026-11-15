@@ -192,7 +192,8 @@ export function buildBoardModel(
   const tasks = data.items.filter((bead) => beadRole(bead) === 'task');
   const everything = [...tasks, ...data.routeItems, ...data.serviceItems];
   const byId = new Map(everything.map((b) => [b.id, b]));
-  const graph = buildBeadGraph(everything);
+  // Tasks only, so a card never counts route steps as its neighbours.
+  const graph = buildBeadGraph(tasks);
   const routeIndex = buildRouteIndex(data.routeItems, { routesComplete: data.routesComplete });
   const stopCards = stopCardsByTask(tasks);
   const taskIds = new Set(tasks.map((b) => b.id));

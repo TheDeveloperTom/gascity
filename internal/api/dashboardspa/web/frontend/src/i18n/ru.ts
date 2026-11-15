@@ -120,10 +120,9 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'What is going on': 'Что идёт',
   'Reading the board…': 'Читаю доску…',
   'Nothing is going on right now': 'Сейчас ничего не идёт',
-  Working: 'Пишется код',
-  PR: 'Вливание',
+  'Writing code': 'Пишется код',
+  Merging: 'Вливание',
   'Show all {n}': 'Показать все {n}',
-  'Show fewer': 'Свернуть',
 
   // City block (components/home/CityStrip).
   Tasks: 'Задачи',
@@ -179,6 +178,24 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
     few: 'Вас ждут {n} дела',
     many: 'Вас ждут {n} дел',
   },
+
+  // The board as a route (B5).
+  Stages: 'Этапы',
+  Waiting: 'Ждёт',
+  Working: 'В работе',
+  PR: 'PR',
+  Merged: 'Влито',
+  recent: 'недавние',
+  None: 'Пусто',
+  'Show {n} more': 'Ещё {n}',
+  'Show fewer': 'Свернуть',
+  'Show all history': 'Вся история',
+  'Recent merges only': 'Только недавние',
+  'Nobody is working right now.': 'Сейчас никто не работает.',
+  'No reason found in the board data.': 'Причину в данных доски найти не удалось.',
+  'The board read only part of the tasks, so it cannot tell who is working.':
+    'Доска прочитала не все задачи, поэтому не может сказать, кто работает.',
+  'Open the run': 'Открыть прогон',
 
   // Needs-you panels (Task 11).
   '{n} task issues are on Health': {

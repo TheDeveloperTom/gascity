@@ -8,7 +8,7 @@ import { useAttentionModel } from '../attention/context';
 import { inProgressCardNote } from '../attention/beadsNeedingAttention';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadAttentionPanel } from '../components/beads/BeadAttentionPanel';
-import { BeadBoardSection } from '../components/beads/BeadBoardSection';
+import { BeadBoard } from '../components/beads/BeadBoard';
 import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
 import { Field } from '../components/Field';
@@ -21,7 +21,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { useNow } from '../contexts/NowContext';
 import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { buildBeadGraph } from '../lib/beadGraph';
-import { buildRouteIndex, stopCardsByTask } from '../lib/stageBoard';
+import { ALL_PROJECTS, buildBoardModel } from '../lib/boardModel';
+import { buildRouteIndex } from '../lib/stageBoard';
 import { resolveRigName, rigNameOptions } from '../lib/rigNames';
 import { useCachedData } from '../hooks/useCachedData';
 import { useGcEventRefresh } from '../hooks/useGcEvents';
@@ -33,7 +34,6 @@ import { listSupervisorRigs } from '../supervisor/rigReads';
 import { closeSupervisorBead, createAndSlingSupervisorBead } from '../supervisor/beadWrites';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
 
-const EMPTY_IDS: ReadonlySet<string> = new Set();
 const RIG_FILTER_ALL = '';
 const CLOSED_CHIP_ID = 'closed';
 // The board's refresh is a full list refetch (~1.3MB on a busy city). A busy
@@ -129,7 +129,6 @@ export function BeadsPage() {
     () => buildRouteIndex(routeBeads, { routesComplete }),
     [routeBeads, routesComplete],
   );
-  const stopCards = useMemo(() => stopCardsByTask(rows), [rows]);
   const totalShown = data?.total ?? 0;
   const upstreamTotal = data?.upstream_total;
   const upstreamFetched = data?.upstream_fetched;
@@ -291,14 +290,6 @@ export function BeadsPage() {
   }, [newAgent, newBody, newRig, newTitle, readOnly, refresh]);
 
   const matched = useMemo(() => filters.groups.flatMap((group) => group.rows), [filters.groups]);
-  const graph = useMemo(() => buildBeadGraph(matched), [matched]);
-  const groupIds = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const group of filters.groups) {
-      map.set(group.projectKey, new Set(group.rows.map((row) => row.id)));
-    }
-    return map;
-  }, [filters.groups]);
   // The dialog graph also holds the route beads, so a step opened by its deep
   // link (or from a card's step line) keeps its dependency neighbourhood. The
   // board graph stays tasks-only, so a card's `blocks N` never counts steps.
@@ -343,6 +334,28 @@ export function BeadsPage() {
         : (sessions.data.items ?? []),
     [sessions.data],
   );
+  // B5: one board for every project (B4). Chips and search keep filtering
+  // `matched` until B7 moves them into the board model.
+  const serviceItems = useMemo(() => data?.service_items ?? EMPTY_BEADS, [data]);
+  const boardModel = useMemo(
+    () =>
+      buildBoardModel(
+        { items: matched, routeItems: routeBeads, serviceItems, routesComplete },
+        rigItems,
+        { project: ALL_PROJECTS, search: '', showTests: false },
+      ),
+    [matched, routeBeads, serviceItems, routesComplete, rigItems],
+  );
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleGroup = useCallback((key: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   const beadNoteOf = useMemo(() => {
     const notes = new Map<string, string>();
     for (const bead of matched) {
@@ -524,23 +537,18 @@ export function BeadsPage() {
             : 'Nothing on the queue right now.'}
         </p>
       ) : (
-        <div className="space-y-10">
-          {filters.groups.map((group) => (
-            <BeadBoardSection
-              key={group.projectKey}
-              label={group.project}
-              count={group.totalInProject}
-              graph={graph}
-              ids={groupIds.get(group.projectKey) ?? EMPTY_IDS}
-              routeIndex={routeIndex}
-              stopCards={stopCards}
-              selectedId={selectedId}
-              attentionSeverity={beadAttentionSeverity}
-              noteOf={beadNoteOf}
-              onSelect={setSelectedId}
-            />
-          ))}
-        </div>
+        <BeadBoard
+          model={boardModel}
+          selectedId={selectedId}
+          attentionSeverity={beadAttentionSeverity}
+          noteOf={beadNoteOf}
+          nowMs={nowMs}
+          onSelect={setSelectedId}
+          openGroups={openGroups}
+          onToggleGroup={toggleGroup}
+          showAllHistory={showClosed}
+          onToggleHistory={() => setShowClosed((prev) => !prev)}
+        />
       )}
 
       {hasLoadedBoard && orphanRunCount > 0 && (

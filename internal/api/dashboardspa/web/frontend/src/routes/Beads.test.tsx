@@ -130,7 +130,8 @@ describe('BeadsPage', () => {
     renderPage();
 
     await screen.findByRole('heading', { name: /^beads$/i });
-    const board = await screen.findByRole('region', { name: PROJECT });
+    // B5 supersedes BE-11: one board region, never a section per id prefix.
+    const board = await screen.findByRole('region', { name: 'Board' });
 
     expect(board).not.toBeNull();
     expect(screen.queryByRole('table')).toBeNull();

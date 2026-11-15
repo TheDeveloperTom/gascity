@@ -12,9 +12,10 @@ import { FoldList } from '../FoldList';
 const FOLD_LIMIT = 8;
 
 const STAGE_WORD: Readonly<Record<FlightStage, string>> = {
-  working: 'Working',
+  // Home's own words (the board's stop names are 'Working' and 'PR').
+  working: 'Writing code',
   review: 'Review',
-  pr: 'PR',
+  pr: 'Merging',
 };
 
 function StageDots({ stage }: { stage: FlightStage }) {

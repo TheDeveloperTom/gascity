@@ -1,12 +1,9 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BeadStatus } from 'gas-city-dashboard-shared';
 import type { SupervisorBead } from '../../supervisor/beadReads';
-import { buildBeadGraph } from '../../lib/beadGraph';
-import { buildRouteIndex, buildStageColumns } from '../../lib/stageBoard';
+import { renderBoard as renderSharedBoard } from '../../test/renderBoard';
 import { assertAtMostOneMark } from '../../test/assertions/oneMarkRule';
-import { BeadBoard } from './BeadBoard';
 
 const scrollIntoView = vi.fn();
 
@@ -36,15 +33,8 @@ function renderBoard(
   selectedId: string | null = null,
   onSelect = vi.fn(),
 ) {
-  // Stage board (2026-11-15): columns are route stages, derived per task.
-  const graph = buildBeadGraph(beads);
-  const columns = buildStageColumns(graph.nodes.values(), buildRouteIndex([]), new Map());
-  const result = render(
-    <MemoryRouter>
-      <BeadBoard columns={columns} selectedId={selectedId} onSelect={onSelect} />
-    </MemoryRouter>,
-  );
-  return { ...result, onSelect };
+  // B5: one helper builds the board model (B4) the way the page does.
+  return renderSharedBoard(beads, { selectedId, onSelect });
 }
 
 describe('BeadBoard', () => {
