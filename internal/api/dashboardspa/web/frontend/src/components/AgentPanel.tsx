@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useOperatorConfig } from '../contexts/OperatorConfigContext';
 import { displayLabel, tierLabel, type AliasBucket } from '../hooks/aliasPriority';
+import { Icon, StatusShape } from './icons';
 
-// Shared rail shell for both panel states: full-width with a bottom rule on
-// mobile, fixed-width with a right-edge rule from sm up; only the sm width
-// varies per state.
-const ASIDE_BASE_CLASS =
-  'border-rule pb-6 border-b sm:shrink-0 sm:pr-6 sm:pb-0 sm:border-b-0 sm:border-r';
+// Shared rail shell for both panel states: a white panel on the pavement,
+// full-width above the list on phones, fixed-width beside it from sm up;
+// only the sm width varies per state.
+const ASIDE_BASE_CLASS = 'rounded-lg border border-rule bg-surface-raised p-4 sm:shrink-0';
 
 export function AgentPanel({
   buckets,
@@ -62,62 +62,62 @@ export function AgentPanel({
   };
 
   if (!expanded) {
+    // Collapsed: who you are reading as, and one boxed action to change it.
+    // On phones it is a single row above the list; from sm up a narrow panel.
     return (
-      <aside className={`${ASIDE_BASE_CLASS} sm:w-44`}>
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          aria-expanded={false}
-          className="text-label uppercase tracking-wider text-fg-muted hover:text-fg focus-mark rounded-sm"
-        >
-          ▸ Agents
-        </button>
-        <div className="mt-4 text-label uppercase tracking-wider text-fg-faint">
-          {isOperator ? 'Reading as' : <span className="text-warn">▲ Reading as</span>}
-        </div>
-        <div
-          className={`mt-1 text-body truncate ${isOperator ? 'text-fg' : 'text-warn font-medium'}`}
-          title={valueLabel}
-        >
-          {valueLabel}
-        </div>
-        {!isOperator && (
-          <>
-            <button
-              type="button"
-              onClick={onReset}
-              className="mt-3 block text-label uppercase tracking-wider text-fg-muted hover:text-fg focus-mark underline decoration-dotted underline-offset-2 rounded-sm"
+      <aside className={`${ASIDE_BASE_CLASS} sm:w-52`}>
+        <div className="flex items-center justify-between gap-3 sm:block">
+          <div className="min-w-0">
+            <ReadingAsLabel isOperator={isOperator} />
+            <div
+              className={`mt-0.5 truncate text-body font-semibold ${isOperator ? 'text-fg' : 'text-warn'}`}
+              title={valueLabel}
             >
-              Back to operator
-            </button>
-            <p className="mt-2 text-label uppercase tracking-wider text-fg-faint italic">
-              Read-only. Sends go from the operator.
-            </p>
-          </>
-        )}
+              {valueLabel}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            aria-expanded={false}
+            className={`${TOGGLE_CLASS} shrink-0 sm:mt-3 sm:w-full`}
+          >
+            Choose inbox
+            <span className="sr-only"> from all agents</span>
+          </button>
+        </div>
+        {!isOperator && <OperatorReturn onReset={onReset} note="Sends go from the operator." />}
       </aside>
     );
   }
 
   return (
     <aside className={`${ASIDE_BASE_CLASS} sm:w-64`}>
-      <button
-        type="button"
-        onClick={() => setExpanded(false)}
-        aria-expanded
-        className="text-label uppercase tracking-wider text-fg-muted hover:text-fg focus-mark rounded-sm"
-      >
-        ▾ Agents
-      </button>
-
-      <div className="mt-2 text-label uppercase tracking-wider text-fg-faint">
-        {isOperator ? 'Reading as' : <span className="text-warn">▲ Reading as</span>}{' '}
-        <span className={`not-italic ${isOperator ? 'text-fg-muted' : 'text-warn'}`}>
-          {valueLabel}
-        </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <ReadingAsLabel isOperator={isOperator} />
+          <div
+            className={`mt-0.5 truncate text-body font-semibold ${isOperator ? 'text-fg' : 'text-warn'}`}
+            title={valueLabel}
+          >
+            {valueLabel}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          aria-expanded
+          className={`${TOGGLE_CLASS} shrink-0`}
+        >
+          Hide inbox list
+        </button>
       </div>
 
-      <div className="mt-3 border-b border-rule pb-1">
+      <div className="relative mt-4">
+        <Icon
+          name="search"
+          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint"
+        />
         <input
           type="search"
           value={query}
@@ -125,26 +125,24 @@ export function AgentPanel({
           placeholder="Find an agent"
           aria-label="Find an agent"
           autoFocus
-          className="w-full bg-transparent border-0 text-body text-fg placeholder:text-fg-faint focus:outline-none focus:ring-0 px-0 py-0.5"
+          className="h-9 w-full rounded border border-rule bg-surface-raised pl-8 pr-3 text-body text-fg placeholder:text-fg-faint focus-mark"
         />
       </div>
 
-      <div className="mt-3 max-h-[28rem] overflow-y-auto -mr-2 pr-2 space-y-4">
+      <div className="-mx-2 mt-3 max-h-[28rem] space-y-4 overflow-y-auto px-2">
         {/* Progressive: mail-derived aliases land in ~0.5s while the
             slower supervisor sessions call is still in flight. Render whatever
             is ready and footnote "loading more" rather than hiding the
             whole list behind the slowest fetch. */}
         {filtered.length === 0 ? (
-          <p className="text-label uppercase tracking-wider text-fg-faint italic">
-            {loading ? 'Loading aliases' : 'No agents match.'}
-          </p>
+          <p className={NOTE_CLASS}>{loading ? 'Loading aliases' : 'No agents match.'}</p>
         ) : (
           filtered.map((bucket) => (
             <div key={bucket.tier}>
-              <div className="text-label uppercase tracking-wider text-fg-faint mb-1">
+              <div className="mb-1 px-2 text-label font-medium text-fg-faint">
                 {tierLabel(bucket.tier)}
               </div>
-              <ul className="space-y-0.5">
+              <ul className="space-y-px">
                 {bucket.aliases.map((alias) => {
                   const active = alias.toLowerCase() === value.toLowerCase();
                   return (
@@ -153,8 +151,10 @@ export function AgentPanel({
                         type="button"
                         onClick={() => select(alias)}
                         aria-current={active}
-                        className={`block w-full text-left truncate text-body transition-colors duration-150 ease-out-quart focus-mark rounded-sm py-0.5 ${
-                          active ? 'text-fg font-semibold' : 'text-fg-muted hover:text-fg'
+                        className={`block w-full truncate rounded px-2 py-1.5 text-left text-body transition-colors duration-150 ease-out-quart focus-mark ${
+                          active
+                            ? 'bg-surface-tint font-semibold text-fg'
+                            : 'text-fg-muted hover:bg-surface-tint hover:text-fg'
                         }`}
                         title={displayLabel(alias, OPERATOR_ALIAS)}
                       >
@@ -167,11 +167,7 @@ export function AgentPanel({
             </div>
           ))
         )}
-        {loading && filtered.length > 0 && (
-          <p className="text-label uppercase tracking-wider text-fg-faint italic">
-            Loading more agents
-          </p>
-        )}
+        {loading && filtered.length > 0 && <p className={NOTE_CLASS}>Loading more agents</p>}
         {/* gascity-dashboard-xba: when supervisor sessions fails, the panel
             is still functional off
             the mail-derived aliases. Surface the partial state explicitly
@@ -190,31 +186,52 @@ export function AgentPanel({
           sessionsUnavailable &&
           filtered.length > 0 &&
           (isOperatorOnly(filtered) ? (
-            <p className="text-label uppercase tracking-wider text-fg-faint italic">
+            <p className={`${NOTE_CLASS} text-warn`}>
               Agent list and mail history both unavailable.
             </p>
           ) : (
-            <p className="text-label uppercase tracking-wider text-fg-faint italic">
+            <p className={`${NOTE_CLASS} text-warn`}>
               Agent list unavailable; showing mail-derived aliases only.
             </p>
           ))}
       </div>
 
       {!isOperator && (
-        <div className="mt-4 pt-3 border-t border-rule space-y-2">
-          <button
-            type="button"
-            onClick={onReset}
-            className="block text-label uppercase tracking-wider text-fg-muted hover:text-fg focus-mark underline decoration-dotted underline-offset-2 rounded-sm"
-          >
-            Back to operator
-          </button>
-          <p className="text-label uppercase tracking-wider text-fg-faint italic">
-            Read-only. Sends always go from the operator.
-          </p>
-        </div>
+        <OperatorReturn onReset={onReset} note="Sends always go from the operator." />
       )}
     </aside>
+  );
+}
+
+const TOGGLE_CLASS =
+  'inline-flex h-8 items-center justify-center rounded border border-rule bg-surface-raised px-3 text-label font-semibold text-fg transition-colors duration-150 ease-out-quart hover:bg-surface-tint focus-mark';
+
+const NOTE_CLASS = 'px-2 text-label text-fg-muted';
+
+// "Reading as" in ink for the operator. For any other inbox it turns amber
+// with the watch shape: you are looking at someone else's mail.
+function ReadingAsLabel({ isOperator }: { isOperator: boolean }) {
+  if (isOperator) return <div className="text-label font-medium text-fg-muted">Reading as</div>;
+  return (
+    <div className="flex items-center gap-1.5 text-label font-medium text-warn">
+      <StatusShape tone="warn" />
+      <span>Reading as</span>
+    </div>
+  );
+}
+
+function OperatorReturn({ onReset, note }: { onReset: () => void; note: string }) {
+  return (
+    <div className="mt-4 space-y-1 border-t border-rule pt-3">
+      <button
+        type="button"
+        onClick={onReset}
+        className="text-label font-semibold text-primary underline-offset-2 hover:underline focus-mark"
+      >
+        Back to operator
+      </button>
+      <p className="text-label text-fg-muted">Read-only. {note}</p>
+    </div>
   );
 }
 

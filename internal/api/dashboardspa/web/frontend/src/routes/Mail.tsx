@@ -11,6 +11,7 @@ import { FilterChips } from '../components/FilterChips';
 import { GroupedTable } from '../components/GroupedTable';
 import { ListSearchBar } from '../components/ListSearchBar';
 import { Modal } from '../components/Modal';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { type TableColumn } from '../components/Table';
 import { AgentPanel } from '../components/AgentPanel';
@@ -229,8 +230,15 @@ export function MailPage() {
         label: 'From',
         sortable: true,
         sortValue: (r) => formatMailSender(r.from),
-        render: (r) => <span className="text-fg-muted">{formatMailSender(r.from)}</span>,
-        className: 'w-48',
+        render: (r) => (
+          <span
+            className={`block max-w-[7rem] truncate sm:max-w-[12rem] ${r.read ? 'text-fg-muted' : 'font-medium text-fg'}`}
+            title={formatMailSender(r.from)}
+          >
+            {formatMailSender(r.from)}
+          </span>
+        ),
+        className: 'w-28 sm:w-48',
       },
       {
         key: 'subject',
@@ -239,14 +247,17 @@ export function MailPage() {
         sortValue: (r) => r.subject,
         render: (r) => (
           <div className="min-w-0">
-            <p className={`truncate ${r.read ? 'text-fg-muted' : 'text-fg font-medium'}`}>
+            <p className={`truncate ${r.read ? 'text-fg-muted' : 'font-semibold text-fg'}`}>
               {r.subject}
             </p>
-            <p className="text-label uppercase tracking-wider text-fg-faint mt-1 truncate">
+            <p className="mt-0.5 truncate text-label text-fg-faint">
               {r.body.split('\n')[0] ?? ''}
             </p>
           </div>
         ),
+        // w-full + max-w-0 lets the cell shrink so `truncate` works and the
+        // When column always stays on screen (DESIGN-PLAN §6.8).
+        className: 'w-full max-w-0',
       },
       {
         key: 'created_at',
@@ -256,7 +267,7 @@ export function MailPage() {
         render: (r) => (
           <span className="tnum text-fg-muted">{formatRelative(r.created_at, now)}</span>
         ),
-        className: 'w-24',
+        className: 'w-20 whitespace-nowrap',
         align: 'right',
       },
     ],
@@ -372,7 +383,7 @@ export function MailPage() {
       render: (r) => (
         <input
           type="checkbox"
-          className="h-3.5 w-3.5 translate-y-[2px] cursor-pointer accent-primary focus-mark"
+          className="mt-0.5 h-4 w-4 cursor-pointer accent-primary focus-mark"
           checked={selectedIds.has(r.id)}
           onChange={() => toggleSelect(r.id)}
           onClick={(e) => e.stopPropagation()}
@@ -414,11 +425,6 @@ export function MailPage() {
         synopsis={synopsis}
         meta={
           <>
-            {error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {error}
-              </span>
-            )}
             {readOnly && <ReadOnlyBadge />}
             <Button
               size="sm"
@@ -441,9 +447,11 @@ export function MailPage() {
         }
       />
 
-      {/* Below sm the reading-as rail stacks above the list; its divider
-          rotates from right-edge rule to bottom rule in AgentPanel. */}
-      <div className="flex flex-col gap-8 sm:flex-row sm:items-start">
+      <PageAlerts messages={[error]} />
+
+      {/* Below sm the inbox panel stacks above the list as one row; from sm
+          up it sits beside the list. */}
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start lg:gap-8">
         <AgentPanel
           buckets={aliasBuckets}
           loading={aliasesLoading}
@@ -455,11 +463,11 @@ export function MailPage() {
         />
 
         <div className="flex-1 min-w-0">
-          <div className="mb-6">
+          <div className="mb-4">
             <BoxTabs box={box} onChange={setBox} />
           </div>
 
-          <div className="mb-6 space-y-3">
+          <div className="mb-5 space-y-3">
             <ListSearchBar
               value={filters.search}
               onChange={filters.setSearch}
@@ -468,36 +476,30 @@ export function MailPage() {
               totalCount={items.length}
               ariaLabel="Search mail"
             />
-            {visibleChips.length > 0 && (
-              <div className="flex items-baseline justify-between gap-4 flex-wrap">
+            <div
+              className={`flex flex-wrap items-center gap-x-6 gap-y-3 ${
+                visibleChips.length > 0 ? 'justify-between' : 'justify-end'
+              }`}
+            >
+              {visibleChips.length > 0 && (
                 <FilterChips
                   chips={visibleChips}
                   activeIds={filters.activeChipIds}
                   onToggle={filters.toggleChip}
-                  legend="Read state"
+                  legend="Show"
                 />
-                <MailHistoryControls
-                  limit={historyLimit}
-                  onLimitChange={setHistoryLimit}
-                  onWindowChange={setHistoryWindow}
-                  window={historyWindow}
-                />
-              </div>
-            )}
-            {visibleChips.length === 0 && (
-              <div className="flex justify-end">
-                <MailHistoryControls
-                  limit={historyLimit}
-                  onLimitChange={setHistoryLimit}
-                  onWindowChange={setHistoryWindow}
-                  window={historyWindow}
-                />
-              </div>
-            )}
+              )}
+              <MailHistoryControls
+                limit={historyLimit}
+                onLimitChange={setHistoryLimit}
+                onWindowChange={setHistoryWindow}
+                window={historyWindow}
+              />
+            </div>
           </div>
 
           {selectable && visibleRows.length > 0 && (
-            <div className="mb-6">
+            <div className="mb-3">
               <MailSelectionBar
                 selectedCount={selectedCount}
                 allSelected={allSelected}
@@ -538,7 +540,6 @@ export function MailPage() {
           threadFor === null ? null : (
             <>
               <Button
-                tone="quiet"
                 size="sm"
                 title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
                 disabled={readOnly || actionInFlight !== null}
@@ -547,7 +548,6 @@ export function MailPage() {
                 {threadFor.read ? 'Mark unread' : 'Mark read'}
               </Button>
               <Button
-                tone="quiet"
                 size="sm"
                 title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
                 disabled={readOnly || actionInFlight !== null}
@@ -570,30 +570,32 @@ export function MailPage() {
       >
         <div className="space-y-6">
           {threadLoading ? (
-            <p className="text-fg-muted italic">Loading thread.</p>
+            <p className="text-body text-fg-muted">Loading thread.</p>
           ) : threadItems.length === 0 && threadFor ? (
             <ThreadMessage message={threadFor} attentionSeverity={mailSeverity(threadFor)} />
           ) : (
-            <ol className="space-y-6">
+            <ol className="divide-y divide-rule">
               {threadItems.map((m) => (
-                <li key={m.id}>
+                <li key={m.id} className="py-5 first:pt-0 last:pb-0">
                   <ThreadMessage message={m} attentionSeverity={mailSeverity(m)} />
                 </li>
               ))}
             </ol>
           )}
           {threadFor !== null && (
-            <Field label="Reply" variant="form">
-              <textarea
-                value={replyBody}
-                onChange={(e) => setReplyBody(e.target.value)}
-                rows={5}
-                maxLength={16 * 1024}
-                title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
-                disabled={readOnly || !viewingAs.isOperator}
-                className="w-full bg-surface-tint border border-rule rounded-sm px-3 py-2 text-body text-fg focus-mark resize-y disabled:opacity-50"
-              />
-            </Field>
+            <div className="border-t border-rule pt-4">
+              <Field label="Reply" variant="form">
+                <textarea
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
+                  rows={5}
+                  maxLength={16 * 1024}
+                  title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
+                  disabled={readOnly || !viewingAs.isOperator}
+                  className="w-full resize-y rounded border border-rule bg-surface-raised px-3 py-2 text-reading text-fg placeholder:text-fg-faint focus-mark disabled:cursor-not-allowed disabled:bg-surface-tint disabled:opacity-60"
+                />
+              </Field>
+            </div>
           )}
         </div>
       </Modal>
@@ -610,16 +612,23 @@ export function MailPage() {
   );
 }
 
+// Segmented control (DESIGN-PLAN §7): one group, the pressed box carries
+// aria-pressed and the tint, so the choice reads without colour.
 function BoxTabs({ box, onChange }: { box: MailBox; onChange: (b: MailBox) => void }) {
   return (
-    <div className="flex items-baseline gap-6">
+    <div
+      role="group"
+      aria-label="Mailbox"
+      className="inline-flex rounded-md border border-rule bg-surface-raised p-0.5"
+    >
       {(['inbox', 'sent', 'all'] as MailBox[]).map((b) => (
         <button
           key={b}
           type="button"
           onClick={() => onChange(b)}
-          className={`text-title transition-colors duration-150 ease-out-quart focus-mark rounded-sm ${
-            box === b ? 'text-fg font-semibold' : 'text-fg-muted hover:text-fg'
+          aria-pressed={box === b}
+          className={`h-8 rounded px-3 text-label font-semibold transition-colors duration-150 ease-out-quart focus-mark ${
+            box === b ? 'bg-surface-tint text-fg' : 'text-fg-muted hover:text-fg'
           }`}
         >
           {b === 'all' ? 'All' : capitalize(b)}
@@ -629,10 +638,9 @@ function BoxTabs({ box, onChange }: { box: MailBox; onChange: (b: MailBox) => vo
   );
 }
 
-// Editorial bulk-action line (gascity-dashboard-mp3g): a select-all affordance
-// and the read-state writes for the selected set, on one hairline-ruled row.
-// Flat page register — no card, no sticky toolbar; words on every action so the
-// row reads in greyscale (DESIGN.md §States).
+// Bulk-action line (gascity-dashboard-mp3g): a select-all affordance and the
+// read-state writes for the selected set, on one quiet row above the table.
+// No sticky toolbar; words on every action so the row reads in greyscale.
 function MailSelectionBar({
   selectedCount,
   allSelected,
@@ -659,40 +667,32 @@ function MailSelectionBar({
   const title = readOnly ? READ_ONLY_CONTROL_TITLE : undefined;
   return (
     <div
-      className="flex items-baseline justify-between gap-4 flex-wrap border-b border-rule pb-3"
+      className={`flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md px-4 py-1.5 transition-colors duration-150 ease-out-quart ${
+        someSelected ? 'bg-primary/[0.06]' : ''
+      }`}
       role="region"
       aria-label="bulk mail selection"
     >
-      <label className="flex items-baseline gap-2 text-label uppercase tracking-wider text-fg-muted cursor-pointer">
+      <label className="flex cursor-pointer items-center gap-3 text-label font-medium text-fg-muted">
         <input
           ref={allRef}
           type="checkbox"
-          className="h-3.5 w-3.5 translate-y-[2px] cursor-pointer accent-primary focus-mark"
+          className="h-4 w-4 cursor-pointer accent-primary focus-mark"
           checked={allSelected}
           onChange={onToggleAll}
           aria-label="select all mail"
         />
-        <span>{someSelected ? `${selectedCount} selected` : 'Select all'}</span>
+        <span className={someSelected ? 'text-fg tnum' : undefined}>
+          {someSelected ? `${selectedCount} selected` : 'Select all'}
+        </span>
       </label>
       {someSelected && (
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-center gap-2">
           {readOnly && <ReadOnlyBadge />}
-          <Button
-            size="sm"
-            tone="quiet"
-            onClick={onMarkRead}
-            disabled={readOnly || busy}
-            title={title}
-          >
+          <Button size="sm" onClick={onMarkRead} disabled={readOnly || busy} title={title}>
             {bulkInFlight === 'read' ? 'Marking' : 'Mark read'}
           </Button>
-          <Button
-            size="sm"
-            tone="quiet"
-            onClick={onMarkUnread}
-            disabled={readOnly || busy}
-            title={title}
-          >
+          <Button size="sm" onClick={onMarkUnread} disabled={readOnly || busy} title={title}>
             {bulkInFlight === 'unread' ? 'Marking' : 'Mark unread'}
           </Button>
         </div>
@@ -713,14 +713,14 @@ function MailHistoryControls({
   window: MailHistoryWindow;
 }) {
   return (
-    <div className="flex items-baseline gap-3 flex-wrap">
-      <label className="flex items-baseline gap-2 text-label uppercase tracking-wider text-fg-muted">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <label className="flex items-center gap-2 text-label font-medium text-fg-muted">
         <span>Window</span>
         <select
           aria-label="Mail time window"
           value={window}
           onChange={(e) => onWindowChange(toMailHistoryWindow(e.target.value))}
-          className="bg-transparent border border-rule rounded-sm px-2 py-1 text-label uppercase tracking-wider text-fg-muted focus-mark"
+          className={SELECT_CLASS}
         >
           {MAIL_HISTORY_WINDOWS.map((historyWindow) => (
             <option key={historyWindow} value={historyWindow}>
@@ -729,13 +729,13 @@ function MailHistoryControls({
           ))}
         </select>
       </label>
-      <label className="flex items-baseline gap-2 text-label uppercase tracking-wider text-fg-muted">
+      <label className="flex items-center gap-2 text-label font-medium text-fg-muted">
         <span>History</span>
         <select
           aria-label="Mail history limit"
           value={limit}
           onChange={(e) => onLimitChange(toMailHistoryLimit(e.target.value))}
-          className="bg-transparent border border-rule rounded-sm px-2 py-1 text-label uppercase tracking-wider text-fg-muted focus-mark"
+          className={SELECT_CLASS}
         >
           {MAIL_HISTORY_LIMITS.map((historyLimit) => (
             <option key={historyLimit} value={historyLimit}>
@@ -747,6 +747,11 @@ function MailHistoryControls({
     </div>
   );
 }
+
+// Input recipe (DESIGN-PLAN §7), at control height sm so it lines up with
+// the chips beside it.
+const SELECT_CLASS =
+  'h-8 rounded border border-rule bg-surface-raised px-2 text-label font-medium text-fg focus-mark';
 
 function toMailHistoryLimit(value: string): MailHistoryLimit {
   const parsed = Number(value);
