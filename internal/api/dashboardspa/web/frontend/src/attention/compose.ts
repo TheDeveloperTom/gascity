@@ -94,7 +94,12 @@ export interface AttentionModel {
   owner: AudienceSlice;
   city: AudienceSlice;
   ownerReadiness: OwnerReadiness;
+  /** Same shape as `ownerReadiness`, for the city slice: no all-clear while loading. */
+  cityReadiness: CityReadiness;
 }
+
+/** Readiness of the city slice; the same states as the owner's. */
+export type CityReadiness = OwnerReadiness;
 
 export interface AudienceSlice {
   items: readonly AttentionItem[];
@@ -105,6 +110,7 @@ export interface AudienceSlice {
 export interface ComposeAttentionOptions {
   topLimit?: number;
   ownerReadiness?: OwnerReadiness;
+  cityReadiness?: CityReadiness;
 }
 
 const DEFAULT_TOP_LIMIT = 5;
@@ -157,6 +163,7 @@ export function composeAttention(
     owner: audienceSlice(items, 'owner'),
     city: audienceSlice(items, 'city'),
     ownerReadiness: options.ownerReadiness ?? { state: 'ready' },
+    cityReadiness: options.cityReadiness ?? { state: 'ready' },
   };
 }
 
@@ -166,7 +173,10 @@ export function itemAudience(item: AttentionItem): AttentionAudience {
 
 // Both slices list `unavailable` items (they are shown faintly) and never
 // count them, so a degraded read cannot inflate a number.
-function audienceSlice(items: readonly AttentionItem[], audience: AttentionAudience): AudienceSlice {
+function audienceSlice(
+  items: readonly AttentionItem[],
+  audience: AttentionAudience,
+): AudienceSlice {
   const byDomain = {} as Record<AttentionDomain, number>;
   for (const domain of ATTENTION_DOMAINS) byDomain[domain] = 0;
   const sliced = items.filter((item) => itemAudience(item) === audience);

@@ -1,5 +1,9 @@
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
+import { isRouteRoot, routeTaskId } from '../lib/stageBoard';
 import { elapsedSince, formatElapsed, formatElapsedFine } from './elapsed';
+
+const NOT_CLAIMABLE_TYPES: ReadonlySet<string> = new Set(['epic', 'gate']);
+const ROUTE_ROOT_META_KEY = 'gc.root_bead_id';
 
 // gascity-dashboard-2j8e.3: the single selector behind the Beads nav badge AND
 // the /beads "Needs you" section. It counts beads that genuinely need the
@@ -105,6 +109,8 @@ export type BeadAttentionSeverity = 'attention' | 'watch';
 
 export interface BeadAttentionRow {
   beadId: string;
+  /** The task's title, so a row reads by name rather than by id. */
+  title: string;
   reason: BeadAttentionReason;
   severity: BeadAttentionSeverity;
   /** Operator-facing one-line context, leading with the bead title (why it is here). */
@@ -134,7 +140,14 @@ export interface BeadAttentionInputs {
   escalations: readonly Bead[];
   /** City sessions for liveness checks; omit when the session read failed. */
   sessions?: readonly BeadAttentionSession[];
+  /** Route beads (workflow roots and their steps), split off `beads`. */
+  routeItems?: readonly Bead[];
+  /** Task id → title, so a stalled step reports its task by name. */
+  taskTitles?: ReadonlyMap<string, string>;
 }
+
+/** Shown when a route's task is outside the fetched window. */
+export const TASK_OUTSIDE_VIEW = 'A task outside this view';
 
 /**
  * Project the bead reads into the operator-actionable attention set. Pure and
@@ -160,7 +173,36 @@ export function selectBeadsNeedingAttention(
       stalledRow(bead, inputs.sessions, nowMs);
     if (row !== null) rows.push(row);
   }
+  rows.push(...stalledRouteRows(inputs, nowMs));
   return rows;
+}
+
+// A stalled route step is reported once, under its task's title: the owner
+// knows tasks, not step ids (R6). The first stalled step of a task wins.
+function stalledRouteRows(inputs: BeadAttentionInputs, nowMs: number): BeadAttentionRow[] {
+  const routeItems = inputs.routeItems ?? [];
+  if (routeItems.length === 0) return [];
+  const roots = new Map<string, Bead>();
+  for (const bead of routeItems) {
+    if (isRouteRoot(bead)) roots.set(bead.id, bead);
+  }
+  const byTask = new Map<string, BeadAttentionRow>();
+  for (const step of routeItems) {
+    if (isRouteRoot(step)) continue;
+    const rootId = step.metadata?.[ROUTE_ROOT_META_KEY]?.trim() ?? '';
+    const root = roots.get(rootId);
+    const taskId = (root === undefined ? null : routeTaskId(root)) ?? rootId;
+    if (taskId.length === 0 || byTask.has(taskId)) continue;
+    const stalled = stalledRow(step, inputs.sessions, nowMs);
+    if (stalled === null) continue;
+    byTask.set(taskId, {
+      ...stalled,
+      beadId: taskId,
+      title: inputs.taskTitles?.get(taskId) ?? TASK_OUTSIDE_VIEW,
+      summary: `${step.title}: ${stalled.summary}`,
+    });
+  }
+  return [...byTask.values()];
 }
 
 /**
@@ -192,6 +234,7 @@ function escalatedRow(bead: Bead): BeadAttentionRow | null {
   if (bead.status === 'closed') return null;
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'escalated',
     severity: 'attention',
     summary: `${bead.title} — escalation raised`,
@@ -205,11 +248,15 @@ function escalatedRow(bead: Bead): BeadAttentionRow | null {
 // surfaced — only genuinely-claimable open beads.
 function readyUnclaimedRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
   if (bead.status !== 'open' || hasAssignee(bead)) return null;
+  // R11: blocked work waits on a dependency, epics are containers and gates
+  // open on their own; none of them is work someone forgot to claim.
+  if (bead.is_blocked === true || NOT_CLAIMABLE_TYPES.has(bead.issue_type)) return null;
   const ageMs = elapsedSince(bead.created_at, nowMs);
   if (ageMs === null || ageMs < READY_UNCLAIMED_WATCH_MS) return null;
   const stale = ageMs >= READY_UNCLAIMED_STALE_MS;
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'ready-unclaimed',
     severity: stale ? 'attention' : 'watch',
     summary: `${bead.title} opened ${formatElapsed(ageMs)} ago`,
@@ -237,6 +284,7 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     waitMs !== null && waitMs >= WAITING_ATTENTION_MS && !hasLabel(bead, HOLD_EXTERNAL_LABEL);
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'waiting-human',
     severity: escalates ? 'attention' : 'watch',
     summary: phrase,
@@ -258,6 +306,8 @@ function stalledRow(
   nowMs: number,
 ): BeadAttentionRow | null {
   if (bead.status !== 'in_progress') return null;
+  // A workflow root is never claimed by anyone; its steps are (R11).
+  if (isRouteRoot(bead)) return null;
   const assignee = bead.assignee?.trim() ?? '';
   const detail = stalledDetail(bead, assignee, sessions, nowMs);
   if (detail === null) return null;
@@ -266,6 +316,7 @@ function stalledRow(
     ageMs === null ? `stalled — ${detail}` : `stalled ${formatElapsed(ageMs)} — ${detail}`;
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'stalled',
     severity: 'attention',
     summary: phrase,

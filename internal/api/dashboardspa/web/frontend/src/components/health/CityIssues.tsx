@@ -5,7 +5,7 @@ import {
   type AttentionItem,
   type AudienceSlice,
 } from '../../attention/compose';
-import { t, tn } from '../../i18n';
+import { t } from '../../i18n';
 import { FoldList } from '../FoldList';
 
 // HE-12 (OWNER-HOME-PLAN Task 10, ruling R4): the city's own trouble — stalled
@@ -79,7 +79,7 @@ export function CityIssues({
               limit={GROUP_LIMIT}
               itemKey={(item) => item.id}
               renderItem={(item) => <IssueRow item={item} />}
-              showLabel={(total) => tn(total, { one: 'Show all {n}', other: 'Show all {n}' })}
+              showLabel={(total) => t('Show all {n}', { n: total })}
               hideLabel={t('Show fewer')}
               className="divide-y divide-rule border-l-2 border-warn"
             />

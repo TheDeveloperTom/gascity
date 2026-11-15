@@ -18,6 +18,9 @@ import {
 import { elapsedSince, formatElapsed } from './elapsed';
 import { runDetailHref } from '../supervisor/runHref';
 import { agentNeedsYouReasonLabel } from './agentNeedsYou';
+import { eventTitle } from './eventTitles';
+import { agentDisplayName } from '../lib/agentNames';
+import { t } from '../i18n';
 import type {
   AgentResponse,
   Bead,
@@ -382,7 +385,8 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
       domainAttention('agents', {
         id: `agents:${need.name}:needs-you`,
         ...(need.reason === 'awaiting-input' ? { audience: 'owner' as const } : {}),
-        title: `${need.name} ${agentNeedsYouReasonLabel(need.reason)}`,
+        ref: need.name,
+        title: `${agentDisplayName(need.name)} ${t(agentNeedsYouReasonLabel(need.reason))}`,
         summary: need.detail,
         href: `/agents/${encodeURIComponent(need.name)}`,
       }),
@@ -455,6 +459,12 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
       beads: generic,
       escalations: facts.escalations ?? [],
       ...(facts.sessions === undefined ? {} : { sessions: facts.sessions }),
+      ...(facts.routeItems === undefined
+        ? {}
+        : {
+            routeItems: facts.routeItems,
+            taskTitles: new Map((facts.items ?? []).map((bead) => [bead.id, bead.title])),
+          }),
     },
     nowMs,
   )) {
@@ -467,8 +477,9 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
       builder('beads', {
         id: `beads:${row.beadId}:${row.reason}`,
         ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
-        title: `${row.beadId} ${beadAttentionWord(row.reason)}`,
-        summary: row.summary,
+        ref: row.beadId,
+        title: row.title,
+        summary: withoutLeadingTitle(row.summary, row.title, row.reason),
         href: beadHref(row.beadId),
         updatedAt: row.updatedAt,
       }),
@@ -481,14 +492,28 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
 function beadAttentionWord(reason: BeadAttentionReason): string {
   switch (reason) {
     case 'escalated':
-      return 'escalated';
+      return t('escalated');
     case 'stalled':
-      return 'stalled';
+      return t('stalled');
     case 'waiting-human':
-      return 'waiting';
+      return t('waiting');
     case 'ready-unclaimed':
-      return 'unclaimed';
+      return t('unclaimed');
   }
+}
+
+/**
+ * The row summary leads with the bead title (the /beads panel shows it alone).
+ * The attention item already carries the title, so the summary here starts
+ * with the reason word instead of repeating the title.
+ */
+function withoutLeadingTitle(summary: string, title: string, reason: BeadAttentionReason): string {
+  if (title.length === 0 || !summary.startsWith(title)) return summary;
+  const rest = summary
+    .slice(title.length)
+    .replace(/^\s*(—\s*)?/, '')
+    .trim();
+  return rest.length === 0 ? beadAttentionWord(reason) : `${beadAttentionWord(reason)}: ${rest}`;
 }
 
 function beadHref(beadId: string): string {
@@ -697,7 +722,8 @@ function appendActivityEventAttention(
     items.push(
       builder('activity', {
         id: `activity:event:${String(event.seq)}:${event.type}`,
-        title: event.type,
+        ref: event.type,
+        title: eventTitle(event.type),
         summary: supervisorEventDetail(event),
         href: activityEventHref(event),
         updatedAt: event.ts,

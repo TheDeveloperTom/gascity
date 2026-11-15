@@ -3,13 +3,17 @@ import {
   composeAttention,
   type AttentionContributor,
   type AttentionModel,
+  type CityReadiness,
   type OwnerReadiness,
 } from './compose';
 import type { BeadSnapshot } from './liveContributors';
 
 // Without a provider nothing has been read, so the owner slice is loading —
 // never an all-clear (R12).
-const EMPTY_ATTENTION = composeAttention([], { ownerReadiness: { state: 'loading' } });
+const EMPTY_ATTENTION = composeAttention([], {
+  ownerReadiness: { state: 'loading' },
+  cityReadiness: { state: 'loading' },
+});
 const AttentionContext = createContext<AttentionModel>(EMPTY_ATTENTION);
 const BeadSnapshotContext = createContext<BeadSnapshot | undefined>(undefined);
 
@@ -19,12 +23,14 @@ export function AttentionProvider({
   contributors,
   topLimit,
   ownerReadiness = READY,
+  cityReadiness = READY,
   beadSnapshot,
   children,
 }: {
   contributors: readonly AttentionContributor[];
   topLimit?: number;
   ownerReadiness?: OwnerReadiness;
+  cityReadiness?: CityReadiness;
   beadSnapshot?: BeadSnapshot;
   children: ReactNode;
 }) {
@@ -32,9 +38,10 @@ export function AttentionProvider({
     () =>
       composeAttention(contributors, {
         ownerReadiness,
+        cityReadiness,
         ...(topLimit === undefined ? {} : { topLimit }),
       }),
-    [contributors, topLimit, ownerReadiness],
+    [contributors, topLimit, ownerReadiness, cityReadiness],
   );
 
   return (

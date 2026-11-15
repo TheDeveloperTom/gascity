@@ -53,15 +53,12 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
   }) => {
     await gotoCityRoute(page, CITY_BASE, '');
     await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
-    // The h1 "Home" renders identically in the loading, error, and
-    // runs-source-error branches, so assert seeded synopsis content that appears
-    // ONLY once the home data loaded: the city name + the status-derived active
-    // session count ("1 active sessions" = the one seeded session bead) and the
-    // census-derived running-run count ("1 running" = the in-progress anchor run).
-    await expect(
-      page.getByText('dashport-city · 1 active sessions · 1 running', { exact: false }),
-    ).toBeVisible();
-    // Dial grid: the "active sessions" instrument carries the SAME status-derived
+    // OWNER-HOME-PLAN Task 8: no synopsis; the instruments live in the closed
+    // «Usage and load» details, so open it before asserting them. The plate,
+    // «What is going on» and «City» come first.
+    await expect(page.getByRole('heading', { name: 'City', level: 2 })).toBeVisible();
+    await page.getByText('Usage and load', { exact: true }).click();
+    // Dial grid: the "active sessions" instrument carries the status-derived
     // count (1). The dial-grid renders identically empty when the home data fails,
     // so a populated instrument value proves the census/status reads wired through.
     const dials = page.getByTestId('dial-grid');
@@ -71,18 +68,8 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     await expect(
       page.getByRole('region', { name: 'Runs by state' }).getByRole('link', { name: 'running: 1' }),
     ).toBeVisible();
-    // formula-run-progress section names the seeded run's formula — a run-summary
-    // derived instrument, empty unless the run projected.
-    await expect(
-      page
-        .getByRole('region', { name: 'Run progress' })
-        .getByRole('link', { name: new RegExp(ANCHOR_FORMULA) }),
-    ).toBeVisible();
-    // systems section's mail lamp carries the seeded unread count (3 seeded
-    // messages), proving the status read reached the lamps.
-    await expect(
-      page.getByRole('region', { name: 'systems' }).getByRole('link', { name: /3 unread/ }),
-    ).toBeVisible();
+    // Run progress (HO-10) and the systems lamps (HO-11) are superseded by
+    // «What is going on» and the City block; Task 12 replaces their e2e pins.
     // A healthy home shows no alert; the error branches render one.
     await expect(page.getByRole('alert')).toHaveCount(0);
   });

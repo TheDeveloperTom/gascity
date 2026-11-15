@@ -4,7 +4,46 @@ import { invalidate } from '../api/cache';
 import { setActiveCity } from '../api/cityBase';
 import type { OperatorConfig } from '../contexts/OperatorConfigContext';
 import type * as SupervisorClient from '../supervisor/client';
-import { useLiveAttentionContributors } from './liveContributors';
+import type { RunSummary, SourceState } from 'gas-city-dashboard-shared';
+import { composeAttention } from './compose';
+import { deriveCityReadiness, useLiveAttentionContributors } from './liveContributors';
+
+function freshRuns(): SourceState<RunSummary> {
+  return {
+    source: 'runs',
+    status: 'fresh',
+    fetchedAt: '2026-06-01T00:00:00.000Z',
+    staleAt: '2026-06-01T00:01:00.000Z',
+    error: { kind: 'none' },
+    data: {
+      totalActive: 0,
+      totalHistorical: 0,
+      historicalLanes: [],
+      blockedLanes: [],
+      runCounts: {
+        total: 0,
+        visible: 0,
+        prReview: 0,
+        designReview: 0,
+        bugfix: 0,
+        blocked: 0,
+        other: 0,
+      },
+      lanes: [],
+      recentChanges: [],
+      census: { status: 'unavailable', error: 'n/a' },
+    },
+  } as SourceState<RunSummary>;
+}
+
+describe('composeAttention city readiness', () => {
+  it('carries the city readiness it is given, ready by default', () => {
+    expect(composeAttention([]).cityReadiness).toEqual({ state: 'ready' });
+    expect(composeAttention([], { cityReadiness: { state: 'loading' } }).cityReadiness).toEqual({
+      state: 'loading',
+    });
+  });
+});
 
 const operator: OperatorConfig = {
   operatorAlias: 'stephanie',
@@ -126,6 +165,58 @@ describe('useLiveAttentionContributors owner readiness', () => {
         reasons: ['Questions from the Mayor could not be read', 'Your mail could not be read'],
       }),
     );
+  });
+
+  it('city readiness is loading until every city source has been read', async () => {
+    const agents = deferred<unknown>();
+    mockSupervisorApi.listAgents.mockReturnValue(agents.promise);
+    const { result } = renderHook(() => useLiveAttentionContributors(operator, freshRuns()));
+    expect(result.current.cityReadiness).toEqual({ state: 'loading' });
+    await waitFor(() => expect(result.current.ownerReadiness.state).not.toBe('loading'));
+    expect(result.current.cityReadiness).toEqual({ state: 'loading' });
+    agents.resolve({ total: 0, items: [] });
+    // systemHealth and doltTrend reject in beforeEach: health is degraded.
+    await waitFor(() =>
+      expect(result.current.cityReadiness).toEqual({
+        state: 'degraded',
+        reasons: ['City health could not be read'],
+      }),
+    );
+  });
+
+  it('city readiness waits for the runs source', async () => {
+    const { result } = renderHook(() => useLiveAttentionContributors(operator, undefined));
+    await waitFor(() => expect(result.current.beadSnapshot).toBeDefined());
+    expect(result.current.cityReadiness).toEqual({ state: 'loading' });
+  });
+
+  it('city readiness is ready when every city source was read', () => {
+    expect(
+      deriveCityReadiness({
+        agents: { items: [] },
+        beads: { decisionLabel: 'x', items: [] },
+        activity: { events: [] },
+        health: { supervisor: { status: 'available', data: { status: 'ok' } as never } },
+        runs: { provenance: 'fresh' },
+      }),
+    ).toEqual({ state: 'ready' });
+    expect(
+      deriveCityReadiness({
+        agents: { error: 'x' },
+        beads: { decisionLabel: 'x', error: 'y' },
+        activity: { eventsError: 'z' },
+        health: {},
+        runs: { error: 'r' },
+      }),
+    ).toEqual({
+      state: 'degraded',
+      reasons: [
+        'Agents could not be read',
+        'Tasks could not be read',
+        'Runs could not be read',
+        'Events could not be read',
+      ],
+    });
   });
 
   it('beadSnapshot carries tasks and route items', async () => {

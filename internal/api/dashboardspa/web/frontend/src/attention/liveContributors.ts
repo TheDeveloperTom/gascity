@@ -12,7 +12,7 @@ import {
   supervisorApiForRequestBudget,
 } from '../supervisor/client';
 import { DEFAULT_MAIL_HISTORY_LIMIT, listSupervisorMail } from '../supervisor/mailReads';
-import type { AttentionContributor, OwnerReadiness } from './compose';
+import type { AttentionContributor, CityReadiness, OwnerReadiness } from './compose';
 import {
   createAttentionContributors,
   GC_ESCALATION_LABEL,
@@ -46,6 +46,7 @@ export interface BeadSnapshot {
 export interface LiveAttention {
   contributors: readonly AttentionContributor[];
   ownerReadiness: OwnerReadiness;
+  cityReadiness: CityReadiness;
   beadSnapshot: BeadSnapshot | undefined;
 }
 
@@ -70,6 +71,44 @@ export function deriveOwnerReadiness(
     reasons.push('Your mail could not be read');
   }
   return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
+}
+
+/**
+ * The city slice is only trustworthy once every source it is built from was
+ * read: agents, the general bead list, runs, events and city health. Until
+ * then it is loading, so no surface says "no problems" early; a failed source
+ * is named.
+ */
+export function deriveCityReadiness(facts: {
+  agents: AgentsAttentionFacts | undefined;
+  beads: BeadsAttentionFacts | undefined;
+  activity: ActivityAttentionFacts | undefined;
+  health: HealthAttentionFacts | undefined;
+  runs: RunsAttentionFacts | undefined;
+}): CityReadiness {
+  const { agents, beads, activity, health, runs } = facts;
+  if (
+    agents === undefined ||
+    beads === undefined ||
+    activity === undefined ||
+    health === undefined ||
+    runs === undefined
+  ) {
+    return OWNER_LOADING;
+  }
+  const reasons: string[] = [];
+  if (hasText(agents.error)) reasons.push('Agents could not be read');
+  if (hasText(beads.error)) reasons.push('Tasks could not be read');
+  if (hasText(runs.error)) reasons.push('Runs could not be read');
+  if (hasText(activity.eventsError)) reasons.push('Events could not be read');
+  if (health.supervisor?.status === 'unavailable' || hasText(health.dashboardError)) {
+    reasons.push('City health could not be read');
+  }
+  return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
+}
+
+function hasText(value: string | undefined): boolean {
+  return value !== undefined && value.length > 0;
 }
 
 export function useLiveAttentionContributors(
@@ -142,6 +181,17 @@ export function useLiveAttentionContributors(
     () => deriveOwnerReadiness(beadsData, mail.data),
     [beadsData, mail.data],
   );
+  const cityReadiness = useMemo(
+    () =>
+      deriveCityReadiness({
+        agents: agents.data,
+        beads: beadsData,
+        activity: activity.data,
+        health: health.data,
+        runs,
+      }),
+    [agents.data, beadsData, activity.data, health.data, runs],
+  );
   const beadSnapshot = useMemo<BeadSnapshot | undefined>(() => {
     if (beadsRaw?.items === undefined) return undefined;
     return {
@@ -151,8 +201,8 @@ export function useLiveAttentionContributors(
     };
   }, [beadsRaw, beadsFetchedAt]);
   return useMemo(
-    () => ({ contributors, ownerReadiness, beadSnapshot }),
-    [contributors, ownerReadiness, beadSnapshot],
+    () => ({ contributors, ownerReadiness, cityReadiness, beadSnapshot }),
+    [contributors, ownerReadiness, cityReadiness, beadSnapshot],
   );
 }
 
