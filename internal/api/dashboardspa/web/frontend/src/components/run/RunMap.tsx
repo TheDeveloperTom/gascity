@@ -10,16 +10,15 @@ import type { BadgeSeverity } from '../../attention/compose';
 import { LaneCard } from './LaneCard';
 
 // Run phase-lane map (gascity-dashboard-0t6). Renders the snapshot's
-// runs source as a typographic block list — count summary up top,
-// hairline-separated lanes below. No card chrome anywhere; hierarchy is
-// carried by space, weight, and tracked-uppercase column heads, matching
-// the Flat Page Rule and Greyscale Test in DESIGN.md.
+// runs source: a quiet counts row up top, then the runs that need the
+// owner (Blocked, in a red signal band), then active lanes grouped by rig,
+// then completed runs on request. Each lane list is one panel with
+// hairline-separated rows (Signal & Pavement R9, R10).
 //
 // gascity-dashboard-yh5i: the active/historical split is rendered as two
 // optional sections. Active lanes always show; historical lanes show only
 // when `showHistory` is true (controlled by ?history=1 in the URL,
-// threaded down from /runs). The historical section is labeled and
-// hairlined to keep the typographic register continuous with active.
+// threaded down from /runs).
 
 interface RunMapProps {
   source: SourceState<RunSummary>;
@@ -44,14 +43,18 @@ const ACTIVE_LIST_ID = 'runs-active-list';
 // preview keeps the section ambient by default per DESIGN.md.
 const HISTORICAL_PREVIEW = 5;
 
+// Panel recipe (DESIGN-PLAN §7) for a lane list, and the quiet text toggle
+// used by the "Show N more" expanders.
+const LANE_PANEL = 'rounded-lg border border-rule bg-surface-raised divide-y divide-rule';
+const EXPANDER =
+  'mt-3 inline-flex h-8 items-center rounded px-3 text-label font-semibold text-primary tnum transition-colors duration-150 ease-out-quart hover:bg-primary/10 focus-mark';
+
 export function RunMap({ source, now, showHistory, attentionSeverity }: RunMapProps) {
   if (source.status === 'error') {
     return (
       <section>
         <CountsHeader summary={null} />
-        <p className="mt-8 text-body text-fg-muted italic">
-          {`Run data unavailable: ${source.error}.`}
-        </p>
+        <p className="mt-8 text-body text-fg-muted">{`Run data unavailable: ${source.error}.`}</p>
       </section>
     );
   }
@@ -61,12 +64,12 @@ export function RunMap({ source, now, showHistory, attentionSeverity }: RunMapPr
   return (
     <section>
       <CountsHeader summary={summary} />
-      <ActiveSection
+      <BlockedSection
         summary={summary}
         now={now}
         {...(attentionSeverity === undefined ? {} : { attentionSeverity })}
       />
-      <BlockedSection
+      <ActiveSection
         summary={summary}
         now={now}
         {...(attentionSeverity === undefined ? {} : { attentionSeverity })}
@@ -104,16 +107,14 @@ function ActiveSection({
     // read as an empty store; say so in words instead.
     if (summary.lanesPartial === true) {
       return (
-        <p className="mt-8 text-body text-fg-muted italic">
+        <p className="mt-8 text-body text-fg-muted">
           Run sources were partially unavailable; the lane set may be incomplete.
         </p>
       );
     }
     // Distinguish "nothing at all" from "nothing active but N completed".
     const trailer = summary.totalHistorical > 0 ? ` (${summary.totalHistorical} completed.)` : '';
-    return (
-      <p className="mt-8 text-body text-fg-muted italic">{`No active formula runs.${trailer}`}</p>
-    );
+    return <p className="mt-8 text-body text-fg-muted">{`No active formula runs.${trailer}`}</p>;
   }
   const shown = expanded ? summary.lanes : summary.lanes.slice(0, MAX_VISIBLE_ACTIVE_LANES);
   // gascity-dashboard-7hek: organize active lanes by rig (the run-root store).
@@ -126,8 +127,10 @@ function ActiveSection({
     <>
       <div id={ACTIVE_LIST_ID}>
         {groups.map(({ rig, lanes }) => (
-          <div key={rig} className="mt-6">
-            <h3 className="text-label uppercase tracking-wider text-fg-faint">{rigLabel(rig)}</h3>
+          <div key={rig} className="mt-8">
+            <h3 className="text-title font-semibold text-fg [overflow-wrap:anywhere]">
+              {rigLabel(rig)}
+            </h3>
             <LaneList
               lanes={lanes}
               now={now}
@@ -142,7 +145,7 @@ function ActiveSection({
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
           aria-controls={ACTIVE_LIST_ID}
-          className="mt-3 text-label uppercase tracking-wider text-fg-faint tnum hover:text-fg focus-mark"
+          className={EXPANDER}
         >
           {expanded
             ? 'Show fewer'
@@ -167,7 +170,7 @@ function LaneList({
   listId?: string;
 }) {
   return (
-    <ol {...(listId === undefined ? {} : { id: listId })} className="mt-3 divide-y divide-rule">
+    <ol {...(listId === undefined ? {} : { id: listId })} className={`mt-3 ${LANE_PANEL}`}>
       {lanes.map((lane) => (
         <LaneCard
           key={lane.id}
@@ -233,11 +236,16 @@ function BlockedSection({
   const detailById = new Map(selectBlockedRuns(summary.blockedLanes).map((run) => [run.id, run]));
   if (detailById.size === 0) return null;
   return (
-    <section aria-label="Blocked runs" className="mt-12">
-      <h2 className="text-label uppercase tracking-wider text-fg-faint tnum">
-        Blocked ({detailById.size})
-      </h2>
-      <ol className="mt-3 divide-y divide-rule">
+    <section
+      aria-label="Blocked runs"
+      className="mt-8 overflow-hidden rounded-lg border border-rule bg-surface-raised"
+    >
+      <div className="border-b border-accent/40 bg-accent/[0.08] px-4 py-3">
+        <h2 className="text-title font-semibold text-fg">
+          Blocked <span className="tnum text-fg-muted">({detailById.size})</span>
+        </h2>
+      </div>
+      <ol className="divide-y divide-rule">
         {summary.blockedLanes.map((lane) => {
           const detail = detailById.get(lane.id);
           return (
@@ -272,11 +280,9 @@ function HistoricalSection({
 
   return (
     <section id={HISTORICAL_SECTION_ID} aria-label="Historical runs" className="mt-12">
-      <h2 className="text-label uppercase tracking-wider text-fg-faint">Historical</h2>
+      <h2 className="text-title font-semibold text-fg">Completed runs</h2>
       {lanes.length === 0 ? (
-        <p className="mt-3 text-body text-fg-muted italic">
-          No completed runs in the current window.
-        </p>
+        <p className="mt-3 text-body text-fg-muted">No completed runs in the current window.</p>
       ) : (
         <>
           <LaneList
@@ -291,7 +297,7 @@ function HistoricalSection({
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
               aria-controls={HISTORICAL_LIST_ID}
-              className="mt-3 text-label uppercase tracking-wider text-fg-faint tnum hover:text-fg focus-mark"
+              className={EXPANDER}
             >
               {expanded ? 'Show fewer' : `Show ${lanes.length - HISTORICAL_PREVIEW} more`}
             </button>
@@ -302,7 +308,7 @@ function HistoricalSection({
               recent window, not the whole history — mirroring the Active
               section's "N more not shown" note (same typographic register). */}
           {summary.totalHistorical > lanes.length && (
-            <p className="mt-3 text-label uppercase tracking-wider text-fg-faint tnum">
+            <p className="mt-3 text-label text-fg-muted tnum">
               Showing {lanes.length} most-recent of {summary.totalHistorical}
             </p>
           )}
@@ -321,14 +327,14 @@ function CountsHeader({ summary }: { summary: RunSummary | null }) {
   const total = summary?.runCounts.total ?? 0;
   const blocked = summary?.runCounts.blocked ?? 0;
   return (
-    <header className="space-y-2">
-      <div className="flex items-baseline gap-x-6 gap-y-2 flex-wrap">
+    <header>
+      <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <CountTile label="Active" value={total} tone="strong" />
         {COUNT_LABELS.map(([key, label]) => (
           <CountTile key={key} label={label} value={summary?.runCounts[key] ?? 0} tone="muted" />
         ))}
         {blocked > 0 && <CountTile label="Blocked" value={blocked} tone="muted" />}
-      </div>
+      </dl>
     </header>
   );
 }
@@ -342,13 +348,12 @@ function CountTile({
   value: number;
   tone: 'strong' | 'muted';
 }) {
-  // tnum + tracked-uppercase label per the column-head register elsewhere on
-  // the page; value sits below in body weight. No box around either.
-  const valueTone = tone === 'strong' ? 'text-fg' : 'text-fg-muted';
+  // One reading per pair: the word, then its number. No box around either.
+  const valueTone = tone === 'strong' ? 'font-semibold text-fg' : 'font-medium text-fg-muted';
   return (
-    <div className="flex flex-col">
-      <span className="text-label uppercase tracking-wider text-fg-faint">{label}</span>
-      <span className={`text-title tnum ${valueTone}`}>{value}</span>
+    <div className="flex items-baseline gap-1.5">
+      <dt className="text-label text-fg-muted">{label}</dt>
+      <dd className={`text-title tnum ${valueTone}`}>{value}</dd>
     </div>
   );
 }

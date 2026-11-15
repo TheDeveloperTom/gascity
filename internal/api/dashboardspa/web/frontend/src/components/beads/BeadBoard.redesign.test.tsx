@@ -1,0 +1,89 @@
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BeadStatus } from 'gas-city-dashboard-shared';
+import type { SupervisorBead } from '../../supervisor/beadReads';
+import { buildBeadGraph } from '../../lib/beadGraph';
+import { assertAtMostOneMark } from '../../test/assertions/oneMarkRule';
+import { BeadBoard } from './BeadBoard';
+
+// Redesign (Signal & Pavement, Task 7): board columns are panels whose body
+// scrolls inside a fixed height, so a 1,000-bead column no longer makes the
+// page 75,000 px tall. An empty column says "None" instead of a lone dot.
+
+beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: vi.fn(),
+  });
+});
+
+afterEach(() => cleanup());
+
+function bead(id: string, status: BeadStatus, extra: Partial<SupervisorBead> = {}): SupervisorBead {
+  return {
+    id,
+    title: `bead ${id}`,
+    status,
+    issue_type: 'task',
+    created_at: '2026-05-01T00:00:00Z',
+    ...extra,
+  };
+}
+
+function renderBoard(beads: SupervisorBead[]) {
+  const graph = buildBeadGraph(beads);
+  return render(<BeadBoard columns={graph.columns} selectedId={null} onSelect={vi.fn()} />);
+}
+
+describe('BeadBoard redesign', () => {
+  it('empty columns say None', () => {
+    // Open beads with an unmet need sit in "open", so "ready" is empty.
+    const { container } = renderBoard([
+      bead('A', 'open', { needs: ['GHOST'] }),
+      bead('B', 'open', { needs: ['GHOST'] }),
+    ]);
+    const ready = screen.getByRole('region', { name: 'ready' });
+    expect(within(ready).getByText('None')).toBeTruthy();
+    const loneDots = Array.from(container.querySelectorAll('*')).filter(
+      (el) => el.children.length === 0 && el.textContent?.trim() === '·',
+    );
+    expect(loneDots).toHaveLength(0);
+  });
+
+  it('an empty column collapses to its header below sm', () => {
+    renderBoard([bead('A', 'open')]);
+    const none = within(screen.getByRole('region', { name: 'done' })).getByText('None');
+    expect(none.classList.contains('hidden')).toBe(true);
+    expect(none.classList.contains('sm:block')).toBe(true);
+  });
+
+  it('columns scroll inside', () => {
+    const { container } = renderBoard([
+      bead('A', 'open', { needs: ['B'] }),
+      bead('B', 'in_progress'),
+      bead('C', 'blocked'),
+      bead('D', 'closed'),
+      bead('E', 'open'),
+    ]);
+    const lists = container.querySelectorAll('section ul');
+    expect(lists.length).toBe(5);
+    for (const list of lists) {
+      expect(list.classList.contains('max-h-[28rem]')).toBe(true);
+      expect(list.classList.contains('overflow-y-auto')).toBe(true);
+    }
+  });
+
+  it('one red mark', () => {
+    const { container } = renderBoard([bead('A', 'blocked'), bead('B', 'open')]);
+    assertAtMostOneMark(container);
+    const blocked = screen.getByRole('region', { name: 'blocked' });
+    expect(blocked.querySelectorAll('.text-accent')).toHaveLength(1);
+  });
+
+  it('shows the bead id as a copyable id tag', () => {
+    renderBoard([bead('work-1', 'open')]);
+    const id = screen.getByText('work-1', { exact: true });
+    expect(id.classList.contains('font-mono')).toBe(true);
+    expect(screen.getByTitle('Select work-1').getAttribute('aria-pressed')).toBe('false');
+  });
+});

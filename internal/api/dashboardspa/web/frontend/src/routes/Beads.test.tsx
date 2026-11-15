@@ -297,8 +297,8 @@ describe('BeadsPage', () => {
     expect(within(detailDialog).queryByRole('button', { name: /^claim$/i })).toBeNull();
 
     const closeButton = within(detailDialog)
-      .getAllByRole('button', { name: /^close$/i })
-      .find((button) => button.textContent?.trim() === 'Close');
+      .getAllByRole('button', { name: /^close bead…$/i })
+      .find((button) => button.textContent?.trim() === 'Close bead…');
     expect(closeButton).toBeTruthy();
     fireEvent.click(closeButton as HTMLButtonElement);
 

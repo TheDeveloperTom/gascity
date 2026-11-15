@@ -82,14 +82,14 @@ export function BeadDetailModal({
         caption={
           bead ? (
             <span>
-              <code className="text-fg-muted">{bead.id}</code>
+              <code className="font-mono text-[0.8125rem] text-fg-muted">{bead.id}</code>
               {' · '}
               {bead.issue_type}
               {' · P'}
               {bead.priority == null ? '—' : bead.priority}
             </span>
           ) : beadId ? (
-            <code className="text-fg-muted">{beadId}</code>
+            <code className="font-mono text-[0.8125rem] text-fg-muted">{beadId}</code>
           ) : undefined
         }
         widthClass="max-w-3xl"
@@ -98,7 +98,7 @@ export function BeadDetailModal({
         {notFound ? (
           <div className="space-y-2">
             <p className="text-fg-muted">This decision was resolved or removed.</p>
-            <p className="text-fg-faint text-sm">
+            <p className="text-body text-fg-muted">
               The bead it pointed to is no longer in the supervisor — it was likely closed or pruned
               since this link was surfaced.
             </p>
@@ -108,11 +108,11 @@ export function BeadDetailModal({
             {error}
           </p>
         ) : loading && bead === null ? (
-          <p className="text-fg-muted italic">Fetching bead.</p>
+          <p className="text-body text-fg-muted">Fetching bead.</p>
         ) : bead === null ? (
-          <p className="text-fg-muted italic">No bead.</p>
+          <p className="text-body text-fg-muted">No bead.</p>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <BeadBody bead={bead} />
             {depNode && (
               <BeadDependencies

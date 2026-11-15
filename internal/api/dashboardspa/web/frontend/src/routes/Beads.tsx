@@ -10,9 +10,11 @@ import { BeadAttentionPanel } from '../components/beads/BeadAttentionPanel';
 import { BeadBoardSection } from '../components/beads/BeadBoardSection';
 import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
+import { Field } from '../components/Field';
 import { FilterChips } from '../components/FilterChips';
 import { ListSearchBar } from '../components/ListSearchBar';
 import { Modal } from '../components/Modal';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { useNow } from '../contexts/NowContext';
@@ -40,6 +42,12 @@ const CLOSED_CHIP_ID = 'closed';
 // board's SSE-driven refresh into a much wider trailing window so churn yields
 // at most one refetch per window and a latency spike can no longer empty it.
 const BOARD_REFRESH_COALESCE_MS = 10_000;
+
+// Form controls per the Signal & Pavement input recipe (DESIGN-PLAN §7).
+const INPUT_CLASS =
+  'h-9 w-full rounded border border-rule bg-surface-raised px-3 text-body text-fg placeholder:text-fg-faint focus-mark';
+const TEXTAREA_CLASS =
+  'w-full rounded border border-rule bg-surface-raised px-3 py-2 text-body text-fg placeholder:text-fg-faint focus-mark';
 
 interface ActionMessage {
   tone: 'ok' | 'error';
@@ -327,13 +335,10 @@ export function BeadsPage() {
       return (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {readOnly && <ReadOnlyBadge />}
-          {actionLabel && (
-            <span className="text-label uppercase tracking-wider text-fg-faint">{actionLabel}</span>
-          )}
+          {actionLabel && <span className="text-label text-fg-muted">{actionLabel}</span>}
           <Button
             type="button"
             size="sm"
-            tone="quiet"
             title={roTitle}
             disabled={readOnly || busy || bead.status === 'closed'}
             onClick={() => {
@@ -341,7 +346,7 @@ export function BeadsPage() {
               setClosing(bead);
             }}
           >
-            Close
+            Close bead…
           </Button>
         </div>
       );
@@ -366,33 +371,14 @@ export function BeadsPage() {
         synopsis={synopsis}
         meta={
           <>
-            {error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {error}
-              </span>
-            )}
-            {sessions.error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {sessions.error}
-              </span>
-            )}
-            {agents.error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {agents.error}
-              </span>
-            )}
-            {rigs.error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {rigs.error}
-              </span>
-            )}
-            <span className="text-label uppercase tracking-wider text-fg-faint">
+            <span className="text-label font-medium text-fg-muted">
               {showClosed ? 'All statuses' : 'Open work'}
             </span>
             {readOnly && <ReadOnlyBadge />}
             <Button
               type="button"
               size="sm"
+              tone="accent"
               title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
               onClick={openCreateBead}
               disabled={readOnly || agents.loading || agentItems.length === 0}
@@ -406,40 +392,46 @@ export function BeadsPage() {
         }
       />
 
-      <div className="space-y-2 mb-6 text-body text-fg-muted max-w-prose">
-        {isTruncated && (
-          <p className="text-warn">
-            <StatusBadge
-              tone="warn"
-              label={`Fetch window covered ${upstreamFetched} of ${upstreamTotal} store beads. Raise the fetch limit (currently ${fetchLimit ?? '?'}) if engineering work sits past the window.`}
-            />
-          </p>
-        )}
-        {rigFilter !== RIG_FILTER_ALL && (
-          <p>
-            Filtering by rig <span className="font-semibold text-fg">{rigFilter}</span>.{' '}
-            <button
-              type="button"
-              onClick={() => setRigFilter(RIG_FILTER_ALL)}
-              className="text-fg-muted hover:text-fg focus-mark underline decoration-dotted underline-offset-2 rounded-sm"
+      <PageAlerts messages={[error, sessions.error, agents.error, rigs.error]} />
+
+      {(isTruncated || rigFilter !== RIG_FILTER_ALL || actionMessage) && (
+        <div className="mb-6 max-w-prose space-y-2 text-body text-fg-muted">
+          {isTruncated && (
+            <p className="text-warn">
+              <StatusBadge
+                tone="warn"
+                variant="inline"
+                className="whitespace-normal [&>span]:whitespace-normal"
+                label={`Fetch window covered ${upstreamFetched} of ${upstreamTotal} store beads. Raise the fetch limit (currently ${fetchLimit ?? '?'}) if engineering work sits past the window.`}
+              />
+            </p>
+          )}
+          {rigFilter !== RIG_FILTER_ALL && (
+            <p>
+              Filtering by rig <span className="font-semibold text-fg">{rigFilter}</span>.{' '}
+              <button
+                type="button"
+                onClick={() => setRigFilter(RIG_FILTER_ALL)}
+                className="rounded-sm text-primary underline-offset-2 hover:underline focus-mark"
+              >
+                Clear
+              </button>
+            </p>
+          )}
+          {actionMessage && (
+            <p
+              className={actionMessage.tone === 'error' ? 'text-accent' : 'text-fg-muted'}
+              role={actionMessage.tone === 'error' ? 'alert' : 'status'}
             >
-              Clear
-            </button>
-          </p>
-        )}
-        {actionMessage && (
-          <p
-            className={actionMessage.tone === 'error' ? 'text-accent' : 'text-fg-muted'}
-            role={actionMessage.tone === 'error' ? 'alert' : 'status'}
-          >
-            {actionMessage.text}
-          </p>
-        )}
-      </div>
+              {actionMessage.text}
+            </p>
+          )}
+        </div>
+      )}
 
       <BeadAttentionPanel items={attention.byDomain.beads.items} onOpen={setSelectedId} />
 
-      <div className="mb-6 space-y-3">
+      <div className="mb-8 space-y-3">
         <ListSearchBar
           value={filters.search}
           onChange={filters.setSearch}
@@ -448,7 +440,7 @@ export function BeadsPage() {
           totalCount={filteredRows.length}
           ariaLabel="Search beads"
         />
-        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
           <FilterChips
             chips={BEAD_CHIPS}
             activeIds={filters.activeChipIds}
@@ -456,13 +448,13 @@ export function BeadsPage() {
             legend="Status"
           />
           {dispatchRigOptions.length > 1 && (
-            <label className="flex items-baseline gap-2 text-label">
-              <span className="uppercase tracking-wider text-fg-muted">Rig</span>
+            <label className="flex items-center gap-2 text-label">
+              <span className="font-medium text-fg-muted">Rig</span>
               <select
                 value={rigFilter}
                 onChange={(event) => setRigFilter(event.target.value)}
                 aria-label="Rig filter"
-                className="text-label uppercase tracking-wider text-fg-muted bg-transparent border-0 focus-mark cursor-pointer hover:text-fg transition-colors duration-150 ease-out-quart"
+                className="h-8 cursor-pointer rounded border border-rule bg-surface-raised px-2 text-label text-fg focus-mark"
               >
                 <option value={RIG_FILTER_ALL}>all rigs</option>
                 {dispatchRigOptions.map((rig) => (
@@ -477,15 +469,15 @@ export function BeadsPage() {
       </div>
 
       {!hasLoadedBoard && loading ? (
-        <p className="text-body text-fg-muted italic">Loading beads.</p>
+        <p className="text-body text-fg-muted">Loading beads.</p>
       ) : matched.length === 0 ? (
-        <p className="text-body text-fg-muted italic">
+        <p className="text-body text-fg-muted">
           {filters.search.length > 0 || filters.activeChipIds.size > 0
             ? 'No beads match the current search or filter.'
             : 'Nothing on the queue right now.'}
         </p>
       ) : (
-        <div className="space-y-12">
+        <div className="space-y-10">
           {filters.groups.map((group) => (
             <BeadBoardSection
               key={group.projectKey}
@@ -575,6 +567,7 @@ export function BeadsPage() {
               type="submit"
               form="new-bead-form"
               size="sm"
+              tone="accent"
               title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
               disabled={
                 readOnly ||
@@ -597,35 +590,32 @@ export function BeadsPage() {
           }}
         >
           {createError && (
-            <p className="text-accent" role="alert">
+            <p className="text-body text-accent" role="alert">
               {createError}
             </p>
           )}
-          <label className="block space-y-2 text-body">
-            <span className="text-label uppercase tracking-wider text-fg-muted">Title</span>
+          <Field label="Title" variant="form">
             <input
               value={newTitle}
               onChange={(event) => setNewTitle(event.target.value)}
               required
-              className="w-full rounded-sm border border-rule bg-transparent px-3 py-2 text-body text-fg focus-mark"
+              className={INPUT_CLASS}
             />
-          </label>
-          <label className="block space-y-2 text-body">
-            <span className="text-label uppercase tracking-wider text-fg-muted">Body</span>
+          </Field>
+          <Field label="Body" variant="form">
             <textarea
               value={newBody}
               onChange={(event) => setNewBody(event.target.value)}
               rows={5}
-              className="w-full rounded-sm border border-rule bg-transparent px-3 py-2 text-body text-fg focus-mark"
+              className={TEXTAREA_CLASS}
             />
-          </label>
+          </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block space-y-2 text-body">
-              <span className="text-label uppercase tracking-wider text-fg-muted">Rig</span>
+            <Field label="Rig" variant="form">
               <select
                 value={newRig}
                 onChange={(event) => handleDispatchRigChange(event.target.value)}
-                className="w-full rounded-sm border border-rule bg-transparent px-3 py-2 text-body text-fg focus-mark"
+                className={INPUT_CLASS}
               >
                 {dispatchRigOptions.length === 0 && <option value="">all rigs</option>}
                 {dispatchRigOptions.map((rig) => (
@@ -634,14 +624,13 @@ export function BeadsPage() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="block space-y-2 text-body">
-              <span className="text-label uppercase tracking-wider text-fg-muted">Agent</span>
+            </Field>
+            <Field label="Agent" variant="form">
               <select
                 value={newAgent}
                 onChange={(event) => setNewAgent(event.target.value)}
                 required
-                className="w-full rounded-sm border border-rule bg-transparent px-3 py-2 text-body text-fg focus-mark"
+                className={INPUT_CLASS}
               >
                 {filteredDispatchAgents.map((agent) => (
                   <option key={agent.name} value={agent.name}>
@@ -652,7 +641,7 @@ export function BeadsPage() {
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
           </div>
         </form>
       </Modal>
