@@ -262,10 +262,15 @@ function cityStatusAttention(status: StatusBody | undefined): readonly Attention
   if (store !== undefined) {
     const lastGc = store.last_gc_status?.trim();
     if (lastGc && lastGc !== 'success') {
-      items.push(healthWatch({ id: 'health:store-maintenance', title: t('Task store maintenance failed') }));
+      items.push(
+        healthWatch({ id: 'health:store-maintenance', title: t('Task store maintenance failed') }),
+      );
     } else if (store.warning) {
       items.push(
-        healthWatch({ id: 'health:store-maintenance', title: t('Task store maintenance is overdue') }),
+        healthWatch({
+          id: 'health:store-maintenance',
+          title: t('Task store maintenance is overdue'),
+        }),
       );
     }
   }
@@ -552,11 +557,13 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
     // Owner only when the bead NAMES the owner (review C1); an unknown hold
     // such as `hold:plan` names nobody and is city work.
+    // An explicit `hold:human` / `hold:<operator alias>` names the owner too.
     const waitsOnOwner =
       row.reason === 'waiting-human' &&
-      row.waitingOnNamed === true &&
-      row.waitingOn !== undefined &&
-      ownerAliases.has(row.waitingOn.trim().toLowerCase());
+      ((row.waitingOnNamed === true &&
+        row.waitingOn !== undefined &&
+        ownerAliases.has(row.waitingOn.trim().toLowerCase())) ||
+        (row.holdLabel !== undefined && ownerAliases.has(row.holdLabel)));
     items.push(
       builder('beads', {
         id: `beads:${row.beadId}:${row.reason}`,
@@ -566,7 +573,11 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
         summary:
           row.parts === undefined
             ? withoutLeadingTitle(row.summary, row.title, row.reason)
-            : beadRowSummary(row.parts),
+            : beadRowSummary(
+                waitsOnOwner && row.parts.reason === 'waiting-human'
+                  ? { ...row.parts, toOwner: true }
+                  : row.parts,
+              ),
         href: beadHref(row.beadId),
         updatedAt: row.updatedAt,
       }),

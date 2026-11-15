@@ -156,6 +156,8 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Nobody has taken it for {age}': 'Никто не берёт уже {age}',
   'On hold': 'На паузе',
   'On hold for {age}': 'На паузе уже {age}',
+  'Waiting on you': 'Ждёт вас',
+  'Waiting on you for {age}': 'Ждёт вас уже {age}',
   'Waiting on {who}': 'Ждёт: {who}',
   'Waiting on {who} for {age}': 'Ждёт: {who}, уже {age}',
   'Stalled: {cause}': 'Застряла: {cause}',

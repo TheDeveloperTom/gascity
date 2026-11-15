@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentResponse, Bead, Message } from 'gas-city-dashboard-shared/gc-supervisor';
+import { setLocale } from '../i18n';
 import { composeAttention } from './compose';
 import { createAttentionContributors, type AttentionContributorFacts } from './registry';
 
@@ -219,6 +220,52 @@ describe('attention audience', () => {
       }),
     );
     expect(m.owner.items.map((item) => item.id)).toEqual(['beads:B-s:waiting-human']);
+  });
+
+  // Re-review N1: spec §3.2 O4. The awaiting-human checkpoint and an explicit
+  // hold on the owner are the owner's, and read «Ждёт вас».
+  it.each([
+    ['gc.checkpoint=awaiting-human', { metadata: { 'gc.checkpoint': 'awaiting-human' } }],
+    ['hold:human', { labels: ['hold:human'] }],
+    ['hold:<operator alias>', { labels: ['hold:stephanie'] }],
+  ] as const)('%s is the owner', (_name, extra) => {
+    const m = model(
+      beadsFacts({
+        items: [
+          bead({
+            id: 'B-o',
+            status: 'in_progress',
+            assignee: 'w',
+            updated_at: '2026-06-01T07:00:00.000Z',
+            ...extra,
+          }),
+        ],
+      }),
+    );
+    expect(m.owner.items.map((item) => item.id)).toEqual(['beads:B-o:waiting-human']);
+    expect(m.owner.items[0]?.summary).toBe('Waiting on you for 5 hours');
+  });
+
+  it('an owner wait reads «Ждёт вас» in Russian', () => {
+    setLocale('ru');
+    try {
+      const m = model(
+        beadsFacts({
+          items: [
+            bead({
+              id: 'B-o',
+              status: 'in_progress',
+              assignee: 'w',
+              updated_at: '2026-06-01T07:00:00.000Z',
+              metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'human' },
+            }),
+          ],
+        }),
+      );
+      expect(m.owner.items[0]?.summary).toBe('Ждёт вас уже 5 часов');
+    } finally {
+      setLocale('en');
+    }
   });
 
   // Review I4: every city example stays out of owner.items.

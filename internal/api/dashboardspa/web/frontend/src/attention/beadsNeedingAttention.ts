@@ -122,6 +122,8 @@ export interface BeadAttentionRow {
   waitingOn?: string;
   /** False when `waitingOn` is the board's "human" fallback, not a named actor. */
   waitingOnNamed?: boolean;
+  /** The lowercased `<x>` of a `hold:<x>` label, when the bead carries one. */
+  holdLabel?: string;
   /**
    * The facts behind `summary`, so the attention layer can phrase them in the
    * viewer's language (review I5). `summary` stays the board's English note.
@@ -140,7 +142,13 @@ export type StallCause =
 export type BeadRowParts =
   | { reason: 'escalated' }
   | { reason: 'ready-unclaimed'; ageMs: number }
-  | { reason: 'waiting-human'; who: string | null; waitMs: number | null }
+  | {
+      reason: 'waiting-human';
+      who: string | null;
+      waitMs: number | null;
+      /** Set by the attention layer when the wait is on the owner. */
+      toOwner?: boolean;
+    }
   | { reason: 'stalled'; ageMs: number | null; cause: StallCause; step?: string };
 
 /**
@@ -343,6 +351,7 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     summary: phrase,
     waitingOn: who,
     waitingOnNamed: named !== null,
+    ...(holdLabelValue(bead) === null ? {} : { holdLabel: holdLabelValue(bead) as string }),
     parts: { reason: 'waiting-human', who: named, waitMs },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
@@ -491,10 +500,23 @@ function namedWaitingActor(bead: Bead, holdText: string): string | null {
   if (stamped !== undefined && stamped.length > 0) return stamped;
   const canonical = canonicalHoldActor(bead);
   if (canonical !== undefined) return canonical;
+  // The awaiting-human checkpoint names the human by definition (spec §3.2 O4).
+  if (bead.metadata?.['gc.checkpoint'] === WAITING_CHECKPOINT_VALUE) return 'human';
   const parenthetical = /\(([^)]+)\)/.exec(holdText);
   const inner = parenthetical?.[1]?.trim();
   if (inner !== undefined && inner.length > 0) return inner;
   return null;
+}
+
+// The value of the bead's `hold:<x>` label, lowercased, or null. The selector
+// does not know the owner's aliases; the attention layer compares this to
+// them, so `hold:human` or `hold:<operator alias>` marks the owner while
+// `hold:plan` stays city work.
+function holdLabelValue(bead: Bead): string | null {
+  const label = (bead.labels ?? []).find((l) => l.trim().startsWith(HOLD_LABEL_PREFIX));
+  if (label === undefined) return null;
+  const value = label.trim().slice(HOLD_LABEL_PREFIX.length).trim().toLowerCase();
+  return value.length > 0 ? value : null;
 }
 
 // The actor named by a canonical hold label, or undefined for an ad hoc
