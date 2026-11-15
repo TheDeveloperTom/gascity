@@ -171,6 +171,21 @@ describe('every devwork-development step maps to its stage', () => {
   });
 });
 
+describe('closed but not merged (review M2)', () => {
+  it.each([['skipped'], ['fail']])('gives a closed task with outcome %s a quiet hint', (outcome) => {
+    const result = stageOf(task({ status: 'closed', metadata: { 'gc.outcome': outcome } }), []);
+    expect(result.stage).toBe('merged');
+    expect(result.marks).toContainEqual(
+      expect.objectContaining({ kind: 'not-merged', tone: 'quiet', label: 'closed, not merged' }),
+    );
+  });
+
+  it('gives a merged task (outcome pass) no hint', () => {
+    const result = stageOf(task({ status: 'closed', metadata: { 'gc.outcome': 'pass' } }), []);
+    expect(result.marks).toEqual([]);
+  });
+});
+
 describe('Merged means closed (coordinator ruling I4)', () => {
   it('an open task is never Merged, even at a step labelled merged', () => {
     const lastStep = step('close-source-anchor', 'merged', { is_blocked: false });

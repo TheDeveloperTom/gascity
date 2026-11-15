@@ -77,7 +77,8 @@ export type StageMarkKind =
   | 'stopped'
   | 'route-failed'
   | 'route-stopped'
-  | 'tdd-refused';
+  | 'tdd-refused'
+  | 'not-merged';
 
 export interface StageMark {
   kind: StageMarkKind;
@@ -315,6 +316,17 @@ export function deriveTaskStage(
     stage = 'merged';
     step = route ? lastClosedMember(route) : null;
     if (step === null && task.close_reason) stepLabel = task.close_reason;
+    // Merged is "closed" by the owner's rule; a close the route did not pass
+    // (the Mayor closed the gate, a stop) gets a quiet word (review M2).
+    const outcome = meta(task, 'gc.outcome');
+    if (outcome === 'skipped' || outcome === 'fail') {
+      marks.push({
+        kind: 'not-merged',
+        tone: 'quiet',
+        label: 'closed, not merged',
+        title: `Closed with outcome ${outcome}.`,
+      });
+    }
   } else if (route === null || route.root.status === 'closed') {
     stage = task.status === 'in_progress' ? 'working' : 'waiting';
     if (route !== null && meta(route.root, 'gc.outcome') === 'fail') {
