@@ -101,4 +101,14 @@ describe('TasksInFlight', () => {
     expect(screen.queryByText('Nothing is going on right now')).toBeNull();
     expect(screen.getByText('Reading the board…')).toBeTruthy();
   });
+
+  it('drops its own heading inside a shelf that names the list', () => {
+    render(
+      <MemoryRouter>
+        <TasksInFlight stages={stages([row(1)])} heading={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('heading', { name: 'What is going on' })).toBeNull();
+    expect(screen.getByText('Задача номер 1')).toBeTruthy();
+  });
 });

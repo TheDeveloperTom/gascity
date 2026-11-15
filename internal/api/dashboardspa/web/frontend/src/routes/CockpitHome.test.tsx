@@ -28,6 +28,13 @@ vi.mock('../runs/runSummarySubscription', () => ({
   useRunSummary: () => mocks.runSummary() as RunSummarySubscription,
 }));
 
+// vk lane 3: the needs shelves read the board; these tests cover the
+// instruments, so the board read stays out (CockpitHome.owner covers needs).
+vi.mock('../lib/needsFromMe', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
+  useNeedsModel: () => ({ state: 'ready', needs: [], stalls: [], quiet: [], count: 0 }),
+}));
+
 const router = (children: React.ReactNode) => <MemoryRouter>{children}</MemoryRouter>;
 
 function deferred<T>() {

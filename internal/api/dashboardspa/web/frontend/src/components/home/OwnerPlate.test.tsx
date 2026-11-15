@@ -1,7 +1,10 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AttentionItem, OwnerReadiness } from '../../attention/compose';
+
+const openExternal = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/openExternal', () => ({ openExternal }));
 import { setLocale } from '../../i18n';
 import { OwnerPlate } from './OwnerPlate';
 
@@ -107,12 +110,15 @@ describe('OwnerPlate', () => {
     expect(screen.getByRole('heading', { name: 'Вас ждут 2 дела' })).toBeTruthy();
   });
 
-  it('decision row links to the chat in a new tab and to the bead', () => {
+  it('decision row opens the chat through openExternal and links to the bead', () => {
     plate([decision], { state: 'ready' });
     const chat = screen.getByRole('link', { name: 'Answer in chat' });
     expect(chat.getAttribute('href')).toBe('https://discord.com/channels/1/2/3');
-    expect(chat.getAttribute('target')).toBe('_blank');
-    expect(chat.getAttribute('rel')).toBe('noreferrer');
+    // vk: no target="_blank"; ExternalLink hands the URL to openExternal.
+    expect(chat.getAttribute('target')).toBeNull();
+    expect(chat.getAttribute('rel')).toBe('noopener noreferrer');
+    fireEvent.click(chat);
+    expect(openExternal).toHaveBeenCalledWith('https://discord.com/channels/1/2/3');
     expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(
       '/beads?bead=dw-9',
     );
