@@ -45,8 +45,13 @@ function renderHeader(contributors: readonly AttentionContributor[] = []) {
   );
 }
 
+// The full page list lives in the «Ещё» menu of the VK top bar (vk lane 5).
+function pagesNav(container: HTMLElement): HTMLElement {
+  return container.querySelector('header details nav') as HTMLElement;
+}
+
 function navText(container: HTMLElement): string {
-  return container.querySelector('header nav')!.textContent ?? '';
+  return pagesNav(container).textContent ?? '';
 }
 
 describe('Header language toggle', () => {
@@ -77,7 +82,7 @@ describe('Header language toggle', () => {
     expect(navText(container)).toContain('Beads');
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch language to Russian (RU)' }));
-    const nav = container.querySelector('header nav') as HTMLElement;
+    const nav = pagesNav(container);
     expect(within(nav).getByText('Задачи')).toBeTruthy();
     expect(within(nav).getByText('Прогоны')).toBeTruthy();
     expect(within(nav).getByText('Здоровье')).toBeTruthy();
@@ -113,17 +118,17 @@ describe('Header language toggle', () => {
     expect(document.activeElement).toBe(after);
   });
 
-  // Review M-1: the chip has a subject, the same noun as the pill aria.
-  it('phone chip names what waits', async () => {
+  // vk lane 5: the «need you» chip moved to the «Нужно от меня» tab
+  // (useNeedsFromMeCount, lane 3); the «Ещё» menu keeps a red dot while any
+  // owner item waits on a page inside it.
+  it('the «Ещё» menu carries a dot while owner items wait', () => {
     setLocale('ru');
-    renderHeader([
-      contributor('mail', [
-        item('m1', 'mail', 'attention', 'owner'),
-        item('m2', 'mail', 'attention', 'owner'),
-        item('m3', 'mail', 'attention', 'owner'),
-      ]),
+    const { container } = renderHeader([
+      contributor('mail', [item('m1', 'mail', 'attention', 'owner')]),
     ]);
-    expect(await screen.findByRole('link', { name: '3 дела ждут вас' })).toBeTruthy();
+    const summary = container.querySelector('header details summary') as HTMLElement;
+    expect(summary.getAttribute('aria-label')).toBe('Ещё');
+    expect(summary.querySelector('.bg-accent')).not.toBeNull();
   });
 
   // Review M-2: natural Russian for "Reading as" (another mailbox's view).
@@ -132,9 +137,9 @@ describe('Header language toggle', () => {
     expect(t('Reading as {name}', { name: 'mayor' })).toBe('Вы смотрите почту как mayor');
   });
 
-  it('english chip is grammatical in the singular', async () => {
-    renderHeader([contributor('mail', [item('m1', 'mail', 'attention', 'owner')])]);
-    expect(await screen.findByRole('link', { name: '1 needs you' })).toBeTruthy();
+  it('no «Ещё» dot when nothing waits for the owner', () => {
+    const { container } = renderHeader([contributor('mail', [item('m1', 'mail', 'watch')])]);
+    expect(container.querySelector('header details summary .bg-accent')).toBeNull();
   });
 
   it('theme toggle speaks Russian too', () => {
@@ -145,20 +150,20 @@ describe('Header language toggle', () => {
     ).toBeTruthy();
   });
 
-  it('phone nav still one row in Russian', () => {
+  it('the page menu reads Russian', () => {
     setLocale('ru');
     const { container } = renderHeader();
-    const nav = container.querySelector('header nav') as HTMLElement;
-    expect(nav.className).toContain('overflow-x-auto');
-    expect(nav.className).toContain('whitespace-nowrap');
+    const nav = pagesNav(container);
+    expect(nav.getAttribute('aria-label')).toBe('Все страницы');
     expect(within(nav).getByText('Главная')).toBeTruthy();
   });
 
-  it('on phones the theme word folds to its icon, leaving the city name room', () => {
+  it('the theme toggle is an icon button with a 44 px phone target', () => {
     setLocale('ru');
     renderHeader();
-    const word = screen.getByText('Тёмная');
-    expect(word.className.split(/\s+/)).toEqual(expect.arrayContaining(['hidden', 'lg:inline']));
+    const toggle = screen.getByRole('button', { name: /Переключить на (тёмную|светлую) тему/ });
+    expect(toggle.textContent).toBe('');
+    expect(toggle.className.split(/\s+/)).toEqual(expect.arrayContaining(['h-11', 'md:h-[30px]']));
   });
 
   it('pills count owner items only', async () => {
@@ -177,8 +182,6 @@ describe('Header language toggle', () => {
     expect(screen.getByLabelText('Agents: 1 attention item').textContent).toBe('1');
     // Runs items are the city's: no badge on Runs.
     expect(screen.queryByLabelText(/^Runs:/)).toBeNull();
-    // The phone chip is the owner total.
-    expect(screen.getByRole('link', { name: '3 need you' })).toBeTruthy();
   });
 
   it('health pill counts city items in amber', async () => {

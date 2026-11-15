@@ -28,6 +28,7 @@ import { RunSummaryProvider, useRunSummary } from './runs/runSummarySubscription
 import { ALL_VIEWS } from './views/registry';
 import { filterEnabledViews, resolveDefaultViewWithLogging } from './views/resolve';
 import type { FrontendViewDescriptor } from './views/types';
+import { CommandBar } from './vk/CommandBar';
 
 const AgentsPage = lazy(() => import('./routes/Agents').then((m) => ({ default: m.AgentsPage })));
 const AgentDetailPage = lazy(() =>
@@ -102,6 +103,8 @@ export function App() {
                     enabledViews={enabledViews}
                   />
                 </Layout>
+                {/* vk lane 5: the ⌘K palette, mounted once inside the router. */}
+                <CommandBar />
               </AttentionRoot>
             </RunSummaryProvider>
           </ReadOnlyProvider>

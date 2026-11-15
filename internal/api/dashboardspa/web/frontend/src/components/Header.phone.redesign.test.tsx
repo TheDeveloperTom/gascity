@@ -7,10 +7,8 @@ import { ThemeProvider } from '../contexts/ThemeContext';
 import { ViewingAsProvider } from '../contexts/ViewingAsContext';
 import { Header } from './Header';
 
-// Final review Minor 6 and top-3 #3: at 390 px every nav count pill sits
-// off-screen in the scrolling row. The phone top bar carries one compact red
-// "N need you" chip (attention only, the Home board's number), and the
-// active nav item scrolls into view inside the row.
+// The VK top bar at 390 px (vk lane 5): sections move to the bottom tabs, the
+// top row keeps the city, the «Ещё» page menu and the toggles at 44 px.
 
 vi.mock('../api/client', () => ({
   api: {
@@ -83,50 +81,35 @@ describe('Header on phones', () => {
     vi.restoreAllMocks();
   });
 
-  // Task 9: the chip is the owner slice's total; city items never count.
-  it('shows one red "need you" chip counting owner items only, outside the nav', async () => {
-    const { container } = renderHeader([
-      contributor('beads', [
-        { ...item('b1', 'beads', 'attention'), audience: 'owner' },
-        item('b2', 'beads', 'attention'),
-      ]),
+  // vk lane 5 (ruling 4): the phone count lives on the «Нужно от меня» bottom
+  // tab now, so the top bar carries no "need you" chip and no scrolling row.
+  it('no "need you" chip in the top bar, even with owner items', () => {
+    renderHeader([
       contributor('mail', [{ ...item('m1', 'mail', 'attention'), audience: 'owner' }]),
     ]);
-    const chip = await screen.findByRole('link', { name: '2 need you' });
-    expect(chip.getAttribute('href')).toBe('/');
-    expect(chip.className).toContain('lg:hidden');
-    expect(chip.className).toContain('bg-accent');
-    expect(container.querySelector('header nav')!.contains(chip)).toBe(false);
-  });
-
-  it('no chip when nothing needs you', () => {
-    renderHeader([contributor('mail', [item('m1', 'mail', 'watch')])]);
     expect(screen.queryByRole('link', { name: /need you/ })).toBeNull();
   });
 
-  it('scrolls the active nav item into view inside the row', () => {
-    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(820);
-    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(390);
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const isActive = this.getAttribute('aria-current') === 'page';
-      const left = isActive ? 600 : 0;
-      const width = isActive ? 100 : 390;
-      return {
-        left,
-        width,
-        right: left + width,
-        top: 0,
-        bottom: 40,
-        height: 40,
-        x: left,
-        y: 0,
-      } as DOMRect;
-    });
+  it('the bar is a plain row on phones and sticky from md', () => {
+    const { container } = renderHeader([]);
+    const cls = container.querySelector('header')!.className.split(/\s+/);
+    expect(cls).toEqual(expect.arrayContaining(['md:sticky', 'md:top-0']));
+    expect(cls).not.toContain('sticky');
+  });
+
+  it('every bar control is a 44 px target on phones', () => {
+    const { container } = renderHeader([]);
+    const controls = container.querySelectorAll(
+      'header summary, header > div > div:last-child > button',
+    );
+    expect(controls.length).toBeGreaterThanOrEqual(3);
+    for (const c of Array.from(controls)) expect(c.className.split(/\s+/)).toContain('h-11');
+  });
+
+  it('the active debug page is marked inside the «Ещё» menu', async () => {
     const { container } = renderHeader([], '/health');
-    const nav = container.querySelector('header nav') as HTMLElement;
-    // Centre the active item: 600 - (390 - 100) / 2 = 455.
-    expect(nav.scrollLeft).toBe(455);
+    await screen.findByRole('link', { name: /^Health/ });
+    const active = container.querySelector('header details nav a[aria-current="page"]');
+    expect(active?.getAttribute('href')).toBe('/health');
   });
 });
