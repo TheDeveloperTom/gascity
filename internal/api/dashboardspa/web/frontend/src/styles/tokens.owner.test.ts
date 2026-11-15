@@ -137,6 +137,14 @@ describe('«Табличка» tokens', () => {
     expect(rule).toMatch(/outline:[^;]*var\(--plate\)/);
   });
 
+  it('ink links carry an underline at rest (review §5: blue stays on the plate)', () => {
+    // primary is ink now, so colour alone no longer tells a link from text.
+    // Element-only specificity (0,0,1): beats preflight's `a` reset by order,
+    // loses to every utility class on the element.
+    const rule = css.match(/\ba:where\(\.text-primary\)\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).toMatch(/text-decoration-line:\s*underline/);
+  });
+
   it('self-hosts PT Sans Narrow Bold for Latin and Cyrillic', () => {
     const dir = join(here, '..', 'assets', 'fonts', 'pt-sans-narrow');
     for (const subset of ['latin', 'cyrillic']) {

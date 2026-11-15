@@ -188,6 +188,20 @@
     text-wrap: pretty;
   }
 
+  /* primary is ink, so a link no longer differs from text by colour: it
+     carries a thin underline at rest (review §5). Specificity stays at one
+     element (0,0,1): later than preflight's `a` reset so it wins there, and
+     below any class, so underline-offset-2, no-underline and the rest win. */
+  a:where(.text-primary) {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: oklch(var(--primary) / 0.45);
+  }
+  a:where(.text-primary):hover {
+    text-decoration-color: currentColor;
+  }
+
   ::selection {
     background: oklch(var(--primary) / 0.25);
     color: oklch(var(--fg));
