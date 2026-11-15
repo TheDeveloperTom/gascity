@@ -38,6 +38,32 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   Board: 'Доска',
   City: 'Город',
 
+  // Rail (Task 9).
+  'Switch city': 'Сменить город',
+  '{city} (unknown)': '{city} (не найден)',
+  '{city} (stopped)': '{city} (остановлен)',
+  city: 'город',
+  'Reading as {name}': 'Читаете как {name}',
+  'Switch to light theme': 'Переключить на светлую тему',
+  'Switch to dark theme': 'Переключить на тёмную тему',
+  Light: 'Светлая',
+  Dark: 'Тёмная',
+  '{n} need you': { one: '{n} ждёт вас', few: '{n} ждут вас', many: '{n} ждут вас' },
+  '{label}: {n} items waiting for you': {
+    one: '{label}: {n} дело ждёт вас',
+    few: '{label}: {n} дела ждут вас',
+    many: '{label}: {n} дел ждут вас',
+  },
+  '{label}: {n} city issues': {
+    one: '{label}: {n} неполадка города',
+    few: '{label}: {n} неполадки города',
+    many: '{label}: {n} неполадок города',
+  },
+
+  // Page titles (Task 9; PageHeader translates a known title).
+  Agent: 'Агент',
+  Cockpit: 'Пульт',
+
   // Plurals.
   '{n} things wait for you': {
     one: 'Вас ждёт {n} дело',

@@ -77,6 +77,14 @@ export function t(en: string, vars?: Vars): string {
   return substitute(en, vars);
 }
 
+// For strings that may be a label or a name (page titles): translate when a
+// Russian entry exists, otherwise show as-is without recording it missing.
+export function tIfKnown(text: string): string {
+  if (current === 'en') return text;
+  const entry = RU[text];
+  return typeof entry === 'string' ? entry : text;
+}
+
 const ruRules = new Intl.PluralRules('ru');
 const enRules = new Intl.PluralRules('en');
 

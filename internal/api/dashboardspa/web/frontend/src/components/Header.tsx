@@ -11,6 +11,8 @@ import { ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { useViewingAs } from '../contexts/ViewingAsContext';
 import { displayLabel } from '../hooks/aliasPriority';
 import { useCachedData } from '../hooks/useCachedData';
+import { t, tn } from '../i18n';
+import { useLocale } from '../i18n/LocaleProvider';
 import { supervisorApi } from '../supervisor/client';
 import { ALL_VIEWS } from '../views/registry';
 import { filterEnabledViews } from '../views/resolve';
@@ -79,6 +81,7 @@ const NAV_ATTENTION_DOMAINS: Readonly<Record<string, AttentionDomain>> = {
 // row, so it never wraps and never widens the page. No hamburger, no state.
 export function Header() {
   const { resolved, toggle } = useTheme();
+  const { locale, setLocale } = useLocale();
   const { viewingAs } = useViewingAs();
   const { operatorAlias } = useOperatorConfig();
   const readOnly = useReadOnly();
@@ -163,7 +166,7 @@ export function Header() {
           </span>
           {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
-              Switch city
+              {t('Switch city')}
             </label>
           ) : null}
           {showSwitcher ? (
@@ -180,19 +183,18 @@ export function Header() {
                   (gascity-dashboard-ux-stale-city-url-no-recovery). */}
               {!activeCityKnown && selectedCity !== '' ? (
                 <option value={selectedCity} disabled>
-                  {selectedCity} (unknown)
+                  {t('{city} (unknown)', { city: selectedCity })}
                 </option>
               ) : null}
               {cityItems.map((c) => (
                 <option key={c.name} value={c.name}>
-                  {c.name}
-                  {c.running ? '' : ' (stopped)'}
+                  {c.running ? c.name : t('{city} (stopped)', { city: c.name })}
                 </option>
               ))}
             </select>
           ) : (
             <span className="min-w-0 truncate text-label font-medium text-fg-muted">
-              {selectedCity || 'city'}
+              {selectedCity || t('city')}
             </span>
           )}
           {needsYou > 0 && (
@@ -200,7 +202,7 @@ export function Header() {
               to="/"
               className="focus-mark ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-accent px-2.5 text-label font-semibold text-on-primary tnum lg:hidden"
             >
-              {needsYou} need you
+              {tn(needsYou, { one: '{n} need you', other: '{n} need you' })}
             </Link>
           )}
         </div>
@@ -247,7 +249,7 @@ export function Header() {
                               }
                             />
                           )}
-                          {r.label}
+                          {t(r.label)}
                           {domain !== undefined && (
                             <NavAttentionIndicator
                               label={r.label}
@@ -269,7 +271,9 @@ export function Header() {
             <StatusBadge
               tone="warn"
               variant="inline"
-              label={`Reading as ${displayLabel(viewingAs.alias, operatorAlias)}`}
+              label={t('Reading as {name}', {
+                name: displayLabel(viewingAs.alias, operatorAlias),
+              })}
             />
           </p>
         )}
@@ -283,11 +287,26 @@ export function Header() {
           <button
             type="button"
             onClick={toggle}
-            aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={
+              resolved === 'dark' ? t('Switch to light theme') : t('Switch to dark theme')
+            }
             className="inline-flex h-8 items-center gap-2 rounded px-1.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
           >
             <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[18px] w-[18px]" />
-            {resolved === 'dark' ? 'Light' : 'Dark'}
+            {resolved === 'dark' ? t('Light') : t('Dark')}
+          </button>
+          {/* Language toggle (SH-18, ruling R2): the label names the language
+              it switches TO; the choice persists in gascity:locale. */}
+          <button
+            type="button"
+            onClick={() => setLocale(locale === 'ru' ? 'en' : 'ru')}
+            aria-label={
+              locale === 'ru' ? 'Switch language to English' : 'Switch language to Russian'
+            }
+            lang={locale === 'ru' ? 'en' : 'ru'}
+            className="inline-flex h-8 items-center rounded px-1.5 text-label font-semibold text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
+          >
+            {locale === 'ru' ? 'EN' : 'RU'}
           </button>
         </div>
       </div>
