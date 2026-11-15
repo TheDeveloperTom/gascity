@@ -4,7 +4,14 @@ import { MemoryRouter } from 'react-router';
 import type { TaskStages } from '../../hooks/useTaskStages';
 import { setLocale } from '../../i18n';
 import { needsFromBoard } from '../../lib/needsFromMe';
-import { NOW_MS, QUESTION_ID, STALLED_ID, UNLINKED_ID, needsBoard } from './needsFixture';
+import {
+  NOW_MS,
+  OWNER_ITEMS,
+  QUESTION_ID,
+  STALLED_ID,
+  UNLINKED_ID,
+  needsBoard,
+} from './needsFixture';
 import { NeedsShelves } from './Shelf';
 
 const openExternal = vi.hoisted(() => vi.fn());
@@ -21,7 +28,7 @@ const STAGES: TaskStages = {
 };
 
 function show() {
-  const model = needsFromBoard(needsBoard(), [], [], NOW_MS);
+  const model = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
   const view = render(
     <MemoryRouter>
       <NeedsShelves model={model} stages={STAGES} />
@@ -45,7 +52,7 @@ describe('«Нужно от меня» shelves', () => {
 
   it('shows three shelves, the first counting the same needs as the badge', () => {
     const { model } = show();
-    expect(screen.getByRole('button', { name: `Нужно от меня ${model.needs.length}` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `Нужно от меня ${model.count}` })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Нужно от меня 4' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Работает 2' })).toBeTruthy();
     const quiet = screen.getByRole('button', { name: 'Тихо' });
@@ -69,6 +76,26 @@ describe('«Нужно от меня» shelves', () => {
     expect(within(item).getByRole('button', { name: 'Обсудить в Discord' })).toBeTruthy();
   });
 
+  it('an owner ask from mail is a card that opens its page', () => {
+    show();
+    const item = itemOf('mail:M-1:unread');
+    const link = within(item).getByRole('link');
+    expect(link.getAttribute('href')).toBe('/mail?message=M-1');
+    expect(within(link).getByText('Нужен доступ к Supabase')).toBeTruthy();
+    expect(within(link).getByText('Мэру нужен ключ сервиса')).toBeTruthy();
+    expect(within(item).getByRole('button', { name: 'Обсудить в Discord' })).toBeTruthy();
+  });
+
+  it('stalls sit under «Стоит»; the owner-marked one is flagged as counted', () => {
+    show();
+    const stuck = screen.getByRole('heading', { level: 3, name: 'Стоит' }).closest('section');
+    if (stuck === null) throw new Error('no «Стоит» section');
+    expect(within(stuck).getByText('Миграция 0425')).toBeTruthy();
+    expect(itemOf(UNLINKED_ID).getAttribute('data-for-owner')).toBe('true');
+    expect(itemOf(STALLED_ID).getAttribute('data-for-owner')).toBe('false');
+    expect(within(itemOf(UNLINKED_ID)).queryByRole('list')).toBeNull();
+  });
+
   it('a stall shows «Обсудить» and no «Ответить»', () => {
     show();
     const item = itemOf(STALLED_ID);
@@ -82,7 +109,7 @@ describe('«Нужно от меня» shelves', () => {
     const { container } = show();
     expect(container.textContent).not.toMatch(/Ответить/);
     expect(container.textContent).not.toMatch(/напомнит/);
-    expect(document.querySelector(`[data-need="${UNLINKED_ID}"]`)).toBeNull();
+    expect(itemOf(UNLINKED_ID).getAttribute('data-kind')).toBe('stall');
     expect(container.textContent).not.toMatch(/\b(merged|checks)\b|PR открыт|влит|проверки/i);
     expect(container.querySelector('[target="_blank"]')).toBeNull();
   });

@@ -13,7 +13,7 @@ import { needsFromBoard, type NeedsModel } from '../lib/needsFromMe';
 import { NOW_MS, needsBoard } from '../vk/needs/needsFixture';
 import { CockpitHomePage } from './CockpitHome';
 
-const EMPTY_NEEDS: NeedsModel = { state: 'ready', needs: [], quiet: [] };
+const EMPTY_NEEDS: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0 };
 const needsModel = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../lib/needsFromMe', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
@@ -148,7 +148,8 @@ describe('<CockpitHomePage> owner home', () => {
 
   it('the needs shelf counts the needs model; city items stay in the city strip', async () => {
     setLocale('ru');
-    needsModel.current = needsFromBoard(needsBoard(), [], [], NOW_MS);
+    // Questions 2 + the mail ask + the owner-marked stall; the 40 city items stay out.
+    needsModel.current = needsFromBoard(needsBoard(), [], [], NOW_MS, false, [ownerItem]);
     home([ownerItem, ...Array.from({ length: 40 }, (_, i) => cityItem(i))]);
     expect(screen.getByRole('button', { name: 'Нужно от меня 4' })).toBeTruthy();
     const problems = screen.getByText('Неполадки', { selector: 'dt' })
@@ -199,7 +200,7 @@ describe('<CockpitHomePage> owner home', () => {
   });
 
   it('needs stay loading while the board read is pending', () => {
-    needsModel.current = { state: 'loading', needs: [], quiet: [] };
+    needsModel.current = { state: 'loading', needs: [], stalls: [], quiet: [], count: 0 };
     home([], { state: 'loading' });
     expect(screen.queryByText(/Nothing needs you/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Needs from me' })).toBeTruthy();

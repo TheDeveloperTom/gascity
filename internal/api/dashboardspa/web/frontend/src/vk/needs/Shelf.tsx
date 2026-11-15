@@ -62,12 +62,20 @@ function Status({ children }: { children: ReactNode }) {
 }
 
 export function NeedsShelves({ model, stages }: { model: NeedsModel; stages: TaskStages }) {
+  const stuckId = useId();
   return (
     <div className="flex min-w-0 flex-col gap-2 font-vk-sans">
       <Shelf
         title={t('Needs from me')}
-        {...(model.state === 'ready' ? { count: model.needs.length } : {})}
+        {...(model.state === 'ready' || model.count > 0 ? { count: model.count } : {})}
       >
+        {model.needs.length > 0 && (
+          <ul className="flex min-w-0 flex-col gap-2">
+            {model.needs.map((need) => (
+              <NeedItem key={need.id} need={need} />
+            ))}
+          </ul>
+        )}
         {model.state === 'loading' ? (
           <Status>{t('Reading the board…')}</Status>
         ) : model.state === 'unavailable' ? (
@@ -76,14 +84,20 @@ export function NeedsShelves({ model, stages }: { model: NeedsModel; stages: Tas
               {t('Could not read the board')}
             </Link>
           </Status>
-        ) : model.needs.length === 0 ? (
+        ) : model.needs.length === 0 && model.stalls.length === 0 ? (
           <Status>{t('Nothing needs you right now.')}</Status>
-        ) : (
-          <ul className="flex min-w-0 flex-col gap-2">
-            {model.needs.map((need) => (
-              <NeedItem key={need.id} need={need} />
-            ))}
-          </ul>
+        ) : null}
+        {model.stalls.length > 0 && (
+          <section aria-labelledby={stuckId} className="mt-4 min-w-0">
+            <h3 id={stuckId} className="pb-2 text-label font-semibold text-vk-text-low">
+              {t('Stuck')}
+            </h3>
+            <ul className="flex min-w-0 flex-col gap-2">
+              {model.stalls.map((stall) => (
+                <NeedItem key={stall.id} need={stall} />
+              ))}
+            </ul>
+          </section>
         )}
       </Shelf>
 

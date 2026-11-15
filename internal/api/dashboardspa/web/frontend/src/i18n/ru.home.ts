@@ -8,6 +8,7 @@ export const RU_HOME: Readonly<Record<string, string | RuPlural>> = {
   'Needs from me': 'Нужно от меня',
   'At work': 'Работает',
   Quiet: 'Тихо',
+  Stuck: 'Стоит',
   'waiting their turn or for another task': 'ждут своей очереди или другую задачу',
   'Nothing needs you right now.': 'Сейчас от тебя ничего не нужно.',
   'Nothing is waiting quietly.': 'Тихо ждущих задач нет.',

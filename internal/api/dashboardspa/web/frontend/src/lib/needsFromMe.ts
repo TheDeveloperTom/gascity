@@ -1,12 +1,14 @@
 // Seam (vk lane 0b). Owner: lane 3. Other lanes import, never edit.
 import { useMemo } from 'react';
 import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
+import type { AttentionItem } from '../attention/compose';
+import { useAttentionModel } from '../attention/context';
 import { useBoardData } from '../hooks/useBoardData';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
 import { transitiveWaiters } from './holds';
-import { ownerQuestionOf } from './ownerQuestions';
+import { OWNER_QUESTION_LABEL, ownerQuestionOf } from './ownerQuestions';
 import { milestoneOf } from './waitReasons';
 
 // «Нужно от меня» (vk lane 3): one model for the page and for the red badge,
@@ -20,7 +22,8 @@ export interface MilestoneCount {
 }
 
 export interface NeedItem {
-  kind: 'question' | 'stall';
+  /** question: the Mayor asks; ask: mail or an agent waits for the owner; stall: «Стоит». */
+  kind: 'question' | 'ask' | 'stall';
   /** The bead id, or the stall key when the stall is not one card. */
   id: string;
   title: string;
@@ -33,7 +36,16 @@ export interface NeedItem {
   /** Tasks that wait on it, directly or through others. */
   holds: number;
   breakdown: readonly MilestoneCount[];
-  href: string;
+  /** The in-app page that opens it; null for an ask that lives only in chat. */
+  href: string | null;
+  /** An ask's chat thread (https), when it has one. */
+  externalHref?: string;
+}
+
+export interface StallItem extends NeedItem {
+  kind: 'stall';
+  /** Marked as waiting for the owner (`needs/operator` or a decision): it counts. */
+  forOwner: boolean;
 }
 
 export interface QuietItem {
@@ -44,9 +56,18 @@ export interface QuietItem {
 
 export interface NeedsModel {
   state: 'loading' | 'unavailable' | 'ready';
+  /** The Mayor's questions, then owner asks: every one counts. */
   needs: readonly NeedItem[];
+  /** «Стоит»: shown under the needs; only `forOwner` ones count. */
+  stalls: readonly StallItem[];
   quiet: readonly QuietItem[];
+  /** The badge number: needs + owner-marked stalls. */
+  count: number;
 }
+
+/** The attention registry's id suffix for an owner question (mayorDecisionAttention). */
+const MAYOR_DECISION_SUFFIX = ':mayor-decision';
+const DECISION_KEYS =['decision.question_id', 'decision.decide'] as const;
 
 const FILTERS = { project: ALL_PROJECTS, search: '', showTests: false } as const;
 
@@ -94,9 +115,23 @@ export function needsFromBoard(
   sessions: readonly BeadAttentionSession[],
   nowMs: number,
   loading = true,
+  ownerItems: readonly AttentionItem[] = [],
 ): NeedsModel {
   if (data === undefined) {
-    return { state: loading ? 'loading' : 'unavailable', needs: [], quiet: [] };
+    // Owner questions arrive with the board: until then their attention
+    // copies wait too, so a question never shows first as an ask.
+    const asks = ownerAsks(
+      ownerItems.filter((item) => !item.id.endsWith(MAYOR_DECISION_SUFFIX)),
+      new Set(),
+      nowMs,
+    );
+    return {
+      state: loading ? 'loading' : 'unavailable',
+      needs: asks,
+      stalls: [],
+      quiet: [],
+      count: asks.length,
+    };
   }
   const model = buildBoardModel(data, rigs, FILTERS);
   const everything = [...data.items, ...data.serviceItems];
@@ -123,13 +158,14 @@ export function needsFromBoard(
     .sort((a, b) => (b.waitedMs ?? -1) - (a.waitedMs ?? -1));
   const questionIds = new Set(questions.map((q) => q.id));
 
-  // `mayorMentions: null`: Home reads no Mayor mail, so only a Mayor label
-  // marks a stall as known (V2); an unknown stall stays the owner's to see.
+  // «Стоит» (coordinator ruling 2): every stall the Mayor does not know about,
+  // plus any stall marked as waiting for the owner. Only the marked ones
+  // count. `mayorMentions: null`: Home reads no Mayor mail (V2).
   const stalls = stuckItems(model, { nowMs, sessions, mayorMentions: null })
-    .filter((item) => item.mayor !== 'knows')
     .filter((item) => item.cardId === null || !questionIds.has(item.cardId))
-    .map(
-      (item): NeedItem => ({
+    .map((item): StallItem & { mayorKnows: boolean } => {
+      const bead = item.cardId === null ? undefined : byId.get(item.cardId);
+      return {
         kind: 'stall',
         id: item.cardId ?? item.key,
         title: item.title,
@@ -140,32 +176,80 @@ export function needsFromBoard(
           ? { holds: 0, breakdown: [] }
           : holdsOf(item.cardId, model.waitersOf, byId)),
         href: item.href,
-      }),
-    );
+        forOwner: bead !== undefined && markedForOwner(bead),
+        mayorKnows: item.mayor === 'knows',
+      };
+    })
+    .filter((stall) => stall.forOwner || !stall.mayorKnows)
+    .map(({ mayorKnows: _known, ...stall }) => stall);
 
-  const needs = [...questions, ...stalls];
-  const needIds = new Set(needs.map((n) => n.id));
+  const needs = [...questions, ...ownerAsks(ownerItems, questionIds, nowMs)];
+  const shown = new Set([...needs, ...stalls].map((n) => n.id));
   const quiet = model.columns.waiting
-    .filter((card) => !needIds.has(card.node.bead.id))
+    .filter((card) => !shown.has(card.node.bead.id))
     .map((card) => ({
       id: card.node.bead.id,
       title: card.node.bead.title,
       href: beadHref(card.node.bead.id),
     }));
-  return { state: 'ready', needs, quiet };
+  return {
+    state: 'ready',
+    needs,
+    stalls,
+    quiet,
+    count: needs.length + stalls.filter((s) => s.forOwner).length,
+  };
+}
+
+/** Explicitly waiting for the owner: `needs/operator`, or a Mayor decision on it. */
+function markedForOwner(bead: SupervisorBead): boolean {
+  if ((bead.labels ?? []).some((label) => label.trim() === OWNER_QUESTION_LABEL)) return true;
+  const meta = bead.metadata ?? {};
+  return DECISION_KEYS.some((key) => (meta[key]?.trim() ?? '').length > 0);
+}
+
+/**
+ * Owner asks from mail and agents (the owner-home plate's data: the
+ * attention model's owner slice). The attention copy of a question the board
+ * already lists is dropped; an unreadable source is never a need.
+ */
+function ownerAsks(
+  items: readonly AttentionItem[],
+  questionIds: ReadonlySet<string>,
+  nowMs: number,
+): NeedItem[] {
+  return items
+    .filter((item) => item.severity !== 'unavailable')
+    .filter((item) => !(item.ref !== undefined && questionIds.has(item.ref)))
+    .map((item): NeedItem => {
+      const at = parseMs(item.updatedAt ?? null);
+      return {
+        kind: 'ask',
+        id: item.id,
+        title: item.title,
+        summary: item.summary ?? null,
+        choices: [],
+        waitedMs: at === null ? null : Math.max(0, nowMs - at),
+        holds: 0,
+        breakdown: [],
+        href: item.href ?? null,
+        ...(item.externalHref === undefined ? {} : { externalHref: item.externalHref }),
+      };
+    });
 }
 
 /** The page's model: the one board read, recomputed when it changes. */
 export function useNeedsModel(): NeedsModel {
   const read = useBoardData();
+  const ownerItems = useAttentionModel().owner.items;
   const { data, rigs, sessions, loading } = read;
   return useMemo(
-    () => needsFromBoard(data, rigs, sessions, Date.now(), loading),
-    [data, rigs, sessions, loading],
+    () => needsFromBoard(data, rigs, sessions, Date.now(), loading, ownerItems),
+    [data, rigs, sessions, loading, ownerItems],
   );
 }
 
 /** Count for the red «Нужно от меня» badge (top nav and phone tab). */
 export function useNeedsFromMeCount(): number {
-  return useNeedsModel().needs.length;
+  return useNeedsModel().count;
 }

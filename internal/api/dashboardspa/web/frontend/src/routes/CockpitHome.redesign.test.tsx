@@ -36,6 +36,13 @@ vi.mock('../runs/runSummarySubscription', () => ({
     }) as unknown as RunSummarySubscription,
 }));
 
+// vk lane 3: the needs shelves read the board; this test covers the readings
+// line, so the board read stays out (CockpitHome.owner covers needs).
+vi.mock('../lib/needsFromMe', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
+  useNeedsModel: () => ({ state: 'ready', needs: [], stalls: [], quiet: [], count: 0 }),
+}));
+
 describe('<CockpitHomePage> readings line', () => {
   beforeEach(() => {
     invalidate('cockpit:');

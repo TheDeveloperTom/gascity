@@ -1,3 +1,4 @@
+import type { AttentionItem } from '../../attention/compose';
 import type { BoardData } from '../../lib/boardModel';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 
@@ -87,6 +88,38 @@ const WORKING = bead('dw-580', {
   updated_at: '2026-11-15T16:45:00Z',
   dependencies: [blocks('dw-580', BLOCKER_ID)],
 });
+
+// Owner attention items as the registry makes them: a mail ask, the
+// attention copy of QUESTION (dropped: the board lists it), and an
+// unreadable source (never a need).
+export const OWNER_ITEMS: readonly AttentionItem[] = [
+  {
+    id: 'mail:M-1:unread',
+    domain: 'mail',
+    severity: 'attention',
+    audience: 'owner',
+    title: 'Нужен доступ к Supabase',
+    summary: 'Мэру нужен ключ сервиса',
+    href: '/mail?message=M-1',
+    updatedAt: '2026-11-15T12:46:00Z',
+  },
+  {
+    id: `beads:${QUESTION_ID}:mayor-decision`,
+    domain: 'beads',
+    severity: 'attention',
+    audience: 'owner',
+    ref: QUESTION_ID,
+    title: 'M03 #2 / L1: перенос ящика',
+    href: `/beads?bead=${QUESTION_ID}`,
+  },
+  {
+    id: 'mail:unavailable',
+    domain: 'mail',
+    severity: 'unavailable',
+    audience: 'owner',
+    title: 'Mail data unavailable',
+  },
+];
 
 export const STALLED_ID = 'dw-489';
 

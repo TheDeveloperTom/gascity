@@ -1,10 +1,11 @@
 import { CaretRight } from '@phosphor-icons/react';
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { t, tn } from '../../i18n';
 import type { DiscussContext } from '../../lib/discussWithMayor';
-import type { MilestoneCount, NeedItem as Need } from '../../lib/needsFromMe';
+import type { MilestoneCount, NeedItem as Need, StallItem } from '../../lib/needsFromMe';
 import { DiscussButton } from '../DiscussButton';
+import { ExternalLink } from '../ExternalLink';
 
 // One «Нужно от меня» card (vk lane 3, Attention / Phone-Needs frames). The
 // card opens as a whole (the decision happens inside it, lane 2); the
@@ -42,12 +43,46 @@ export function discussSummary(need: Need): string {
   return text.length <= SUMMARY_MAX ? text : `${text.slice(0, SUMMARY_MAX - 1)}…`;
 }
 
+const CARD =
+  'focus-mark flex min-h-11 min-w-0 items-start gap-3 rounded-t-md px-4 pb-2 pt-3 hover:bg-vk-bg-secondary';
+
+function isStall(need: Need): need is StallItem {
+  return need.kind === 'stall' && 'forOwner' in need;
+}
+
+/** The whole card opens: its page, else an ask's chat thread, else nothing to open. */
+function CardLink({
+  need,
+  labelledBy,
+  children,
+}: {
+  need: Need;
+  labelledBy: string;
+  children: ReactNode;
+}) {
+  if (need.href !== null) {
+    return (
+      <Link to={need.href} aria-labelledby={labelledBy} className={CARD}>
+        {children}
+      </Link>
+    );
+  }
+  if (need.externalHref !== undefined) {
+    return (
+      <ExternalLink href={need.externalHref} aria-labelledby={labelledBy} className={CARD}>
+        {children}
+      </ExternalLink>
+    );
+  }
+  return <div className={CARD.replace(' hover:bg-vk-bg-secondary', '')}>{children}</div>;
+}
+
 export function NeedItem({ need }: { need: Need }) {
   const titleId = useId();
   const waited =
     need.waitedMs === null
       ? null
-      : need.kind === 'question'
+      : need.kind !== 'stall'
         ? t('waits for you {time}', { time: waitedText(need.waitedMs) })
         : t('stuck for {time}', { time: waitedText(need.waitedMs) });
   const meta = [need.kind === 'question' ? t('The Mayor asks') : null, waited]
@@ -62,13 +97,11 @@ export function NeedItem({ need }: { need: Need }) {
   return (
     <li
       data-need={need.id}
+      data-kind={need.kind}
+      {...(isStall(need) ? { 'data-for-owner': String(need.forOwner) } : {})}
       className="min-w-0 rounded-md border border-vk-border bg-vk-bg-panel text-vk-text-normal"
     >
-      <Link
-        to={need.href}
-        aria-labelledby={titleId}
-        className="focus-mark flex min-h-11 min-w-0 items-start gap-3 rounded-t-md px-4 pb-2 pt-3 hover:bg-vk-bg-secondary"
-      >
+      <CardLink need={need} labelledBy={titleId}>
         <div className="min-w-0 flex-1">
           {meta.length > 0 && <p className="text-label text-vk-text-low">{meta}</p>}
           <p
@@ -104,7 +137,7 @@ export function NeedItem({ need }: { need: Need }) {
           )}
         </div>
         <CaretRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-vk-text-low" />
-      </Link>
+      </CardLink>
       <div className="px-4 pb-3">
         <DiscussButton
           ctx={ctx}
