@@ -15,37 +15,38 @@ export default {
   darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
+      // Signal & Pavement (DESIGN-PLAN §3). accent is Stop red and means
+      // alarm only; primary (Gas-flame blue) marks everything pressable.
       colors: {
         surface: 'oklch(var(--surface) / <alpha-value>)',
+        'surface-raised': 'oklch(var(--surface-raised) / <alpha-value>)',
         'surface-tint': 'oklch(var(--surface-tint) / <alpha-value>)',
         fg: 'oklch(var(--fg) / <alpha-value>)',
         'fg-muted': 'oklch(var(--fg-muted) / <alpha-value>)',
         'fg-faint': 'oklch(var(--fg-faint) / <alpha-value>)',
         rule: 'oklch(var(--rule) / <alpha-value>)',
+        primary: 'oklch(var(--primary) / <alpha-value>)',
+        'on-primary': 'oklch(var(--on-primary) / <alpha-value>)',
         accent: 'oklch(var(--accent) / <alpha-value>)',
         ok: 'oklch(var(--ok) / <alpha-value>)',
         warn: 'oklch(var(--warn) / <alpha-value>)',
+        scrim: 'oklch(var(--scrim) / <alpha-value>)',
       },
       fontFamily: {
-        sans: [
-          '"Inter Variable"',
-          'Inter',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          '"Segoe UI"',
-          'system-ui',
-          'sans-serif',
-        ],
+        // Golos Text Variable, self-hosted (styles/index.css @font-face).
+        sans: ['"Golos Text Variable"', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
+        // Mono only for copyable ids and literal terminal output.
+        mono: ['ui-monospace', '"SF Mono"', 'Menlo', 'Consolas', '"Liberation Mono"', 'monospace'],
       },
       fontSize: {
-        // Five-step scale. Body and Title share a measure; the larger
-        // steps jump ratio to ~1.5 so headings carry weight in the
-        // page rhythm rather than crowd the body.
-        label: ['0.75rem', { lineHeight: '1.2', letterSpacing: '0.04em' }],
-        body: ['0.9375rem', { lineHeight: '1.55' }],
-        title: ['1rem', { lineHeight: '1.35' }],
-        headline: ['1.5rem', { lineHeight: '1.15', letterSpacing: '-0.01em' }],
-        display: ['2.5rem', { lineHeight: '1.05', letterSpacing: '-0.02em' }],
+        // DESIGN-PLAN §4. No positive tracking anywhere: labels are
+        // sentence case at tracking 0, the two large steps tighten a touch.
+        label: ['0.8125rem', { lineHeight: '1.125rem', letterSpacing: '0' }],
+        body: ['0.9375rem', { lineHeight: '1.4375rem' }],
+        reading: ['1rem', { lineHeight: '1.6' }],
+        title: ['1.125rem', { lineHeight: '1.5rem' }],
+        headline: ['1.5rem', { lineHeight: '1.875rem', letterSpacing: '-0.01em' }],
+        display: ['2.25rem', { lineHeight: '2.5rem', letterSpacing: '-0.015em' }],
       },
       letterSpacing: {
         tightest: '-0.03em',
@@ -56,15 +57,22 @@ export default {
         wider: '0.04em',
         widest: '0.08em',
       },
+      // Radius by hierarchy: sm meters and id chips, DEFAULT buttons and
+      // inputs, md step cards and nav items, lg panels, modals and the board.
       borderRadius: {
         none: '0',
-        sm: '2px',
-        DEFAULT: '4px',
-        md: '6px',
-        lg: '8px',
+        sm: '4px',
+        DEFAULT: '6px',
+        md: '8px',
+        lg: '12px',
+        full: '9999px',
+      },
+      // Elevation e2 is for overlays only (modals, expanded transcript).
+      boxShadow: {
+        overlay: 'var(--shadow-overlay)',
       },
       maxWidth: {
-        dashboard: '1280px',
+        dashboard: '76rem',
         prose: '70ch',
         reading: '65ch',
       },
