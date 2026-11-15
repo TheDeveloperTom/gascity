@@ -65,6 +65,9 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Could not check: {reasons}.': 'Не удалось проверить: {reasons}.',
   'Questions from the Mayor could not be read': 'вопросы Мэра не прочитались',
   'Your mail could not be read': 'почта не прочиталась',
+  'Questions from the Mayor were read only in part': 'вопросы Мэра прочитались не полностью',
+  'Your mail was read only in part': 'почта прочиталась не полностью',
+  'Your settings could not be read': 'настройки не прочитались',
   // City readiness reasons (attention/liveContributors deriveCityReadiness).
   'Agents could not be read': 'агенты не прочитались',
   'Tasks could not be read': 'задачи не прочитались',

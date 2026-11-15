@@ -69,17 +69,34 @@ const OWNER_READY: OwnerReadiness = { state: 'ready' };
 export function deriveOwnerReadiness(
   beads: BeadsAttentionFacts | undefined,
   mail: MailAttentionFacts | undefined,
+  configState: OperatorConfigState = 'ready',
 ): OwnerReadiness {
-  if (beads === undefined || mail === undefined) return OWNER_LOADING;
-  const reasons: string[] = [];
-  if (beads.decisionsError !== undefined && beads.decisionsError.length > 0) {
-    reasons.push('Questions from the Mayor could not be read');
+  // The reads run under the fallback identity until /config lands, so they
+  // say nothing about the owner's own queue and inbox yet (review I2).
+  if (configState === 'loading') return OWNER_LOADING;
+  if (beads === undefined || mail === undefined) {
+    return configState === 'failed'
+      ? { state: 'degraded', reasons: ['Your settings could not be read'] }
+      : OWNER_LOADING;
   }
-  if (mail.error !== undefined && mail.error.length > 0) {
+  const reasons: string[] = [];
+  if (configState === 'failed') reasons.push('Your settings could not be read');
+  if (hasText(beads.decisionsError)) {
+    reasons.push('Questions from the Mayor could not be read');
+  } else if (beads.decisionsPartial === true) {
+    // A partial read is not a complete one (review I1).
+    reasons.push('Questions from the Mayor were read only in part');
+  }
+  if (hasText(mail.error)) {
     reasons.push('Your mail could not be read');
+  } else if (mail.partial === true) {
+    reasons.push('Your mail was read only in part');
   }
   return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
 }
+
+/** Where the operator identity from /config stands. */
+export type OperatorConfigState = 'loading' | 'ready' | 'failed';
 
 /**
  * The city slice is only trustworthy once every source it is built from was
@@ -122,7 +139,9 @@ function hasText(value: string | undefined): boolean {
 export function useLiveAttentionContributors(
   operator: OperatorConfig,
   runsSource: SourceState<RunSummary> | undefined,
+  options: { configState?: OperatorConfigState; liveFeed?: string } = {},
 ): LiveAttention {
+  const configState = options.configState ?? 'ready';
   const cityName = getActiveCity();
   const cacheSuffix = cityName ?? 'no-city';
   // The decision label + operator wire alias come from /config
@@ -142,7 +161,7 @@ export function useLiveAttentionContributors(
     (signal) => fetchBeadsAttention(cityName, decisionLabel, signal),
   );
   const mail = useCachedData<MailAttentionFacts>(
-    `attention:mail:${cacheSuffix}:${operatorWireAlias}`,
+    `attention:mail:${cacheSuffix}:${operatorAlias}:${operatorWireAlias}`,
     () => fetchMailAttention(cityName, operator),
   );
   const activity = useCachedData<ActivityAttentionFacts>(`attention:activity:${cacheSuffix}`, () =>
@@ -186,8 +205,8 @@ export function useLiveAttentionContributors(
     [activity.data, agents.data, beadsData, health.data, mail.data, runs],
   );
   const ownerReadiness = useMemo(
-    () => deriveOwnerReadiness(beadsData, mail.data),
-    [beadsData, mail.data],
+    () => deriveOwnerReadiness(beadsData, mail.data, configState),
+    [beadsData, mail.data, configState],
   );
   const cityReadiness = useMemo(
     () =>
@@ -353,6 +372,7 @@ export async function fetchBeadsAttention(
   }
   if (decisions.status === 'fulfilled') {
     facts.decisions = decisions.value.items ?? [];
+    if (decisions.value.partial === true) facts.decisionsPartial = true;
   } else {
     facts.decisionsError = formatApiError(decisions.reason, 'decision queue unavailable');
   }

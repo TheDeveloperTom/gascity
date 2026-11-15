@@ -8,6 +8,7 @@ import type { RunSummary, SourceState } from 'gas-city-dashboard-shared';
 import { composeAttention } from './compose';
 import {
   deriveCityReadiness,
+  deriveOwnerReadiness,
   nextBeadSnapshot,
   useLiveAttentionContributors,
 } from './liveContributors';
@@ -47,6 +48,45 @@ function freshRuns(): SourceState<RunSummary> {
     },
   } as SourceState<RunSummary>;
 }
+
+describe('deriveOwnerReadiness', () => {
+  const beads = { decisionLabel: 'x', decisions: [] };
+  const mail = { items: [] };
+
+  it('ready only when both reads completed under a loaded config', () => {
+    expect(deriveOwnerReadiness(beads, mail, 'ready')).toEqual({ state: 'ready' });
+  });
+
+  // Review I4: mail resolved while the bead read is pending is still loading.
+  it('loading while the bead read is pending even if mail resolved', () => {
+    expect(deriveOwnerReadiness(undefined, mail, 'ready')).toEqual({ state: 'loading' });
+  });
+
+  // Review I1: a partial read is not a complete one.
+  it('a partial decision queue or mailbox is degraded', () => {
+    expect(
+      deriveOwnerReadiness({ ...beads, decisionsPartial: true }, { ...mail, partial: true }, 'ready'),
+    ).toEqual({
+      state: 'degraded',
+      reasons: [
+        'Questions from the Mayor were read only in part',
+        'Your mail was read only in part',
+      ],
+    });
+  });
+
+  // Review I2: the fallback identity must not give an all-clear.
+  it('loading until the operator config has loaded', () => {
+    expect(deriveOwnerReadiness(beads, mail, 'loading')).toEqual({ state: 'loading' });
+  });
+
+  it('a failed operator config is degraded with its reason', () => {
+    expect(deriveOwnerReadiness(beads, mail, 'failed')).toEqual({
+      state: 'degraded',
+      reasons: ['Your settings could not be read'],
+    });
+  });
+});
 
 describe('nextBeadSnapshot', () => {
   const good = { decisionLabel: 'x', items: [TASK_FOR_SNAPSHOT], routeItems: [], routesComplete: false };
@@ -265,6 +305,14 @@ describe('useLiveAttentionContributors owner readiness', () => {
     );
     const { result } = renderHook(() => useLiveAttentionContributors(operator, undefined));
     await waitFor(() => expect(result.current.beadSnapshot?.status).toBe('unavailable'));
+  });
+
+  it('owner readiness waits for the operator config', async () => {
+    const { result } = renderHook(() =>
+      useLiveAttentionContributors(operator, undefined, { configState: 'loading' }),
+    );
+    await waitFor(() => expect(result.current.beadSnapshot).toBeDefined());
+    expect(result.current.ownerReadiness).toEqual({ state: 'loading' });
   });
 
   it('beadSnapshot carries tasks and route items', async () => {
