@@ -152,8 +152,9 @@ describe('BeadsPage', () => {
     expect(
       closedLegs.map((q) => [q.get('status'), q.get('rig'), q.get('limit'), q.has('all')]),
     ).toEqual([
-      ['closed', 'east', '100', false],
-      ['closed', 'west', '100', false],
+      // A wide window; the board keeps the 100 closed most recently (review I2).
+      ['closed', 'east', '1000', false],
+      ['closed', 'west', '1000', false],
     ]);
     expect(query?.get('limit')).toBe('1000');
     expect(query?.has('all')).toBe(false);

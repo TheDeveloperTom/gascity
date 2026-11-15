@@ -43,8 +43,8 @@ const CLOSED_CHIP_ID = 'closed';
 // board's SSE-driven refresh into a much wider trailing window so churn yields
 // at most one refetch per window and a latency spike can no longer empty it.
 const BOARD_REFRESH_COALESCE_MS = 10_000;
-// Stage board (2026-11-15): Merged shows the newest closed beads of each rig
-// store by default; the `closed` chip still widens to the whole history.
+// Stage board (2026-11-15): Merged shows, by default, the tasks of each rig
+// store closed most recently (review I2: by close time, not creation).
 const RECENT_CLOSED_LIMIT = 100;
 const EMPTY_BEADS: readonly SupervisorBead[] = [];
 

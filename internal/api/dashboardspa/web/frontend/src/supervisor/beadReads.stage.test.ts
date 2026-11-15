@@ -87,8 +87,8 @@ describe('listSupervisorBeads stage-board options', () => {
     expect(queries[0]?.['status']).toBeUndefined();
     expect(queries[1]?.['status']).toBe('in_progress');
     expect(queries.slice(2)).toEqual([
-      { limit: 100, status: 'closed', rig: 'devwork' },
-      { limit: 100, status: 'closed', rig: 'east' },
+      { limit: 1000, status: 'closed', rig: 'devwork' },
+      { limit: 1000, status: 'closed', rig: 'east' },
     ]);
     expect(list.items.map((b) => b.id)).toEqual(['dw-1', 'dw-9']);
     expect(list.recent_closed_fetched).toBe(1);
@@ -103,7 +103,7 @@ describe('listSupervisorBeads stage-board options', () => {
     const closed = api.listBeads.mock.calls
       .map((c) => c[1] as Query)
       .filter((q) => q['status'] === 'closed');
-    expect(closed).toEqual([{ limit: 100, status: 'closed', rig: 'east' }]);
+    expect(closed).toEqual([{ limit: 1000, status: 'closed', rig: 'east' }]);
   });
 
   it('skips the closed leg when the board already includes closed beads', async () => {
@@ -141,6 +141,37 @@ describe('listSupervisorBeads stage-board options', () => {
     });
     const list = await listSupervisorBeads({ rigFilter: 'devwork', withRoutes: true });
     expect(list.routes_complete).toBe(false);
+  });
+
+  // Review I2: the engine lists newest-created first and has no sort, so the
+  // closed leg fetches a wide window and the board keeps the N tasks closed
+  // most recently (updated_at; the API exposes no closed_at). Convoys and
+  // route beads must not take slots.
+  it('keeps the most recently closed tasks, not the most recently created', async () => {
+    const closed = (id: string, created: string, closedAt: string, extra: Partial<Bead> = {}) =>
+      bead(id, { status: 'closed', created_at: created, updated_at: closedAt, ...extra });
+    const legItems = [
+      closed('dw-convoy', '2026-11-15T09:00:00Z', '2026-11-15T09:59:00Z', {
+        issue_type: 'convoy',
+      }),
+      closed('dw-new1', '2026-11-15T08:00:00Z', '2026-11-15T08:10:00Z'),
+      closed('dw-new2', '2026-11-15T07:00:00Z', '2026-11-15T07:10:00Z'),
+      closed('gcg-step', '2026-11-15T06:00:00Z', '2026-11-15T09:58:00Z', {
+        metadata: { 'gc.root_bead_id': 'gcg-1' },
+      }),
+      closed('dw-old', '2026-11-08T08:00:00Z', '2026-11-15T09:30:00Z'),
+    ];
+    const api = install(async (_city, query) => {
+      if (query['status'] === 'closed') return { items: legItems, total: legItems.length };
+      return { items: [], total: 0 };
+    });
+    const list = await listSupervisorBeads({ withRoutes: true, recentClosed: { limit: 2 } });
+    const closedLeg = api.listBeads.mock.calls
+      .map((c) => c[1] as Query)
+      .find((q) => q['status'] === 'closed');
+    expect(closedLeg).toEqual({ limit: 1000, status: 'closed', rig: 'devwork' });
+    expect(list.items.map((b) => b.id)).toEqual(['dw-old', 'dw-new1']);
+    expect(list.recent_closed_fetched).toBe(2);
   });
 
   it('treats a failed route leg as incomplete routes, not as an error', async () => {

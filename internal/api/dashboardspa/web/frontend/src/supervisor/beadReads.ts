@@ -40,9 +40,10 @@ export interface ListSupervisorBeadsOptions {
   /**
    * Stage board: when closed beads are not already included, add one
    * best-effort `status=closed&rig=<rig>` leg per rig (the rig filter, else
-   * every supervisor rig). Rig stores hold the product tasks; the unscoped
-   * closed window is all route-step churn from the city store, so it cannot
-   * surface recent merges.
+   * every supervisor rig), each a wide window of RECENT_CLOSED_FETCH_LIMIT,
+   * and keep the `limit` real tasks closed most recently. Rig stores hold the
+   * product tasks; the unscoped closed window is all route-step churn from the
+   * city store, so it cannot surface recent merges.
    */
   recentClosed?: { limit: number };
 }
@@ -53,6 +54,9 @@ export interface ListSupervisorBeadsOptions {
 const BEADS_FETCH_LIMIT = 1000;
 const ASSIGNED_BEADS_FETCH_LIMIT = 200;
 const DETAIL_FALLBACK_FETCH_LIMIT = 1000;
+// Closed window per rig store for the stage board's Merged column. Live
+// devwork holds 287 closed beads in total and the whole set reads in ~0.1 s.
+const RECENT_CLOSED_FETCH_LIMIT = 1000;
 // The "real work" bead types the board fans out (one typed query each),
 // then keeps via defaultBeadFilter — the bookkeeping types
 // (message/session/molecule/…) are dropped. Every entry MUST be a type the
@@ -101,7 +105,7 @@ export async function listSupervisorBeads(
       ? recentClosedRigs(rigFilter).then((rigs) =>
           Promise.all(
             rigs.map((rig) =>
-              listWith({ limit: options.recentClosed?.limit ?? 0, status: 'closed', rig })
+              listWith({ limit: RECENT_CLOSED_FETCH_LIMIT, status: 'closed', rig })
                 .then((leg) => leg.items ?? [])
                 .catch(() => [] as SupervisorBead[]),
             ),
@@ -125,10 +129,21 @@ export async function listSupervisorBeads(
   const windowItems = uniqueById(list.items ?? []);
   const items = uniqueById([...windowItems, ...(inProgress?.items ?? [])]);
   const statusFiltered = includeClosed ? items : items.filter((bead) => bead.status !== 'closed');
-  const recentClosed = uniqueById((closedLegs ?? []).flat()).filter(
-    (bead) => bead.status === 'closed' && !items.some((item) => item.id === bead.id),
+  // The engine lists newest-CREATED first and has no sort, so a task that
+  // waited a week and merged tonight sits deep in the closed window. Fetch a
+  // wide window, keep real tasks only (convoys and route beads take no
+  // slots), and keep the N closed most recently. The API exposes no
+  // closed_at; closing a bead sets its updated_at (review I2).
+  const knownIds = new Set(items.map((item) => item.id));
+  const closedLegItems = uniqueById((closedLegs ?? []).flat()).filter(
+    (bead) => bead.status === 'closed' && !knownIds.has(bead.id),
   );
-  const scoped = [...statusFiltered, ...recentClosed];
+  const closedRoutes = closedLegItems.filter(isRouteBead);
+  const recentClosed = closedLegItems
+    .filter((bead) => !isRouteBead(bead) && (includeBookkeeping || defaultBeadFilter(bead)))
+    .sort(byRecentUpdate)
+    .slice(0, options.recentClosed?.limit ?? 0);
+  const scoped = [...statusFiltered, ...recentClosed, ...closedRoutes];
   const routeItems = options.withRoutes
     ? uniqueById([...scoped, ...(routeList?.items ?? [])].filter(isRouteBead))
     : undefined;
@@ -209,6 +224,12 @@ export async function fetchSupervisorBead(id: string): Promise<SupervisorBead> {
     if (hit !== undefined) return hit;
     throw err;
   }
+}
+
+function byRecentUpdate(a: SupervisorBead, b: SupervisorBead): number {
+  const ta = a.updated_at ?? a.created_at;
+  const tb = b.updated_at ?? b.created_at;
+  return ta < tb ? 1 : ta > tb ? -1 : 0;
 }
 
 async function recentClosedRigs(rigFilter: string): Promise<string[]> {
