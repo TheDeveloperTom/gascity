@@ -5,14 +5,14 @@ import { getActiveCity } from '../api/cityBase';
 import { type OperatorConfig } from '../contexts/OperatorConfigContext';
 import { useCachedData } from '../hooks/useCachedData';
 import { listAgentPendingInteractions } from '../supervisor/agentPending';
-import { listSupervisorBeads } from '../supervisor/beadReads';
+import { listSupervisorBeads, type SupervisorBead } from '../supervisor/beadReads';
 import {
   SupervisorApiError,
   supervisorApi,
   supervisorApiForRequestBudget,
 } from '../supervisor/client';
 import { DEFAULT_MAIL_HISTORY_LIMIT, listSupervisorMail } from '../supervisor/mailReads';
-import type { AttentionContributor } from './compose';
+import type { AttentionContributor, CityReadiness, OwnerReadiness } from './compose';
 import {
   createAttentionContributors,
   GC_ESCALATION_LABEL,
@@ -36,17 +36,92 @@ const BEADS_ATTENTION_CITY_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000] as const;
 const BEADS_ATTENTION_CITY_REVALIDATE_DELAY_MS = 5_000;
 const CITY_NOT_FOUND_CODE = 'city-not-found';
 
+/** The attention bead read, shared with Home so it needs no second fetch (R6). */
+export interface BeadSnapshot {
+  items: readonly SupervisorBead[];
+  routeItems: readonly SupervisorBead[];
+  fetchedAt: string;
+}
+
+export interface LiveAttention {
+  contributors: readonly AttentionContributor[];
+  ownerReadiness: OwnerReadiness;
+  cityReadiness: CityReadiness;
+  beadSnapshot: BeadSnapshot | undefined;
+}
+
+const OWNER_LOADING: OwnerReadiness = { state: 'loading' };
+const OWNER_READY: OwnerReadiness = { state: 'ready' };
+
+/**
+ * The owner slice is only trustworthy once both of its sources were read: the
+ * decision queue (O1) and the operator mail (O2). Until then it is loading;
+ * a failed source is named, so the plate never claims an all-clear (R12).
+ */
+export function deriveOwnerReadiness(
+  beads: BeadsAttentionFacts | undefined,
+  mail: MailAttentionFacts | undefined,
+): OwnerReadiness {
+  if (beads === undefined || mail === undefined) return OWNER_LOADING;
+  const reasons: string[] = [];
+  if (beads.decisionsError !== undefined && beads.decisionsError.length > 0) {
+    reasons.push('Questions from the Mayor could not be read');
+  }
+  if (mail.error !== undefined && mail.error.length > 0) {
+    reasons.push('Your mail could not be read');
+  }
+  return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
+}
+
+/**
+ * The city slice is only trustworthy once every source it is built from was
+ * read: agents, the general bead list, runs, events and city health. Until
+ * then it is loading, so no surface says "no problems" early; a failed source
+ * is named.
+ */
+export function deriveCityReadiness(facts: {
+  agents: AgentsAttentionFacts | undefined;
+  beads: BeadsAttentionFacts | undefined;
+  activity: ActivityAttentionFacts | undefined;
+  health: HealthAttentionFacts | undefined;
+  runs: RunsAttentionFacts | undefined;
+}): CityReadiness {
+  const { agents, beads, activity, health, runs } = facts;
+  if (
+    agents === undefined ||
+    beads === undefined ||
+    activity === undefined ||
+    health === undefined ||
+    runs === undefined
+  ) {
+    return OWNER_LOADING;
+  }
+  const reasons: string[] = [];
+  if (hasText(agents.error)) reasons.push('Agents could not be read');
+  if (hasText(beads.error)) reasons.push('Tasks could not be read');
+  if (hasText(runs.error)) reasons.push('Runs could not be read');
+  if (hasText(activity.eventsError)) reasons.push('Events could not be read');
+  if (health.supervisor?.status === 'unavailable' || hasText(health.dashboardError)) {
+    reasons.push('City health could not be read');
+  }
+  return reasons.length > 0 ? { state: 'degraded', reasons } : OWNER_READY;
+}
+
+function hasText(value: string | undefined): boolean {
+  return value !== undefined && value.length > 0;
+}
+
 export function useLiveAttentionContributors(
   operator: OperatorConfig,
   runsSource: SourceState<RunSummary> | undefined,
-): readonly AttentionContributor[] {
+): LiveAttention {
   const cityName = getActiveCity();
   const cacheSuffix = cityName ?? 'no-city';
   // The decision label + operator wire alias come from /config
   // (gascity-dashboard-bhvn). Encode them into the relevant cache keys so a
   // pre-config fallback → real-config transition refetches with the resolved
   // identity (useCachedData only refetches on key change).
-  const { decisionLabel, operatorWireAlias } = operator;
+  const { decisionLabel, operatorAlias, operatorWireAlias } = operator;
   // gascity-dashboard-2j8e.7: the Runs badge reads the SAME shared run-summary
   // subscription the /runs page renders (passed in as runsSource), not its own
   // fan-out — one fetch, by-construction parity, and SSE refresh reach the badge.
@@ -68,8 +143,17 @@ export function useLiveAttentionContributors(
   const health = useCachedData<HealthAttentionFacts>(`attention:health:${cacheSuffix}`, () =>
     fetchHealthAttention(cityName),
   );
-  const beadsData = beads.data;
+  // The aliases that mean "the owner" when a bead waits on someone by name.
+  const beadsRaw = beads.data;
+  const beadsData = useMemo(
+    () =>
+      beadsRaw === undefined
+        ? undefined
+        : { ...beadsRaw, operatorAliases: uniqueAliases([operatorAlias, operatorWireAlias]) },
+    [beadsRaw, operatorAlias, operatorWireAlias],
+  );
   const refreshBeads = beads.refresh;
+  const beadsFetchedAt = beads.fetchedAt;
 
   useEffect(() => {
     if (beadsData?.cityUnavailable !== true) return;
@@ -79,7 +163,7 @@ export function useLiveAttentionContributors(
     return () => clearTimeout(timeout);
   }, [beadsData, refreshBeads]);
 
-  return useMemo(
+  const contributors = useMemo(
     () =>
       createAttentionContributors(
         compactFacts({
@@ -93,6 +177,37 @@ export function useLiveAttentionContributors(
       ),
     [activity.data, agents.data, beadsData, health.data, mail.data, runs],
   );
+  const ownerReadiness = useMemo(
+    () => deriveOwnerReadiness(beadsData, mail.data),
+    [beadsData, mail.data],
+  );
+  const cityReadiness = useMemo(
+    () =>
+      deriveCityReadiness({
+        agents: agents.data,
+        beads: beadsData,
+        activity: activity.data,
+        health: health.data,
+        runs,
+      }),
+    [agents.data, beadsData, activity.data, health.data, runs],
+  );
+  const beadSnapshot = useMemo<BeadSnapshot | undefined>(() => {
+    if (beadsRaw?.items === undefined) return undefined;
+    return {
+      items: beadsRaw.items,
+      routeItems: beadsRaw.routeItems ?? [],
+      fetchedAt: beadsFetchedAt ?? new Date(beadsRaw.nowMs ?? Date.now()).toISOString(),
+    };
+  }, [beadsRaw, beadsFetchedAt]);
+  return useMemo(
+    () => ({ contributors, ownerReadiness, cityReadiness, beadSnapshot }),
+    [contributors, ownerReadiness, cityReadiness, beadSnapshot],
+  );
+}
+
+function uniqueAliases(aliases: readonly string[]): readonly string[] {
+  return [...new Set(aliases.map((alias) => alias.trim()).filter((alias) => alias.length > 0))];
 }
 
 /**
@@ -156,6 +271,7 @@ export async function fetchBeadsAttention(
       listSupervisorBeads({
         limit: ATTENTION_LIST_LIMIT,
         city: cityName,
+        withRoutes: true,
         ...(signal === undefined ? {} : { signal }),
       }),
       listDecisionBeads(cityName, decisionLabel, signal),
@@ -187,6 +303,7 @@ export async function fetchBeadsAttention(
   }
   if (list.status === 'fulfilled') {
     facts.items = list.value.items;
+    facts.routeItems = list.value.route_items ?? [];
     facts.partial = list.value.partial === true;
   } else {
     facts.error = formatApiError(list.reason, 'bead list unavailable');

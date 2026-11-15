@@ -469,7 +469,7 @@ describe('createAttentionContributors', () => {
     expect(model.byDomain.agents.attention).toBe(1);
     expect(model.byDomain.agents.items[0]).toMatchObject({
       id: 'agents:mayor:needs-you',
-      title: 'mayor awaiting input',
+      title: 'Mayor awaiting input',
       summary: 'Approve deployment?',
       href: '/agents/mayor',
     });

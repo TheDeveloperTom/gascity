@@ -7,6 +7,7 @@ import type {
   UsageTotals,
 } from 'gas-city-dashboard-shared/gc-supervisor';
 import { activeCityOrThrow, getActiveCity } from '../api/cityBase';
+import type { AttentionItem } from '../attention/compose';
 import { useAttentionModel } from '../attention/context';
 import {
   ActivityTrace,
@@ -15,28 +16,23 @@ import {
   InstrumentNote,
   Odometer,
   PipelineBar,
-  RunRings,
   StatTile,
-  StatusLamps,
-  type LampState,
 } from '../components/cockpit/Instruments';
-import {
-  burnPerHour,
-  laneToRing,
-  pipelineSegments,
-  tokensPerMinute,
-} from '../components/cockpit/model';
+import { burnPerHour, pipelineSegments, tokensPerMinute } from '../components/cockpit/model';
 import { Button } from '../components/Button';
-import { NeedsYouBoard } from '../components/home/NeedsYouBoard';
+import { CityStrip, type CityAgents } from '../components/home/CityStrip';
+import { OwnerPlate } from '../components/home/OwnerPlate';
+import { TasksInFlight } from '../components/home/TasksInFlight';
 import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
 import { useCachedData } from '../hooks/useCachedData';
+import { useTaskStages } from '../hooks/useTaskStages';
+import { t, tn } from '../i18n';
 import { useRunSummary } from '../runs/runSummarySubscription';
 import { SUPERVISOR_REQUEST_TIMEOUT_MS, supervisorApi } from '../supervisor/client';
 
 const POLL_MS = 15_000;
 const MAX_TRACE_SAMPLES = 48;
-const MAX_RINGS = 8;
 const SECONDS_PER_DAY = 86_400;
 
 export function CockpitHomePage() {
@@ -60,6 +56,7 @@ export function CockpitHomePage() {
   );
   const runSummary = useRunSummary();
   const attention = useAttentionModel();
+  const taskStages = useTaskStages();
 
   usePoll(usageState.refresh, usageState.loading, pausedRef);
   usePoll(statusState.refresh, statusState.loading, pausedRef);
@@ -83,7 +80,6 @@ export function CockpitHomePage() {
   const status = statusReading.data;
   const canonicalRuns = runsReading.data;
   const sessions = sessionsReading.data;
-  const richRuns = runProjection.source;
 
   const [activitySamples, setActivitySamples] = useState<number[]>([]);
   const lastUsageSampleRef = useRef<string | null>(null);
@@ -161,105 +157,47 @@ export function CockpitHomePage() {
         })),
     [sessions?.items],
   );
-  const rings = useMemo(() => {
-    if (richRuns === undefined || richRuns.status === 'error') return [];
-    return [...richRuns.data.lanes, ...richRuns.data.blockedLanes]
-      .slice(0, MAX_RINGS)
-      .map(laneToRing);
-  }, [richRuns]);
-
-  const feedState: LampState = runProjection.sseState === 'open' ? 'healthy' : 'unknown';
   const statusStale = status !== undefined && statusReading.stale;
   const statusPartial = status?.partial === true;
   const statusProvenance = statusStale ? 'stale' : statusPartial ? 'partial' : null;
-  const lamps = [
-    {
-      key: 'feed',
-      label: 'live feed',
-      value:
-        runProjection.sseState === 'open' ? 'connected' : connectionLabel(runProjection.sseState),
-      state: feedState,
-      href: '/activity',
-    },
+  // HO-11 superseded: the systems lamps live on as city problems. A lamp that
+  // is not healthy becomes one city item; an unread or stale status is listed
+  // as unreadable, never as healthy and never as a zero.
+  const lampIssues = useMemo(
+    () => cityLampIssues(runProjection.sseState, status, statusProvenance),
+    [runProjection.sseState, status, statusProvenance],
+  );
+  const statusUnreadable: AttentionItem | null =
     status === undefined
-      ? {
-          key: 'store',
-          label: 'dolt store',
-          value: 'unavailable',
-          state: 'unknown' as const,
-          href: '/health',
-        }
-      : status.store_health === undefined
-        ? {
-            key: 'store',
-            label: 'dolt store',
-            value: 'not reported',
-            state: 'unknown' as const,
-            href: '/health',
-          }
-        : {
-            key: 'store',
-            label: 'dolt store',
-            value:
-              statusProvenance === null
-                ? storeHealthLabel(status.store_health)
-                : `${statusProvenance} · last reported ${storeHealthLabel(status.store_health)}`,
-            state:
-              statusProvenance !== null
-                ? ('unknown' as const)
-                : storeHealthLabel(status.store_health) !== 'healthy'
-                  ? ('warning' as const)
-                  : ('healthy' as const),
-            href: '/health',
-          },
+      ? statusReading.loading
+        ? null
+        : unreadableItem('status-unavailable', t('City status'))
+      : statusProvenance === null
+        ? null
+        : unreadableItem(
+            'status-provenance',
+            statusProvenance === 'stale' ? t('City status is stale') : t('City status is partial'),
+          );
+  const cityIssues = useMemo(
+    () => [
+      ...lampIssues,
+      ...attention.city.items.filter((item) => item.severity !== 'unavailable'),
+    ],
+    [attention.city.items, lampIssues],
+  );
+  const cityUnreadable = useMemo(
+    () => [
+      ...(statusUnreadable === null ? [] : [statusUnreadable]),
+      ...attention.city.items.filter((item) => item.severity === 'unavailable'),
+    ],
+    [attention.city.items, statusUnreadable],
+  );
+  const cityAgents: CityAgents =
     status === undefined
-      ? {
-          key: 'mail',
-          label: 'mail',
-          value: 'unavailable',
-          state: 'unknown' as const,
-          href: '/mail',
-        }
-      : {
-          key: 'mail',
-          label: 'mail',
-          value:
-            statusProvenance === null
-              ? `${status.mail.unread} unread`
-              : `${statusProvenance} · last reported ${status.mail.unread} unread`,
-          state:
-            statusProvenance !== null
-              ? ('unknown' as const)
-              : status.mail.unread > 0
-                ? ('warning' as const)
-                : ('healthy' as const),
-          href: '/mail',
-        },
-    status === undefined
-      ? {
-          key: 'agents',
-          label: 'agents',
-          value: 'unavailable',
-          state: 'unknown' as const,
-          href: '/agents',
-        }
-      : {
-          key: 'agents',
-          label: 'agents',
-          value: `${statusProvenance === null ? '' : `${statusProvenance} · last reported `}${
-            status.agents.quarantined > 0
-              ? `${status.agents.quarantined} quarantined`
-              : `${status.agents.running}/${status.agents.total} running`
-          }`,
-          state:
-            statusProvenance !== null
-              ? ('unknown' as const)
-              : status.agents.quarantined > 0 || status.agents.suspended > 0
-                ? ('warning' as const)
-                : ('healthy' as const),
-          href: '/agents',
-        },
-  ];
+      ? statusReading.loading
+        ? 'loading'
+        : 'unavailable'
+      : { running: status.agents.running, total: status.agents.total };
 
   const usageNote = readingNote(usageReading, 'usage', usageDomainNote);
   // Rate dials say which window they read so a 24h-average fallback never
@@ -283,25 +221,8 @@ export function CockpitHomePage() {
     sessions?.partial ? 'session list is partial' : undefined,
   );
   const activeSessionsNote = activeSessionsFromStatus === undefined ? sessionsNote : statusNote;
-  const ringsNote =
-    richRuns === undefined
-      ? runProjection.loading
-        ? 'loading run progress…'
-        : 'run progress unavailable'
-      : richRuns.status === 'error'
-        ? 'run progress unavailable'
-        : richRuns.status === 'stale'
-          ? 'run progress is stale'
-          : rings.length === 0
-            ? 'no runs in flight'
-            : undefined;
-
-  const synopsis = `${city ?? 'city'} · ${formatCount(activeSessions)} active sessions · ${formatCount(
-    canonicalRuns?.status_counts.active,
-  )} running · ${usageAvailable ? formatCompact(usage.today.input_tokens + usage.today.output_tokens + usage.today.cache_read_tokens + usage.today.cache_creation_tokens) : '—'} tokens today`;
-
-  // One honest line under the synopsis naming every reading that has no data
-  // and is not loading, so the dashes further down are explained up top.
+  // One honest line inside the usage section naming every reading that has no
+  // data and is not loading, so the dashes there are explained.
   const unavailableReadings = (
     [
       { name: 'usage', reading: usageReading },
@@ -313,184 +234,244 @@ export function CockpitHomePage() {
     .filter(({ reading }) => reading.data === undefined && !reading.loading)
     .map(({ name }) => name);
 
+  // R9: the owner's Home is three blocks; the instruments fold into one
+  // closed «Расход и нагрузка», unchanged inside (test ids, notes, names).
   return (
     <section>
-      <PageHeader
-        title="Home"
-        synopsis={synopsis}
-        meta={
-          <Button
-            type="button"
-            aria-pressed={paused}
-            onClick={() => setPaused((current) => !current)}
-          >
-            {paused ? 'Resume updates' : 'Pause updates'}
-          </Button>
-        }
+      <PageHeader title={t('Home')} />
+
+      <OwnerPlate items={attention.owner.items} readiness={attention.ownerReadiness} />
+
+      <TasksInFlight stages={taskStages} />
+
+      <CityStrip
+        agents={cityAgents}
+        tasks={taskStages}
+        issues={cityIssues}
+        unreadable={cityUnreadable}
       />
 
-      {unavailableReadings.length > 0 && (
-        <p role="status" className="-mt-5 mb-6 flex items-center gap-2 text-label text-warn">
-          <StatusShape tone="warn" />
-          <span>Some readings are unavailable: {unavailableReadings.join(', ')}.</span>
-        </p>
-      )}
-
-      <NeedsYouBoard items={attention.topItems} overflow={attention.overflowByDomain} />
-
-      <div className="mb-10 grid grid-cols-1 items-start gap-x-8 gap-y-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="min-w-0">
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h2 className="text-title font-semibold text-fg">Runs</h2>
+      <details className="group border-t border-rule pt-3">
+        <summary className="focus-mark cursor-pointer select-none py-2 text-title font-semibold text-fg">
+          {t('Usage and load')}
+        </summary>
+        <div className="pt-4">
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              aria-pressed={paused}
+              onClick={() => setPaused((current) => !current)}
+            >
+              {paused ? 'Resume updates' : 'Pause updates'}
+            </Button>
+            {unavailableReadings.length > 0 && (
+              <p role="status" className="flex items-center gap-2 text-label text-warn">
+                <StatusShape tone="warn" />
+                <span>Some readings are unavailable: {unavailableReadings.join(', ')}.</span>
+              </p>
+            )}
           </div>
-          <div className="rounded-lg border border-rule bg-surface-raised">
-            <section aria-labelledby="run-state-title" className="px-4 py-4">
-              <h3 id="run-state-title" className="mb-3 text-label font-medium text-fg-muted">
-                Runs by state
+
+          <section aria-labelledby="run-state-title" className="mb-10">
+            <h3 id="run-state-title" className="mb-3 text-label font-medium text-fg-muted">
+              Runs by state
+            </h3>
+            <PipelineBar segments={segments} available={canonicalRuns !== undefined} />
+            {runsNote && <InstrumentNote>{runsNote}</InstrumentNote>}
+          </section>
+
+          <section aria-labelledby="right-now-title" className="mb-10">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 id="right-now-title" className="text-title font-semibold text-fg">
+                Right now
+              </h2>
+            </div>
+            <div
+              className="grid items-start gap-x-8 gap-y-6 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]"
+              data-testid="dial-grid"
+            >
+              <Odometer
+                label="model calls today"
+                value={usageAvailable ? usage.today.invocations : null}
+                note={
+                  usageAvailable
+                    ? [`${formatUsd(usage.today.cost_usd_estimate)} estimated today`, usageNote]
+                        .filter((note): note is string => note !== undefined)
+                        .join(' · ')
+                    : usageNote
+                }
+              />
+              <Gauge
+                label="active sessions"
+                value={activeSessions}
+                max={Math.max(10, (activeSessions ?? 0) * 1.25)}
+                formatted={formatCount(activeSessions)}
+                href="/agents"
+                note={activeSessionsNote}
+              />
+              <Gauge
+                label="tokens / min"
+                value={recentTokens}
+                max={Math.max(1_000, (recentTokens ?? 0) * 1.25)}
+                formatted={recentTokens === null ? '—' : formatCompact(recentTokens)}
+                href="/activity"
+                note={rateNote}
+              />
+              <Gauge
+                label="burn · $ / hr"
+                value={recentBurn}
+                max={Math.max(10, (recentBurn ?? 0) * 1.25)}
+                formatted={recentBurn === null ? '—' : formatUsd(recentBurn)}
+                href="/activity"
+                note={rateNote}
+              />
+            </div>
+          </section>
+
+          <section aria-labelledby="usage-title">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 id="usage-title" className="text-title font-semibold text-fg">
+                Usage
+              </h2>
+            </div>
+            <section className="mb-8" aria-labelledby="last24h-title">
+              <h3 id="last24h-title" className="mb-2 text-label font-medium text-fg-muted">
+                Last 24 hours
               </h3>
-              <PipelineBar segments={segments} available={canonicalRuns !== undefined} />
-              {runsNote && <InstrumentNote>{runsNote}</InstrumentNote>}
+              <div
+                className="grid items-start gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fit,minmax(8rem,1fr))]"
+                data-testid="last24h-grid"
+              >
+                <StatTile
+                  label="tokens in"
+                  value={
+                    usageAvailable && last24h !== undefined
+                      ? formatCompact(last24h.input_tokens)
+                      : null
+                  }
+                />
+                <StatTile
+                  label="tokens out"
+                  value={
+                    usageAvailable && last24h !== undefined
+                      ? formatCompact(last24h.output_tokens)
+                      : null
+                  }
+                />
+                <StatTile
+                  label="model calls"
+                  value={
+                    usageAvailable && last24h !== undefined
+                      ? formatCount(last24h.invocations)
+                      : null
+                  }
+                />
+                <StatTile
+                  label="est. cost"
+                  value={
+                    usageAvailable && last24h !== undefined
+                      ? formatUsd(last24h.cost_usd_estimate)
+                      : null
+                  }
+                />
+              </div>
+              {usageNote && <InstrumentNote>{usageNote}</InstrumentNote>}
             </section>
-            <section aria-labelledby="progress-title" className="border-t border-rule px-4 py-4">
-              <h3 id="progress-title" className="mb-3 text-label font-medium text-fg-muted">
-                Run progress
+
+            <div className="mb-8">
+              <ActivityTrace
+                samples={activitySamples}
+                available={usageAvailable}
+                note={
+                  usageNote === undefined && activitySamples.length === 0
+                    ? 'waiting for the first usage sample'
+                    : undefined
+                }
+              />
+            </div>
+
+            <section aria-labelledby="context-title">
+              <h3 id="context-title" className="mb-2 text-label font-medium text-fg-muted">
+                Context window used
               </h3>
-              <RunRings runs={rings} />
-              {ringsNote && <InstrumentNote>{ringsNote}</InstrumentNote>}
+              <ContextMeters meters={contextMeters} />
+              {(sessionsNote || contextMeters.length === 0) && (
+                <InstrumentNote>
+                  {sessionsNote ?? 'no live session context reported'}
+                </InstrumentNote>
+              )}
             </section>
-          </div>
+          </section>
         </div>
-
-        <section aria-labelledby="systems-title" className="min-w-0">
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h2 id="systems-title" className="text-title font-semibold text-fg">
-              Systems
-            </h2>
-          </div>
-          <div className="rounded-lg border border-rule bg-surface-raised px-4 py-1">
-            <StatusLamps lamps={lamps} />
-          </div>
-        </section>
-      </div>
-
-      <section aria-labelledby="right-now-title" className="mb-10">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 id="right-now-title" className="text-title font-semibold text-fg">
-            Right now
-          </h2>
-        </div>
-        <div
-          className="grid items-start gap-x-8 gap-y-6 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]"
-          data-testid="dial-grid"
-        >
-          <Odometer
-            label="model calls today"
-            value={usageAvailable ? usage.today.invocations : null}
-            note={
-              usageAvailable
-                ? [`${formatUsd(usage.today.cost_usd_estimate)} estimated today`, usageNote]
-                    .filter((note): note is string => note !== undefined)
-                    .join(' · ')
-                : usageNote
-            }
-          />
-          <Gauge
-            label="active sessions"
-            value={activeSessions}
-            max={Math.max(10, (activeSessions ?? 0) * 1.25)}
-            formatted={formatCount(activeSessions)}
-            href="/agents"
-            note={activeSessionsNote}
-          />
-          <Gauge
-            label="tokens / min"
-            value={recentTokens}
-            max={Math.max(1_000, (recentTokens ?? 0) * 1.25)}
-            formatted={recentTokens === null ? '—' : formatCompact(recentTokens)}
-            href="/activity"
-            note={rateNote}
-          />
-          <Gauge
-            label="burn · $ / hr"
-            value={recentBurn}
-            max={Math.max(10, (recentBurn ?? 0) * 1.25)}
-            formatted={recentBurn === null ? '—' : formatUsd(recentBurn)}
-            href="/activity"
-            note={rateNote}
-          />
-        </div>
-      </section>
-
-      <section aria-labelledby="usage-title">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 id="usage-title" className="text-title font-semibold text-fg">
-            Usage
-          </h2>
-        </div>
-        <section className="mb-8" aria-labelledby="last24h-title">
-          <h3 id="last24h-title" className="mb-2 text-label font-medium text-fg-muted">
-            Last 24 hours
-          </h3>
-          <div
-            className="grid items-start gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fit,minmax(8rem,1fr))]"
-            data-testid="last24h-grid"
-          >
-            <StatTile
-              label="tokens in"
-              value={
-                usageAvailable && last24h !== undefined ? formatCompact(last24h.input_tokens) : null
-              }
-            />
-            <StatTile
-              label="tokens out"
-              value={
-                usageAvailable && last24h !== undefined
-                  ? formatCompact(last24h.output_tokens)
-                  : null
-              }
-            />
-            <StatTile
-              label="model calls"
-              value={
-                usageAvailable && last24h !== undefined ? formatCount(last24h.invocations) : null
-              }
-            />
-            <StatTile
-              label="est. cost"
-              value={
-                usageAvailable && last24h !== undefined
-                  ? formatUsd(last24h.cost_usd_estimate)
-                  : null
-              }
-            />
-          </div>
-          {usageNote && <InstrumentNote>{usageNote}</InstrumentNote>}
-        </section>
-
-        <div className="mb-8">
-          <ActivityTrace
-            samples={activitySamples}
-            available={usageAvailable}
-            note={
-              usageNote === undefined && activitySamples.length === 0
-                ? 'waiting for the first usage sample'
-                : undefined
-            }
-          />
-        </div>
-
-        <section aria-labelledby="context-title">
-          <h3 id="context-title" className="mb-2 text-label font-medium text-fg-muted">
-            Context window used
-          </h3>
-          <ContextMeters meters={contextMeters} />
-          {(sessionsNote || contextMeters.length === 0) && (
-            <InstrumentNote>{sessionsNote ?? 'no live session context reported'}</InstrumentNote>
-          )}
-        </section>
-      </section>
+      </details>
     </section>
   );
+}
+
+function unreadableItem(id: string, title: string): AttentionItem {
+  return { id: `home:${id}`, domain: 'health', severity: 'unavailable', title, href: '/health' };
+}
+
+function cityIssue(id: string, title: string, href: string): AttentionItem {
+  return { id: `home:${id}`, domain: 'health', severity: 'watch', title, href };
+}
+
+/**
+ * The former systems lamps, as city problems (HO-11 superseded). Healthy and
+ * still-connecting lamps add nothing; the mail lamp is gone because the
+ * owner's mail is on the plate.
+ */
+function cityLampIssues(
+  sseState: string,
+  status: StatusBody | undefined,
+  provenance: 'stale' | 'partial' | null,
+): AttentionItem[] {
+  const issues: AttentionItem[] = [];
+  if (sseState !== 'open' && sseState !== 'connecting') {
+    issues.push(
+      cityIssue(
+        'feed',
+        sseState === 'degraded'
+          ? t('Live updates are degraded')
+          : t('Live updates are disconnected'),
+        '/activity',
+      ),
+    );
+  }
+  if (status === undefined || provenance !== null) return issues;
+  if (status.store_health !== undefined) {
+    const store = storeHealthLabel(status.store_health);
+    if (store === 'maintenance failed') {
+      issues.push(cityIssue('store', t('Task store maintenance failed'), '/health'));
+    } else if (store === 'maintenance overdue') {
+      issues.push(cityIssue('store', t('Task store maintenance is overdue'), '/health'));
+    }
+  }
+  if (status.agents.quarantined > 0) {
+    issues.push(
+      cityIssue(
+        'agents-quarantined',
+        tn(status.agents.quarantined, {
+          one: '{n} agent quarantined',
+          other: '{n} agents quarantined',
+        }),
+        '/agents',
+      ),
+    );
+  }
+  if (status.agents.suspended > 0) {
+    issues.push(
+      cityIssue(
+        'agents-suspended',
+        tn(status.agents.suspended, {
+          one: '{n} agent suspended',
+          other: '{n} agents suspended',
+        }),
+        '/agents',
+      ),
+    );
+  }
+  return issues;
 }
 
 function usePoll(
@@ -593,17 +574,6 @@ function storeHealthLabel(storeHealth: NonNullable<StatusBody['store_health']>):
   const lastMaintenanceStatus = storeHealth.last_gc_status?.trim();
   if (lastMaintenanceStatus && lastMaintenanceStatus !== 'success') return 'maintenance failed';
   return storeHealth.warning ? 'maintenance overdue' : 'healthy';
-}
-
-function connectionLabel(state: string): string {
-  switch (state) {
-    case 'connecting':
-      return 'connecting';
-    case 'degraded':
-      return 'degraded';
-    default:
-      return 'disconnected';
-  }
 }
 
 function formatCount(value: number | null | undefined): string {

@@ -18,6 +18,9 @@ import {
 import { elapsedSince, formatElapsed } from './elapsed';
 import { runDetailHref } from '../supervisor/runHref';
 import { agentNeedsYouReasonLabel } from './agentNeedsYou';
+import { eventTitle } from './eventTitles';
+import { agentDisplayName } from '../lib/agentNames';
+import { t } from '../i18n';
 import type {
   AgentResponse,
   Bead,
@@ -115,6 +118,13 @@ export interface BeadsAttentionFacts {
   decisionsError?: string;
   /** Failure of the dedicated escalation-queue fetch, independent of `error`. */
   escalationsError?: string;
+  /**
+   * Names that mean "the owner" when a bead waits on someone (operator alias,
+   * wire alias). `human` always counts. Set from OperatorConfig.
+   */
+  operatorAliases?: readonly string[];
+  /** Route beads (workflow roots and steps) split off `items` (withRoutes). */
+  routeItems?: readonly Bead[];
 }
 
 export interface MailAttentionFacts {
@@ -166,6 +176,10 @@ export const GC_ESCALATION_LABEL = 'gc:escalation';
  * present it becomes the row summary; when absent the title carries the ask.
  */
 const DECISION_DECIDE_META_KEY = 'decision.decide';
+const DECISION_CHAT_META_KEYS = ['decision.chat_url', 'decision.slack_url'] as const;
+
+/** The wire actor a worker names when it waits on "a human" — the owner here. */
+const OWNER_WIRE_ACTOR = 'human';
 
 export function createAttentionContributors(
   facts: AttentionContributorFacts = {},
@@ -370,7 +384,9 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
     items.push(
       domainAttention('agents', {
         id: `agents:${need.name}:needs-you`,
-        title: `${need.name} ${agentNeedsYouReasonLabel(need.reason)}`,
+        ...(need.reason === 'awaiting-input' ? { audience: 'owner' as const } : {}),
+        ref: need.name,
+        title: `${agentDisplayName(need.name)} ${t(agentNeedsYouReasonLabel(need.reason))}`,
         summary: need.detail,
         href: `/agents/${encodeURIComponent(need.name)}`,
       }),
@@ -435,20 +451,35 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
   // is the membership SSOT the /beads page also reads, so the nav badge count
   // and the page count cannot disagree.
   const generic = (facts.items ?? []).filter((bead) => !isMayorDecision(bead, facts.decisionLabel));
+  const ownerAliases = new Set(
+    [OWNER_WIRE_ACTOR, ...(facts.operatorAliases ?? [])].map((alias) => alias.trim().toLowerCase()),
+  );
   for (const row of selectBeadsNeedingAttention(
     {
       beads: generic,
       escalations: facts.escalations ?? [],
       ...(facts.sessions === undefined ? {} : { sessions: facts.sessions }),
+      ...(facts.routeItems === undefined
+        ? {}
+        : {
+            routeItems: facts.routeItems,
+            taskTitles: new Map((facts.items ?? []).map((bead) => [bead.id, bead.title])),
+          }),
     },
     nowMs,
   )) {
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
+    const waitsOnOwner =
+      row.reason === 'waiting-human' &&
+      row.waitingOn !== undefined &&
+      ownerAliases.has(row.waitingOn.trim().toLowerCase());
     items.push(
       builder('beads', {
         id: `beads:${row.beadId}:${row.reason}`,
-        title: `${row.beadId} ${beadAttentionWord(row.reason)}`,
-        summary: row.summary,
+        ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
+        ref: row.beadId,
+        title: row.title,
+        summary: withoutLeadingTitle(row.summary, row.title, row.reason),
         href: beadHref(row.beadId),
         updatedAt: row.updatedAt,
       }),
@@ -461,14 +492,28 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
 function beadAttentionWord(reason: BeadAttentionReason): string {
   switch (reason) {
     case 'escalated':
-      return 'escalated';
+      return t('escalated');
     case 'stalled':
-      return 'stalled';
+      return t('stalled');
     case 'waiting-human':
-      return 'waiting';
+      return t('waiting');
     case 'ready-unclaimed':
-      return 'unclaimed';
+      return t('unclaimed');
   }
+}
+
+/**
+ * The row summary leads with the bead title (the /beads panel shows it alone).
+ * The attention item already carries the title, so the summary here starts
+ * with the reason word instead of repeating the title.
+ */
+function withoutLeadingTitle(summary: string, title: string, reason: BeadAttentionReason): string {
+  if (title.length === 0 || !summary.startsWith(title)) return summary;
+  const rest = summary
+    .slice(title.length)
+    .replace(/^\s*(—\s*)?/, '')
+    .trim();
+  return rest.length === 0 ? beadAttentionWord(reason) : `${beadAttentionWord(reason)}: ${rest}`;
 }
 
 function beadHref(beadId: string): string {
@@ -497,13 +542,36 @@ function isMayorDecision(bead: Bead, decisionLabel: string): boolean {
  */
 function mayorDecisionAttention(bead: Bead): AttentionItem {
   const decide = bead.metadata?.[DECISION_DECIDE_META_KEY];
+  const chatHref = decisionChatHref(bead);
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,
+    audience: 'owner',
+    ref: bead.id,
+    ...(chatHref === null ? {} : { externalHref: chatHref }),
     title: bead.title,
     href: beadHref(bead.id),
     updatedAt: bead.updated_at ?? bead.created_at,
     ...(decide !== undefined && decide.trim().length > 0 ? { summary: decide } : {}),
   });
+}
+
+/**
+ * The chat thread where the owner answers a decision. The channel is moving
+ * (Slack to Discord), so any of the known keys is read, and only an `https:`
+ * URL is kept — never a `javascript:` or other scheme.
+ */
+function decisionChatHref(bead: Bead): string | null {
+  for (const key of DECISION_CHAT_META_KEYS) {
+    const raw = bead.metadata?.[key]?.trim();
+    if (raw === undefined || raw.length === 0) continue;
+    try {
+      const url = new URL(raw);
+      if (url.protocol === 'https:') return url.toString();
+    } catch {
+      // not a URL; try the next key
+    }
+  }
+  return null;
 }
 
 function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly AttentionItem[] {
@@ -541,6 +609,7 @@ function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly At
     items.push(
       domainAttention('mail', {
         id: `mail:${message.id}:${stale ? 'unread-stale' : 'unread'}`,
+        audience: 'owner',
         title: message.subject,
         summary: stale
           ? `from ${message.from}, unread for ${formatElapsed(staleAgeMs)}`
@@ -653,7 +722,8 @@ function appendActivityEventAttention(
     items.push(
       builder('activity', {
         id: `activity:event:${String(event.seq)}:${event.type}`,
-        title: event.type,
+        ref: event.type,
+        title: eventTitle(event.type),
         summary: supervisorEventDetail(event),
         href: activityEventHref(event),
         updatedAt: event.ts,
