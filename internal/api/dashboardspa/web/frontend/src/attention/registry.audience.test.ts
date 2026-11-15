@@ -239,7 +239,10 @@ describe('attention audience', () => {
   // v3: the owner slice holds owner questions only, so a bead that names the
   // owner stays the city's; its copy still says it waits on you (review N1).
   it.each([
-    ['gc.waiting_on=<operator alias>', { metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'stephanie' } }],
+    [
+      'gc.waiting_on=<operator alias>',
+      { metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'stephanie' } },
+    ],
     ['gc.checkpoint=awaiting-human', { metadata: { 'gc.checkpoint': 'awaiting-human' } }],
     ['hold:human', { labels: ['hold:human'] }],
     ['hold:<operator alias>', { labels: ['hold:stephanie'] }],

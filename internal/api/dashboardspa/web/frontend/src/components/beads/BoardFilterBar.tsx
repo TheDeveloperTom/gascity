@@ -1,5 +1,7 @@
 import { useId } from 'react';
 import { t } from '../../i18n';
+import type { BoardSource, OwnerFilter } from '../../lib/boardOwner';
+import type { EpicSummary } from '../../lib/epics';
 import { ListSearchBar } from '../ListSearchBar';
 
 // The board's one filter row (B7): which project, a search, and whether test
@@ -18,6 +20,15 @@ interface BoardFilterBarProps {
   testCount: number;
   showTests: boolean;
   onShowTests: (show: boolean) => void;
+  // vk lane 0b seam props (owner: lane 4). Optional so lane 1 can pass them
+  // now; the body reads them once lane 4 lands.
+  epics?: readonly EpicSummary[];
+  epic?: string;
+  onEpic?: (key: string) => void;
+  sources?: readonly BoardSource[];
+  ownerFilter?: OwnerFilter;
+  onOwnerFilter?: (f: OwnerFilter) => void;
+  newTaskUrl?: string | null;
 }
 
 export function BoardFilterBar({

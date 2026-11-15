@@ -3,6 +3,10 @@ import { RU as RU_CORE, type RuPlural } from './ru';
 import { RU_BOARD } from './ru.board';
 import { RU_DEBUG } from './ru.debug';
 import { RU_HOME } from './ru.home';
+import { RU_VK2 } from './ru.vk2';
+import { RU_VK4 } from './ru.vk4';
+import { RU_VK5 } from './ru.vk5';
+import { RU_VK6 } from './ru.vk6';
 
 // A small gettext-style layer: the English string is the key, Russian lives
 // in `ru.ts` plus one dictionary per dashboard-v3 lane (`ru.home.ts`,
@@ -14,6 +18,11 @@ const RU: Readonly<Record<string, string | RuPlural>> = {
   ...RU_HOME,
   ...RU_BOARD,
   ...RU_DEBUG,
+  // vk port lanes (one dictionary each; this file is frozen after lane 0b).
+  ...RU_VK2,
+  ...RU_VK4,
+  ...RU_VK5,
+  ...RU_VK6,
 };
 
 export type Locale = 'en' | 'ru';
