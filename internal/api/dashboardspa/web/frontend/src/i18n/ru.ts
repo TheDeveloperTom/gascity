@@ -37,6 +37,8 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   Merge: 'Вливание',
   Board: 'Доска',
   City: 'Город',
+  All: 'Все',
+  'No stage': 'Без этапа',
 
   // Rail (Task 9).
   'Switch city': 'Сменить город',
