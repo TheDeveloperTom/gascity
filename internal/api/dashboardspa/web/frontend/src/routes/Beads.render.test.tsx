@@ -78,8 +78,10 @@ describe('BeadsPage supervisor reads', () => {
 
     const dialog = await screen.findByRole('dialog');
 
-    expect(within(dialog).getByRole('heading', { name: 'direct supervisor bead' })).toBeTruthy();
-    expect(within(dialog).getByText('Dependencies')).toBeTruthy();
+    expect(
+      await within(dialog).findByRole('heading', { name: 'direct supervisor bead' }),
+    ).toBeTruthy();
+    expect(await within(dialog).findByText('Dependencies')).toBeTruthy();
     expect(within(dialog).getByText('td-parent-1')).toBeTruthy();
     expect(within(dialog).getByText(/parent bead/)).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: /view live run/i })).toBeTruthy();
@@ -101,6 +103,7 @@ describe('BeadsPage supervisor reads', () => {
     renderPage('/beads?bead=td-bead-abc123', [], { readOnly: true });
 
     const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByRole('heading', { name: 'direct supervisor bead' });
     // Scope to the bead-action group: the modal's own dismiss control also
     // carries aria-label "Close", so locate the action-row Close (its visible
     // text is exactly "Close", unlike the "×" dismiss) and assert the write
