@@ -45,7 +45,7 @@ describe('web app manifest', () => {
   });
 
   it('has 192, 512 and a maskable 512 icon, real PNGs of those sizes', () => {
-    const want = [
+    const want: ReadonlyArray<readonly [string, string]> = [
       ['192x192', 'any'],
       ['512x512', 'any'],
       ['512x512', 'maskable'],

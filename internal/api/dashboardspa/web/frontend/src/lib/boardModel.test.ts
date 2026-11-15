@@ -243,6 +243,8 @@ describe('buildBoardModel with a peer board', () => {
     available: true,
     asOf: '2026-11-15T18:52:00Z',
     stale: false,
+    live: null,
+    fetchedAt: null,
     cards: [
       { rig: 'crm-api', bead: bead('dw-iy9a', { title: 'Изменение схемы users', status: 'in_progress' }) },
       { rig: 'devwork', bead: bead('dw-zz1', { title: 'Richard devwork card' }) },

@@ -137,7 +137,8 @@ describe('usePeerBoards follows the stream', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    const boards = () => fetchSpy.mock.calls.filter(([u]) => String(u).endsWith('/svc/peer-boards/v1/boards'));
+    const boards = () =>
+      fetchSpy.mock.calls.filter((call: unknown[]) => String(call[0]).endsWith('/svc/peer-boards/v1/boards'));
     const initial = boards().length;
     expect(initial).toBe(1);
     await act(async () => {

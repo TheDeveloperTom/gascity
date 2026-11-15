@@ -10,13 +10,22 @@ function msg(id: string, text: string, createdAt: string, mine = true): PeerComm
   return {
     id,
     mine,
-    author: { kind: 'person', city: 'me', name: 'Артём', agent: null, displayName: null, avatarUrl: null },
+    author: {
+      kind: 'person',
+      city: 'me',
+      name: 'Артём',
+      agent: null,
+      displayName: null,
+      avatarUrl: null,
+      roleCaption: null,
+    },
     text,
     summary: null,
     createdAt,
     state: mine ? 'queued' : null,
     reason: null,
     reopened: false,
+    undelivered: null,
   };
 }
 

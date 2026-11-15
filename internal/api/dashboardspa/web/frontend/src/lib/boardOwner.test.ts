@@ -13,6 +13,7 @@ const RESULT: PeerBoardsResult = {
   heartbeatSeconds: 900,
   staleAfterSeconds: 1500,
   ownerQuestions: [],
+  mayorUrl: null,
   peers: [
     {
       login: 'rich',
