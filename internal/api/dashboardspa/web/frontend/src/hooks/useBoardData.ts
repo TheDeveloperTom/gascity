@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { getActiveCity } from '../api/cityBase';
 import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
@@ -90,6 +90,29 @@ export function boardDataOf(list: SupervisorBeadList | null | undefined): BoardD
   };
 }
 
+// One bead-event stream for every board consumer (vk integration). The page,
+// TopNav and BottomTabs («Нужно от меня» badge), the drawer and ⌘K each read
+// the board; one EventSource apiece used up Chrome's six HTTP/1.1 connections
+// per host and stalled every other request. The first mounted consumer leads:
+// only it subscribes, and a matching event refreshes every consumer (the
+// shared read dedupes their fetches into one request). When the leader
+// unmounts, the next consumer takes the stream.
+const boardRefreshers = new Map<symbol, () => void>();
+let boardLeader: symbol | null = null;
+const leaderListeners = new Set<() => void>();
+function setBoardLeader(next: symbol | null): void {
+  boardLeader = next;
+  leaderListeners.forEach((fn) => fn());
+}
+function subscribeLeader(fn: () => void): () => void {
+  leaderListeners.add(fn);
+  return () => leaderListeners.delete(fn);
+}
+const getBoardLeader = () => boardLeader;
+function refreshAllBoardConsumers(): void {
+  boardRefreshers.forEach((refresh) => refresh());
+}
+
 export function useBoardData(): BoardRead {
   const city = getActiveCity();
   const boardKey = boardCacheKey(city);
@@ -116,7 +139,22 @@ export function useBoardData(): BoardRead {
   });
 
   const refreshBoard = board.refresh;
-  useGcEventRefresh([GC_EVENT_PREFIX.bead], () => void refreshBoard(), {
+  const [token] = useState(() => Symbol('board-consumer'));
+  const refreshRef = useRef(refreshBoard);
+  refreshRef.current = refreshBoard;
+  useEffect(() => {
+    boardRefreshers.set(token, () => void refreshRef.current());
+    if (boardLeader === null) setBoardLeader(token);
+    return () => {
+      boardRefreshers.delete(token);
+      if (boardLeader === token) {
+        const next = boardRefreshers.keys().next();
+        setBoardLeader(next.done === true ? null : next.value);
+      }
+    };
+  }, [token]);
+  const leads = useSyncExternalStore(subscribeLeader, getBoardLeader, getBoardLeader) === token;
+  useGcEventRefresh(leads ? [GC_EVENT_PREFIX.bead] : [], refreshAllBoardConsumers, {
     coalesceMs: BOARD_REFRESH_COALESCE_MS,
   });
 

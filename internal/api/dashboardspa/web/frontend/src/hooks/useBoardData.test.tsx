@@ -9,7 +9,26 @@ import { sharedRead, useBoardData } from './useBoardData';
 vi.mock('../supervisor/beadReads', () => ({ listSupervisorBeads: vi.fn() }));
 vi.mock('../supervisor/rigReads', () => ({ listSupervisorRigs: vi.fn() }));
 vi.mock('../supervisor/sessionReads', () => ({ listSupervisorSessions: vi.fn() }));
-vi.mock('./useGcEvents', () => ({ useGcEventRefresh: () => 'open' }));
+// Records each render's subscription: prefixes plus the onMatch it would fire.
+const subs = vi.hoisted(() => ({ last: new Map<number, { prefixes: string; onMatch: () => void }>(), seq: 0 }));
+vi.mock('./useGcEvents', async () => {
+  const React = await import('react');
+  return {
+    useGcEventRefresh: (prefixes: readonly string[], onMatch: () => void) => {
+      const id = React.useRef(0);
+      if (id.current === 0) id.current = ++subs.seq;
+      subs.last.set(id.current, { prefixes: prefixes.join(','), onMatch });
+      React.useEffect(() => {
+        const mine = id.current;
+        return () => {
+          subs.last.delete(mine);
+        };
+      }, []);
+      return 'open';
+    },
+  };
+});
+const activeStreams = () => [...subs.last.values()].filter((s) => s.prefixes !== '');
 
 const beads = vi.mocked(listSupervisorBeads);
 const rigs = vi.mocked(listSupervisorRigs);
@@ -100,6 +119,49 @@ describe('useBoardData', () => {
     expect(beads).toHaveBeenCalledWith({ withRoutes: true, recentClosed: { limit: 100 } });
     expect(rigs).toHaveBeenCalledTimes(1);
     expect(sessions).toHaveBeenCalledTimes(1);
+  });
+
+  // vk integration: TopNav, BottomTabs, the drawer and ⌘K each read the board.
+  // One EventSource per consumer used up Chrome's 6 HTTP/1.1 connections per
+  // host and stalled every other request; the board now holds ONE bead stream
+  // however many consumers mount, and its events refresh all of them.
+  it('many consumers hold one bead-event stream; an event refreshes them all', async () => {
+    const view = render(
+      <>
+        <Consumer name="beads" />
+        <Consumer name="nav" />
+        <Consumer name="tabs" />
+      </>,
+    );
+    await waitFor(() => expect(screen.getByTestId('tabs').textContent).toBe('1/0/0/true/1/1'));
+    expect(activeStreams()).toHaveLength(1);
+    expect(activeStreams()[0]?.prefixes).toBe('bead.');
+
+    beads.mockResolvedValue({
+      items: [],
+      route_items: [],
+      service_items: [],
+      routes_complete: true,
+      total: 0,
+      upstream_fetched: 0,
+      fetch_limit: 1000,
+    });
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => {
+      for (const name of ['beads', 'nav', 'tabs']) {
+        expect(screen.getByTestId(name).textContent).toBe('0/0/0/true/1/1');
+      }
+    });
+    expect(beads).toHaveBeenCalledTimes(2);
+
+    // The leader leaving hands the stream to another consumer.
+    view.rerender(
+      <>
+        <Consumer name="nav" />
+        <Consumer name="tabs" />
+      </>,
+    );
+    await waitFor(() => expect(activeStreams()).toHaveLength(1));
   });
 
   it('a failed read reports its error and keeps no data', async () => {
