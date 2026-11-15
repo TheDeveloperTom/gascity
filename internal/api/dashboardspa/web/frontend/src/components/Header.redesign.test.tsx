@@ -6,6 +6,7 @@ import type { AttentionContributor, AttentionItem } from '../attention/compose';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { ViewingAsProvider } from '../contexts/ViewingAsContext';
 import { Header } from './Header';
+import { Layout } from './Layout';
 
 // Left rail (DESIGN-PLAN §6.1, R6): one nav inside the header, three
 // signpost groups, signal count pills, an icon on the theme toggle.
@@ -75,6 +76,34 @@ describe('Header left rail', () => {
     expect(runs.className).toContain('bg-accent');
     expect(runs.textContent).toBe('2');
     expect(screen.getByLabelText('Mail: 1 watch item').className).toContain('bg-warn');
+  });
+
+  it('the scrolling phone nav row leaves room for the focus ring', () => {
+    // overflow-x-auto clips vertical overflow too; vertical padding keeps the
+    // 2 px ring at 2 px offset visible above and below each link.
+    const { container } = renderHeader([]);
+    const nav = container.querySelector('header nav')!;
+    expect(nav.className).toContain('overflow-x-auto');
+    expect(nav.className.split(/\s+/)).toContain('py-1');
+  });
+
+  it('the content column starts at the rail (left-aligned, capped)', () => {
+    const { container } = render(
+      <ThemeProvider>
+        <ViewingAsProvider>
+          <AttentionProvider contributors={[]}>
+            <MemoryRouter initialEntries={['/']}>
+              <Layout>
+                <p>page</p>
+              </Layout>
+            </MemoryRouter>
+          </AttentionProvider>
+        </ViewingAsProvider>
+      </ThemeProvider>,
+    );
+    const column = container.querySelector('main')!.firstElementChild as HTMLElement;
+    expect(column.className).toContain('max-w-dashboard');
+    expect(column.className.split(/\s+/)).not.toContain('mx-auto');
   });
 
   it('theme toggle', () => {

@@ -84,6 +84,15 @@ describe('Signal & Pavement tokens', () => {
     expect(css).toMatch(/::selection\s*\{[^}]*var\(--primary\)/);
   });
 
+  it('the focus ring keeps the control shape', () => {
+    // A border-radius here (specificity 0,2,0) beats every rounded-* utility,
+    // so a pill or nav item would turn square on keyboard focus. The outline
+    // follows the element's own radius in current browsers.
+    const rule = css.match(/\.focus-mark:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).not.toBe('');
+    expect(rule).not.toMatch(/border-radius/);
+  });
+
   it('tailwind exposes the tokens', () => {
     expect(tailwind).toContain("primary: 'oklch(var(--primary) / <alpha-value>)'");
     expect(tailwind).toContain("'surface-raised': 'oklch(var(--surface-raised) / <alpha-value>)'");

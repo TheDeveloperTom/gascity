@@ -134,7 +134,7 @@ export function Header() {
 
   return (
     <header className="border-b border-rule bg-surface-raised lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-b-0">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 pb-2 pt-3 sm:px-6 lg:flex lg:min-h-full lg:flex-col lg:items-stretch lg:gap-y-5 lg:px-3 lg:py-5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 pb-1 pt-3 sm:px-6 lg:flex lg:min-h-full lg:flex-col lg:items-stretch lg:gap-y-5 lg:px-3 lg:py-5">
         <div className="flex min-w-0 items-center gap-x-3 lg:flex-col lg:items-start lg:gap-y-1 lg:px-2.5">
           <span className="flex shrink-0 items-center gap-2 text-title font-semibold text-fg">
             <Icon name="flame" className="h-5 w-5" />
@@ -176,7 +176,7 @@ export function Header() {
           )}
         </div>
 
-        <nav className="col-span-2 -mx-4 flex min-w-0 items-center overflow-x-auto whitespace-nowrap px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:overflow-visible lg:px-0">
+        <nav className="col-span-2 -mx-4 flex min-w-0 items-center overflow-x-auto whitespace-nowrap px-4 py-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:overflow-visible lg:px-0 lg:py-0">
           {groups.map((group, index) => (
             <ul
               key={group[0]?.to ?? index}

@@ -58,6 +58,20 @@ describe('StatusBadge pill', () => {
     const { container } = render(<StatusBadge tone="ok" label="live" className="w-28" />);
     expect((container.firstElementChild as HTMLElement).className).toContain('w-28');
   });
+
+  it('titles itself with a text label so a truncated word stays readable', () => {
+    const { container } = render(<StatusBadge tone="stuck" label="awaiting input" />);
+    expect((container.firstElementChild as HTMLElement).getAttribute('title')).toBe(
+      'awaiting input',
+    );
+  });
+
+  it('keeps an explicit title over the label', () => {
+    const { container } = render(<StatusBadge tone="ok" label="live" title="SSE stream: open" />);
+    expect((container.firstElementChild as HTMLElement).getAttribute('title')).toBe(
+      'SSE stream: open',
+    );
+  });
 });
 
 describe('Modal', () => {
@@ -124,6 +138,13 @@ describe('PageAlerts', () => {
   it('renders one alert line per message', () => {
     render(<PageAlerts messages={['a', 'b']} />);
     expect(screen.getAllByRole('alert')).toHaveLength(2);
+  });
+
+  it('leads each line with a stop shape and keeps the message as the text', () => {
+    render(<PageAlerts messages={['Run data unavailable.']} />);
+    const alert = screen.getByRole('alert');
+    expect(alert.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+    expect(alert.textContent).toBe('Run data unavailable.');
   });
 });
 

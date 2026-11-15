@@ -49,7 +49,9 @@ export function StatusBadge({
   return (
     <span
       className={`inline-flex max-w-full items-center gap-1.5 align-middle text-label font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
-      title={title}
+      // A text label can be cut by `truncate` in a narrow cell; the title
+      // keeps the full word one hover away. An explicit title wins.
+      title={title ?? (typeof label === 'string' ? label : undefined)}
     >
       {glyph !== undefined ? (
         <span aria-hidden="true" className="leading-none">
