@@ -254,9 +254,12 @@ describe('discussWithMayor interface', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('answerQuestion(qid, choiceIndex) inside the Activity is a typed stub that rejects «not wired»', async () => {
+  it('answerQuestion(qid, choiceIndex) inside the Activity before sign-in posts nothing (no role yet)', async () => {
     window.history.replaceState(null, '', '/?frame_id=a&instance_id=b');
-    await expect(answerQuestionWire('0123456789abcdef01234567', 0)).rejects.toThrow(/not wired/);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(answerQuestionWire('0123456789abcdef01234567', 0)).rejects.toThrow(/owner only/);
+    expect(fetchMock).not.toHaveBeenCalled();
     window.history.replaceState(null, '', '/');
   });
 });

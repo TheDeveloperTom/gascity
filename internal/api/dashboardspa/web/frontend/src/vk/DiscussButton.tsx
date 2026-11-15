@@ -2,12 +2,18 @@ import { useState } from 'react';
 import { t } from '../i18n';
 import { discussWithMayor, mayorChannelUrl, type DiscussContext } from '../lib/discussWithMayor';
 import { openExternal } from '../lib/openExternal';
+import { isEmbedded } from '../lib/apiBase';
+import { canWrite } from '../embed/activitySession';
 import { cn } from './cn';
 
 // «Обсудить в Discord» (vk lane 2; lane 3 consumes it). Ruling 3 (Safari/iOS
 // popup blocking): the known Mayor channel opens SYNCHRONOUSLY inside the
 // click, and the Mayor handoff (`discussWithMayor`) runs in the background.
 // Nothing is awaited before the window opens.
+// Task 6: hidden for an Activity reader (Richard). Inside the Activity the
+// gateway resolves the Discord URL, so VITE_MAYOR_DISCORD_URL is not needed
+// there: with no build-time channel, the URL the gateway returns is opened
+// through the SDK opener (`openExternalLink`, not a browser popup).
 
 export interface DiscussButtonProps {
   ctx: DiscussContext;
@@ -20,15 +26,20 @@ type Phase = 'idle' | 'sending' | 'done' | 'error';
 
 export function DiscussButton({ ctx, className, label }: DiscussButtonProps) {
   const [phase, setPhase] = useState<Phase>('idle');
+  if (!canWrite()) return null;
   const channel = mayorChannelUrl();
-  const unconfigured = channel === null;
+  const embedded = isEmbedded();
+  const unconfigured = channel === null && !embedded;
 
   const onClick = () => {
-    if (channel === null || phase === 'sending') return;
-    openExternal(channel);
+    if (unconfigured || phase === 'sending') return;
+    if (channel !== null) openExternal(channel);
     setPhase('sending');
     discussWithMayor(ctx).then(
-      () => setPhase('done'),
+      (url) => {
+        if (channel === null) openExternal(url);
+        setPhase('done');
+      },
       () => setPhase('error'),
     );
   };

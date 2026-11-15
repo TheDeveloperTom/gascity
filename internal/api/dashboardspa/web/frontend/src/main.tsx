@@ -14,21 +14,37 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './styles/index.css';
 
+import { isEmbedded } from './lib/apiBase';
+import { runActivityBoot } from './embed/activitySdk';
+
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
 
-// gascity-dashboard-ucc: CityBootstrap resolves the active city from the
-// `/city/:cityName` URL segment (or redirects a bare `/` to the first city)
-// and mounts the router under that segment as its basename, so the rest of
-// the app keeps using city-relative absolute links unchanged.
-ReactDOM.createRoot(root).render(
-  <React.StrictMode>
-    <LocaleProvider>
-      <ThemeProvider>
-        <ErrorBoundary>
-          <CityBootstrap />
-        </ErrorBoundary>
-      </ThemeProvider>
-    </LocaleProvider>
-  </React.StrictMode>,
-);
+function mount(el: HTMLElement): void {
+  // gascity-dashboard-ucc: CityBootstrap resolves the active city from the
+  // `/city/:cityName` URL segment (or redirects a bare `/` to the first city)
+  // and mounts the router under that segment as its basename, so the rest of
+  // the app keeps using city-relative absolute links unchanged.
+  ReactDOM.createRoot(el).render(
+    <React.StrictMode>
+      <LocaleProvider>
+        <ThemeProvider>
+          <ErrorBoundary>
+            <CityBootstrap />
+          </ErrorBoundary>
+        </ThemeProvider>
+      </LocaleProvider>
+    </React.StrictMode>,
+  );
+}
+
+// ACTIVITY-PLAN Task 6: inside the Discord Activity, sign in through the
+// Embedded App SDK before the board's first request; on 403 «Нет доступа»
+// (or a sign-in error) is rendered instead and the board never mounts.
+if (isEmbedded()) {
+  void runActivityBoot(import.meta.env.VITE_DISCORD_CLIENT_ID, root).then((ok) => {
+    if (ok) mount(root);
+  });
+} else {
+  mount(root);
+}
