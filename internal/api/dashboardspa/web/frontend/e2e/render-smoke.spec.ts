@@ -244,12 +244,12 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     await gotoCityRoute(page, CITY_BASE, '/beads');
     await expect(page.getByRole('heading', { name: 'Beads', level: 1 })).toBeVisible();
     // The seeded closed beads live in the city store, which the stage board's
-    // rig-scoped recent-merges leg does not read, so the "closed" status chip
+    // rig-scoped recent-merges leg does not read, so «Show all history» (B7)
     // widens the fetch (all=true). Stage board (2026-11-15): the completed run's
     // step beads fold into its source task, so the card is the closed TASK in
     // Merged, and its step line is the run's last step (approve), linked into
     // the run. The step itself is never a card.
-    await page.getByRole('button', { name: 'closed' }).click();
+    await page.getByRole('button', { name: 'Show all history' }).click();
     const merged = page.getByRole('region', { name: 'Merged', exact: true });
     await expect(merged.getByText(COMPLETED_RUN_SOURCE_TITLE, { exact: true })).toBeVisible();
     await expect(merged.locator(`[title="Select ${COMPLETED_RUN_SOURCE_ID}"]`)).toBeVisible();

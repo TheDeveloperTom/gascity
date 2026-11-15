@@ -4,7 +4,6 @@ import {
   MAINTENANCE_PROJECT,
   ORCHESTRATION_PROJECT,
   agentProject,
-  beadProject,
   cleanWorkerName,
   isAgentOutsideRig,
   isOrchestrationAgent,
@@ -38,23 +37,6 @@ function gcSession(partial: Partial<DashboardSession>): DashboardSession {
 // city to 'test-city'. Resolved lazily (a function, not a module-load const)
 // so it reads the city AFTER setup has run, not at import time.
 const cityLabel = (): string => getActiveCity() ?? ORCHESTRATION_PROJECT;
-
-describe('beadProject', () => {
-  it.each([
-    ['gc-1920', 'gc'],
-    ['agent-diagnostics-503', 'agent-diagnostics'],
-    ['code-intel-digest-mp5', 'code-intel-digest'],
-    ['codeprobe-gg9f', 'codeprobe'],
-    ['codeprobe-4cl6.2', 'codeprobe'],
-    ['co-ysv', 'co'],
-  ])('parses %s → %s', (id, expected) => {
-    expect(beadProject({ id } as never)).toBe(expected);
-  });
-
-  it('falls back to the raw id when no suffix is found', () => {
-    expect(beadProject({ id: 'noprefix' } as never)).toBe('noprefix');
-  });
-});
 
 describe('sessionProject', () => {
   it('uses basename of rig path', () => {

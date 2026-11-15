@@ -225,6 +225,43 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Open run {id}': 'Открыть прогон {id}',
   'Open step {id} in its run': 'Открыть шаг {id} в прогоне',
 
+  // The Beads page (B7).
+  'New bead': 'Новая задача',
+  Refresh: 'Обновить',
+  Refreshing: 'Обновляю',
+  Loading: 'Загружаю',
+  Project: 'Проект',
+  'Search beads': 'Найти задачу',
+  'Find a task by title, id, label or assignee': 'Название, номер, метка или исполнитель',
+  'Show test tasks ({n})': 'Показать тестовые ({n})',
+  'The board read {fetched} of {total} records; some work may be missing.':
+    'Доска прочитала {fetched} из {total} записей; часть работы может не попасть на неё.',
+  'Closed {id}.': 'Задача {id} закрыта.',
+  'Created {id} and slung to {agent}.': 'Задача {id} создана и отдана {agent}.',
+  'close failed': 'не удалось закрыть',
+  'create and sling failed': 'не удалось создать и отдать',
+  'Loading beads.': 'Загружаю задачи.',
+  'No tasks match the search or filter.': 'Ничего не нашлось.',
+  'Nothing on the board right now.': 'Доска пуста.',
+  '{n} runs are not tied to a task on this board.': {
+    one: '{n} прогон без задачи на доске.',
+    few: '{n} прогона без задачи на доске.',
+    many: '{n} прогонов без задачи на доске.',
+  },
+  closing: 'закрываю',
+  'Close bead…': 'Закрыть задачу…',
+  'Close bead': 'Закрыть задачу',
+  'Close {id}': 'Закрыть {id}',
+  Cancel: 'Отмена',
+  'Close this bead? It will be marked closed and drop out of the open queue.':
+    'Закрыть задачу? Она будет отмечена закрытой и уйдёт из очереди.',
+  'Create and sling': 'Создать и отдать',
+  Creating: 'Создаю',
+  Title: 'Название',
+  Body: 'Описание',
+  Rig: 'Риг',
+  'all rigs': 'все риги',
+
   // Needs-you panels (Task 11).
   '{n} task issues are on Health': {
     one: 'Неполадки задач: {n}',

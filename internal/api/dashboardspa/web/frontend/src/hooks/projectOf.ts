@@ -1,7 +1,6 @@
 import type { DashboardSession } from 'gas-city-dashboard-shared';
 import { getActiveCity } from '../api/cityBase';
 import type { AgentResponse } from 'gas-city-dashboard-shared/gc-supervisor';
-import type { SupervisorBead } from '../supervisor/beadReads';
 import type { SupervisorMailItem } from '../supervisor/mailReads';
 
 // Per-source project derivation. There is no explicit project field
@@ -24,13 +23,6 @@ import type { SupervisorMailItem } from '../supervisor/mailReads';
 //
 // - Mail: `rig` is already a project name (e.g. "my-city"); use
 //   directly. When absent, fall back to "(no rig)".
-
-const BEAD_ID_RX = /^(.+?)-[a-z0-9]+(?:\.\d+)?$/i;
-
-export function beadProject(bead: SupervisorBead): string {
-  const m = BEAD_ID_RX.exec(bead.id);
-  return m?.[1] ?? bead.id;
-}
 
 // Stable grouping KEY for cross-rig orchestration agents/sessions. This is an
 // internal identity used for bucketing + collapse state and never shown raw to

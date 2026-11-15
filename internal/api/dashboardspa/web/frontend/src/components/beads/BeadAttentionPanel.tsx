@@ -1,7 +1,5 @@
 import type { AttentionItem } from '../../attention/compose';
-import { Button } from '../Button';
 import { FoldList } from '../FoldList';
-import { StatusBadge } from '../StatusBadge';
 
 // gascity-dashboard-2j8e.3: the /beads "Needs you" section — the on-page
 // counterpart of the Beads nav badge. It renders the badge-counting attention
@@ -12,8 +10,8 @@ import { StatusBadge } from '../StatusBadge';
 // assignee must be a concrete session, never the human operator
 // (gascity-dashboard-2j8e.8) — so there is no inline Claim affordance.
 //
-// Signal & Pavement: a signal band (red when any item needs you, amber when
-// all are watch items). The list folds after FOLD_LIMIT rows behind
+// RB14: the panel is a small enamel plate, because after Task 11 it holds
+// only what waits for the owner and enamel means «вам». The list folds after FOLD_LIMIT rows behind
 // "Show all N", so a long escalation queue does not push the board off the
 // page. The count in the heading always reports the full total.
 
@@ -49,41 +47,48 @@ export function BeadAttentionPanel({ items, onOpen }: BeadAttentionPanelProps) {
   // board and the amber rail pill.
   const needsYou = counted.filter((item) => item.severity === 'attention').length;
   const toWatch = counted.length - needsYou;
-  const band = needsYou > 0 ? 'border-accent/40 bg-accent/[0.08]' : 'border-warn/40 bg-warn/[0.10]';
-
   return (
     <section
       aria-labelledby="beads-attention-title"
-      className="mb-8 overflow-hidden rounded-lg border border-rule bg-surface-raised"
+      className="mb-8 overflow-hidden rounded-plate bg-plate text-on-plate ring-2 ring-inset ring-on-plate/90 [&_button]:text-on-plate"
     >
-      <div className={`flex items-baseline justify-between gap-3 border-b px-4 py-3 ${band}`}>
-        <h2 id="beads-attention-title" className="text-title font-semibold text-fg">
-          Needs you <span className="tnum text-fg-muted">({needsYou})</span>
+      <div className="flex items-baseline justify-between gap-3 border-b border-on-plate/25 px-4 py-3">
+        <h2
+          id="beads-attention-title"
+          className="font-display text-headline font-bold text-on-plate"
+        >
+          Needs you <span className="tnum text-on-plate-muted">({needsYou})</span>
         </h2>
-        {toWatch > 0 && <p className="text-body text-fg-muted tnum">{toWatch} to watch</p>}
+        {toWatch > 0 && <p className="text-body text-on-plate-muted tnum">{toWatch} to watch</p>}
       </div>
       <FoldList
         items={counted}
         limit={FOLD_LIMIT}
         itemKey={(item) => item.id}
-        className="divide-y divide-rule"
+        className="divide-y divide-on-plate/25"
         renderItem={(item) => {
           const beadId = beadIdFromHref(item.href);
           return (
             <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
               <div className="min-w-0 flex-1 space-y-1">
-                <StatusBadge
-                  tone={item.severity === 'attention' ? 'stuck' : 'warn'}
-                  label={item.title}
-                />
+                {/* On the plate the enamel carries the signal (RB14); the title is white. */}
+                <p className="text-body font-semibold text-on-plate [overflow-wrap:anywhere]">
+                  {item.title}
+                </p>
                 {item.summary !== undefined && (
-                  <p className="text-body text-fg-muted [overflow-wrap:anywhere]">{item.summary}</p>
+                  <p className="text-body text-on-plate-muted [overflow-wrap:anywhere]">
+                    {item.summary}
+                  </p>
                 )}
               </div>
               {beadId !== null && (
-                <Button type="button" size="sm" onClick={() => onOpen(beadId)}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(beadId)}
+                  className="focus-mark inline-flex h-8 shrink-0 items-center rounded border border-on-plate/80 px-3 text-label font-semibold text-on-plate hover:bg-on-plate/10"
+                >
                   Open
-                </Button>
+                </button>
               )}
             </li>
           );

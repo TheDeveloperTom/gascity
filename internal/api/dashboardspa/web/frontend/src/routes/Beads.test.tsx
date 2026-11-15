@@ -10,6 +10,7 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 
 const PROJECT = 'gascity';
 const beadQueries: URLSearchParams[] = [];
+let extraBeads: SupervisorBead[] = [];
 const supervisorWrites: Array<{
   method: string;
   path: string;
@@ -20,6 +21,7 @@ beforeEach(() => {
   setActiveCity('test-city');
   beadQueries.length = 0;
   supervisorWrites.length = 0;
+  extraBeads = [];
   invalidate('beads:board:');
   invalidate('sessions');
   invalidate('agents');
@@ -31,7 +33,9 @@ beforeEach(() => {
       const method = requestMethod(input, init);
       if (url.pathname === '/v0/city/test-city/beads' && method === 'GET') {
         beadQueries.push(url.searchParams);
-        return jsonResponse(beadListPayload(url.searchParams.has('type') ? [] : [sampleBead()]));
+        return jsonResponse(
+          beadListPayload(url.searchParams.has('type') ? [] : [sampleBead(), ...extraBeads]),
+        );
       }
       if (url.pathname === '/v0/city/test-city/beads' && method === 'POST') {
         supervisorWrites.push({
@@ -99,6 +103,7 @@ beforeEach(() => {
           items: [
             {
               name: 'east',
+              prefix: 'ea',
               path: '/home/ds/east',
               agent_count: 1,
               running_count: 1,
@@ -106,6 +111,7 @@ beforeEach(() => {
             },
             {
               name: 'west',
+              prefix: 'we',
               path: '/home/ds/west',
               agent_count: 1,
               running_count: 1,
@@ -166,7 +172,7 @@ describe('BeadsPage', () => {
     expect(inProgressLeg?.has('type')).toBe(false);
   });
 
-  it('refetches with all=true when the operator activates the closed status control', async () => {
+  it('refetches with all=true when the operator asks for all history', async () => {
     renderPage();
 
     await screen.findByText('Sample bead');
@@ -176,7 +182,7 @@ describe('BeadsPage', () => {
       expect(query.has('all')).toBe(false);
     }
 
-    fireEvent.click(screen.getByRole('button', { name: /^closed$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show all history' }));
 
     // Activating `closed` flips the data scope, forcing exactly one fresh read
     // whose window now carries all=true (closed beads included). The
@@ -200,7 +206,7 @@ describe('BeadsPage', () => {
     // Deactivating `closed` must revert to an open-only fetch — otherwise the
     // chip would read inactive while the board silently keeps scanning closed
     // history (the showClosed/chip desync this dual-state wiring must avoid).
-    fireEvent.click(screen.getByRole('button', { name: /^closed$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Recent merges only' }));
     await waitFor(() => expect(beadQueries.length).toBe(13));
     const reopened = beadQueries.slice(9);
     expect(reopened.some((q) => q.has('all'))).toBe(false);
@@ -208,49 +214,24 @@ describe('BeadsPage', () => {
     expect(reopened.every((q) => !q.has('type'))).toBe(true);
   });
 
-  it('passes the selected rig to the generated supervisor bead query', async () => {
+  // B7 supersedes the rig select (BE-09): the project control is client-side
+  // and names rigs by their API name, never by their path.
+  it('the project control lists the real rigs and the city', async () => {
+    extraBeads = [
+      { ...sampleBead(), id: 'ea-1', title: 'East work' },
+      { ...sampleBead(), id: 'we-1', title: 'West work' },
+    ];
     renderPage();
 
-    await screen.findByText('Sample bead');
-    fireEvent.change(screen.getByLabelText(/rig filter/i), {
-      target: { value: 'east' },
-    });
-
-    // 4 initial reads, then window + in-progress + the one rig's closed leg,
-    // plus one unscoped open leg that only feeds the run routes (review I1:
-    // runs live in the city store, which a rig-scoped read never reaches).
-    await waitFor(() => expect(beadQueries.length).toBe(8));
-    const fresh = beadQueries.slice(4);
-    const scoped = fresh.filter((q) => q.has('rig'));
-    expect(scoped).toHaveLength(3);
-    for (const query of scoped) {
-      expect(query.get('rig')).toBe('east');
-      expect(query.has('all')).toBe(false);
-      expect(query.has('type')).toBe(false);
+    await screen.findByText('East work');
+    const names = within(screen.getByRole('group', { name: 'Project' }))
+      .getAllByRole('button')
+      .map((button) => button.textContent ?? '');
+    expect(names).toEqual(['All 3', 'east 1', 'west 1', 'City 1']);
+    for (const name of names) {
+      expect(name).not.toContain('/home/ds');
+      expect(name).not.toContain('gascity-main');
     }
-    const routeLeg = fresh.filter((q) => !q.has('rig'));
-    expect(routeLeg).toHaveLength(1);
-    expect(routeLeg[0]?.has('status')).toBe(false);
-    expect(routeLeg[0]?.has('all')).toBe(false);
-  });
-
-  it('lists only real rig names in the rig dropdown — no filesystem paths or non-rig dirs', async () => {
-    renderPage();
-
-    await screen.findByText('Sample bead');
-    const select = (await screen.findByLabelText(/rig filter/i)) as HTMLSelectElement;
-    const optionLabels = Array.from(select.options).map((option) => option.textContent ?? '');
-
-    expect(optionLabels).toEqual(['all rigs', 'east', 'west']);
-    for (const label of optionLabels) {
-      expect(label).not.toContain('/home/ds');
-      expect(label).not.toContain('gascity-main');
-    }
-    // The option *values* (what the supervisor query receives) are rig names too.
-    const optionValues = Array.from(select.options)
-      .map((option) => option.value)
-      .filter((value) => value.length > 0);
-    expect(optionValues).toEqual(['east', 'west']);
   });
 
   it('labels sling agents by agent name, with the provider label as context', async () => {

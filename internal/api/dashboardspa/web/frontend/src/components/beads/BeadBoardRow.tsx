@@ -216,7 +216,7 @@ export function BeadBoardRow({
         </span>
       </button>
       <CardLine card={card} nowMs={nowMs} />
-      {busy && <StepLine stage={stage} />}
+      {(busy || (merged && !bead.close_reason)) && <StepLine stage={stage} />}
       {merged && bead.close_reason && (
         <p className="line-clamp-2 px-2 pb-1 text-label text-fg-faint [overflow-wrap:anywhere]">
           {bead.close_reason}

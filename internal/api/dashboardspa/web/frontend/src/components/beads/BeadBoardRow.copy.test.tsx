@@ -211,6 +211,20 @@ describe('BeadBoardRow copy', () => {
     expect(screen.getByTitle('Open step gcg-s in its run').textContent).toBe('пишет код');
   });
 
+  it('merged without a close reason links its last step', () => {
+    const root = bead('gcg-r', {
+      status: 'closed',
+      metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-m' },
+    });
+    const step = bead('gcg-s', {
+      title: 'approve',
+      status: 'closed',
+      metadata: { 'gc.root_bead_id': 'gcg-r', 'dashboard.stage': 'merged' },
+    });
+    renderCard(cardOf('dw-m', [bead('dw-m', { status: 'closed' })], { routeBeads: [root, step] }));
+    expect(screen.getByTitle('Open step gcg-s in its run').textContent).toBe('approve');
+  });
+
   it('merged says when', () => {
     setLocale('ru');
     const updated = '2026-11-15T09:10:00Z';
