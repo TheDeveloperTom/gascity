@@ -65,7 +65,11 @@ describe('deriveOwnerReadiness', () => {
   // Review I1: a partial read is not a complete one.
   it('a partial decision queue or mailbox is degraded', () => {
     expect(
-      deriveOwnerReadiness({ ...beads, decisionsPartial: true }, { ...mail, partial: true }, 'ready'),
+      deriveOwnerReadiness(
+        { ...beads, decisionsPartial: true },
+        { ...mail, partial: true },
+        'ready',
+      ),
     ).toEqual({
       state: 'degraded',
       reasons: [
@@ -89,7 +93,12 @@ describe('deriveOwnerReadiness', () => {
 });
 
 describe('nextBeadSnapshot', () => {
-  const good = { decisionLabel: 'x', items: [TASK_FOR_SNAPSHOT], routeItems: [], routesComplete: false };
+  const good = {
+    decisionLabel: 'x',
+    items: [TASK_FOR_SNAPSHOT],
+    routeItems: [],
+    routesComplete: false,
+  };
   it('a good read is fresh and carries routesComplete', () => {
     expect(nextBeadSnapshot(undefined, good, 'T1')).toMatchObject({
       status: 'fresh',

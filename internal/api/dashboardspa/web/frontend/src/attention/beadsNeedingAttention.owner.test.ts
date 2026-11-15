@@ -146,7 +146,14 @@ describe('selectBeadsNeedingAttention, owner pass', () => {
       {
         beads: [task],
         escalations: [],
-        sessions: [{ id: 's1', session_name: 'worker', state: 'active', last_active: '2026-06-05T11:59:00Z' }],
+        sessions: [
+          {
+            id: 's1',
+            session_name: 'worker',
+            state: 'active',
+            last_active: '2026-06-05T11:59:00Z',
+          },
+        ],
         routeItems: [root, running],
       },
       NOW,

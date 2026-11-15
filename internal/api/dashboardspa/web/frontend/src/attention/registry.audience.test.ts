@@ -168,21 +168,38 @@ describe('attention audience', () => {
   });
 
   // Review C1: an unknown hold names no actor, so it is city work, not the owner's.
-  it.each(['hold:plan', 'hold:coordinator', 'hold:prereq'])('%s stays out of the owner slice', (label) => {
-    const m = model(
-      beadsFacts({
-        items: [bead({ id: 'B-p', status: 'open', labels: [label], updated_at: '2026-06-01T07:00:00Z' })],
-      }),
-    );
-    expect(m.owner.total).toBe(0);
-    expect(m.owner.items).toEqual([]);
-    expect(m.city.items.map((item) => item.id)).toContain('beads:B-p:waiting-human');
-  });
+  it.each(['hold:plan', 'hold:coordinator', 'hold:prereq'])(
+    '%s stays out of the owner slice',
+    (label) => {
+      const m = model(
+        beadsFacts({
+          items: [
+            bead({
+              id: 'B-p',
+              status: 'open',
+              labels: [label],
+              updated_at: '2026-06-01T07:00:00Z',
+            }),
+          ],
+        }),
+      );
+      expect(m.owner.total).toBe(0);
+      expect(m.owner.items).toEqual([]);
+      expect(m.city.items.map((item) => item.id)).toContain('beads:B-p:waiting-human');
+    },
+  );
 
   it('a checkpoint hold with no named actor stays out of the owner slice', () => {
     const m = model(
       beadsFacts({
-        items: [bead({ id: 'B-c', status: 'in_progress', assignee: 'w', metadata: { 'gc.checkpoint_hold': 'design' } })],
+        items: [
+          bead({
+            id: 'B-c',
+            status: 'in_progress',
+            assignee: 'w',
+            metadata: { 'gc.checkpoint_hold': 'design' },
+          }),
+        ],
       }),
     );
     expect(m.owner.total).toBe(0);
@@ -191,7 +208,14 @@ describe('attention audience', () => {
   it('a stamped wait on the operator by name is the owner', () => {
     const m = model(
       beadsFacts({
-        items: [bead({ id: 'B-s', status: 'in_progress', assignee: 'w', metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'stephanie' } })],
+        items: [
+          bead({
+            id: 'B-s',
+            status: 'in_progress',
+            assignee: 'w',
+            metadata: { 'gc.checkpoint_hold': 'x', 'gc.waiting_on': 'stephanie' },
+          }),
+        ],
       }),
     );
     expect(m.owner.items.map((item) => item.id)).toEqual(['beads:B-s:waiting-human']);
@@ -208,13 +232,24 @@ describe('attention audience', () => {
           sessions: [],
           items: [
             bead({ id: 'gcg-153601', status: 'in_progress', title: 'stalled' }),
-            bead({ id: 'B-u', status: 'open', title: 'unclaimed', created_at: '2026-05-20T00:00:00Z' }),
+            bead({
+              id: 'B-u',
+              status: 'open',
+              title: 'unclaimed',
+              created_at: '2026-05-20T00:00:00Z',
+            }),
           ],
           escalations: [bead({ id: 'B-e', status: 'open', labels: ['gc:escalation'] })],
         },
         activity: {
           events: [
-            { actor: 's', seq: 1, subject: 'x', ts: '2026-06-01T11:00:00Z', type: 'session.crashed' } as never,
+            {
+              actor: 's',
+              seq: 1,
+              subject: 'x',
+              ts: '2026-06-01T11:00:00Z',
+              type: 'session.crashed',
+            } as never,
           ],
         },
         runs: {
@@ -225,7 +260,15 @@ describe('attention audience', () => {
             lanes: [],
             blockedLanes: [],
             recentChanges: [],
-            runCounts: { total: 0, visible: 0, prReview: 0, designReview: 0, bugfix: 0, blocked: 0, other: 0 },
+            runCounts: {
+              total: 0,
+              visible: 0,
+              prReview: 0,
+              designReview: 0,
+              bugfix: 0,
+              blocked: 0,
+              other: 0,
+            },
             census: { status: 'unavailable', error: 'n/a' },
           } as never,
           error: 'runs down',
@@ -254,7 +297,11 @@ describe('attention audience', () => {
     ['decision.chat_url', 'http://example.com/x'],
     ['decision.slack_url', 'http://example.com/x'],
   ])('a %s of %s has no externalHref', (key, value) => {
-    const m = model(beadsFacts({ decisions: [bead({ id: 'dw-9', labels: [LABEL], metadata: { [key]: value } })] }));
+    const m = model(
+      beadsFacts({
+        decisions: [bead({ id: 'dw-9', labels: [LABEL], metadata: { [key]: value } })],
+      }),
+    );
     expect(m.owner.items[0]).not.toHaveProperty('externalHref');
   });
 
