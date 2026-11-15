@@ -3,6 +3,7 @@ import { sessionForBead, type BeadAttentionSession } from '../attention/beadsNee
 import type { SupervisorBead } from '../supervisor/beadReads';
 import type { BoardCard, BoardModel, RigPrefix } from './boardModel';
 import { ownText, type EngineText } from './engineText';
+import { isUnlinkedOwnerQuestion } from './ownerQuestions';
 import { STAGES, type StageId } from './stageBoard';
 import { milestoneOf, waitCauseText, type WaitCause } from './waitReasons';
 
@@ -40,7 +41,6 @@ const MAYOR_LABELS: ReadonlySet<string> = new Set([
   'needs/operator',
   'gc:escalation',
 ]);
-const PR_DRAFT_KEY = 'devwork.pr_draft';
 /** City-scoped roles that are never someone's worker (Global Constraints). */
 const CITY_ROLES: ReadonlySet<string> = new Set(['bd.dog', 'claude']);
 
@@ -136,7 +136,9 @@ export function currentMilestones(model: BoardModel, nowMs: number): readonly st
 /** «Старое, никто не берёт»: ready, unclaimed for 3 days, outside current and later milestones. */
 export function oldUntaken(model: BoardModel, nowMs: number): BoardCard[] {
   const current = new Set(currentMilestones(model, nowMs));
-  const highest = Math.max(Number.NEGATIVE_INFINITY, ...[...current].map(milestoneNumber));
+  // V4 «never from current or later milestones»: only milestones below the
+  // lowest current one are leftovers (review M2).
+  const lowest = Math.min(Number.POSITIVE_INFINITY, ...[...current].map(milestoneNumber));
   return model.columns.waiting
     .filter((card) => {
       const bead = card.node.bead;
@@ -145,7 +147,7 @@ export function oldUntaken(model: BoardModel, nowMs: number): BoardCard[] {
       if (created === null || nowMs - created <= OLD_UNTAKEN_MS) return false;
       const milestone = milestoneOf(bead);
       if (milestone === null) return true;
-      return !current.has(milestone) && milestoneNumber(milestone) < highest;
+      return !current.has(milestone) && milestoneNumber(milestone) < lowest;
     })
     .sort((a, b) => (ms(a.node.bead.created_at) ?? 0) - (ms(b.node.bead.created_at) ?? 0));
 }
@@ -187,7 +189,7 @@ function mayorOf(
   for (const bead of beads) {
     for (const label of bead?.labels ?? []) {
       const name = label.trim();
-      if (MAYOR_LABELS.has(name) || name.includes('escalat')) {
+      if (MAYOR_LABELS.has(name)) {
         return { mayor: 'knows', mayorEvidence: name };
       }
     }
@@ -221,14 +223,7 @@ function activeReason(card: BoardCard, ageMs: number): EngineText {
     case 'pr': {
       const number = card.stage.pr?.number ?? null;
       if (number === null) return ownText(t('Waiting for a PR, no movement for {age}', { age }));
-      const draft = (bead.metadata?.[PR_DRAFT_KEY]?.trim() ?? '') === 'true';
-      if (draft) {
-        return ownText(
-          nobody
-            ? t('PR #{n} is a draft, nobody is on it for {age}', { n: number, age })
-            : t('PR #{n} is a draft, no movement for {age}', { n: number, age }),
-        );
-      }
+      // No live key says a PR is a draft, so the reason never says «черновик».
       return ownText(
         nobody
           ? t('PR #{n} is open, nobody is on it for {age}', { n: number, age })
@@ -334,6 +329,22 @@ export function stuckItems(model: BoardModel, ctx: FactsContext): StuckItem[] {
   };
   const cards = allCards(model);
   const cardsById = new Map(cards.map((card) => [card.node.bead.id, card]));
+
+  // V3: a marked owner question with no Discord link cannot be answered, so
+  // it never reaches «Тебя ждёт»; it is the Mayor's work to ask again.
+  for (const card of cards) {
+    const bead = card.node.bead;
+    if (!isUnlinkedOwnerQuestion(bead)) continue;
+    push({
+      key: `unlinked-question:${bead.id}`,
+      cardId: bead.id,
+      title: bead.title,
+      reason: ownText(t('owner question without a link — the Mayor must ask again')),
+      sinceMs: ms(bead.updated_at ?? bead.created_at) ?? nowMs,
+      href: beadHref(bead.id),
+      ...cardMayor(card, ctx.mayorMentions),
+    });
+  }
 
   // (a) a card in В работе, Ревью or PR with no progress for over an hour.
   for (const card of cards) {

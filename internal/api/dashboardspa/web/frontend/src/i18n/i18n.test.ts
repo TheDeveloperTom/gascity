@@ -101,6 +101,26 @@ describe('i18n', () => {
     expect(resolveInitialLocale('en', 'en-US')).toBe('en');
   });
 
+  it('no lane dictionary overrides a core key or another lane', async () => {
+    const { RU_HOME } = await import('./ru.home');
+    const { RU_BOARD } = await import('./ru.board');
+    const { RU_DEBUG } = await import('./ru.debug');
+    const seen = new Map<string, string>(Object.keys(RU).map((key) => [key, 'ru']));
+    const collisions: string[] = [];
+    for (const [name, dict] of [
+      ['ru.home', RU_HOME],
+      ['ru.board', RU_BOARD],
+      ['ru.debug', RU_DEBUG],
+    ] as const) {
+      for (const key of Object.keys(dict)) {
+        const owner = seen.get(key);
+        if (owner !== undefined) collisions.push(`${name}:${key} (already in ${owner})`);
+        seen.set(key, name);
+      }
+    }
+    expect(collisions).toEqual([]);
+  });
+
   it('the lane dictionaries are merged into the Russian lookup', async () => {
     const { RU_HOME } = await import('./ru.home');
     const { RU_BOARD } = await import('./ru.board');

@@ -1,9 +1,11 @@
 import type { SupervisorBead } from '../supervisor/beadReads';
 
-// Owner questions (dashboard v3, R-A, V3, V8). «Тебя ждёт» holds only beads
-// the Mayor marked as a question for the owner: label `needs/operator` plus
-// metadata `decision.question_id`. The Mayor writes the `decision.*` keys
-// (Task 5); the owner's answer goes back as one mail to the Mayor.
+// Owner questions (dashboard v3, R-A, V3, V8; ruling C1). «Тебя ждёт» holds
+// only beads the Mayor marked as a question for the owner: label
+// `needs/operator`, metadata `decision.question_id`, and a link to the
+// question's Discord message (`owner.link`, else `decision.chat_url`). The
+// Mayor writes these keys (Task 5). The owner answers only in Discord; the
+// dashboard shows the question and opens that link, and sends nothing.
 
 export const OWNER_QUESTION_LABEL = 'needs/operator';
 
@@ -11,11 +13,10 @@ const DECIDE_KEY = 'decision.decide';
 const WHY_KEY = 'decision.why';
 const CHOICES_KEY = 'decision.choices_json';
 const QUESTION_ID_KEY = 'decision.question_id';
+const OWNER_LINK_KEY = 'owner.link';
 const CHAT_URL_KEY = 'decision.chat_url';
 const ASKED_AT_KEY = 'decision.asked_at';
-
-/** The subject prefix the Mayor rule (Task 5) matches. A protocol string, never translated. */
-export const ANSWER_SUBJECT_PREFIX = 'Ответ владельца: ';
+const DISCORD_HOSTS: ReadonlySet<string> = new Set(['discord.com', 'discordapp.com']);
 
 export interface OwnerChoice {
   label: string;
@@ -30,7 +31,8 @@ export interface OwnerQuestion {
   /** Empty for a legacy ask with no `decision.choices_json` (V8). */
   choices: readonly OwnerChoice[];
   questionId: string;
-  chatUrl: string | null;
+  /** The question's Discord message (discordLinkOf); never null. */
+  chatUrl: string;
   askedAt: string | null;
 }
 
@@ -42,16 +44,35 @@ function orNull(value: string): string | null {
   return value.length > 0 ? value : null;
 }
 
-function httpsOrNull(raw: string): string | null {
+function discordUrlOrNull(raw: string): string | null {
   if (raw.length === 0) return null;
   try {
     const url = new URL(raw);
-    return url.protocol === 'https:' && url.username === '' && url.password === ''
-      ? url.href
-      : null;
+    if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
+    if (url.port !== '' || !DISCORD_HOSTS.has(url.hostname)) return null;
+    return url.href;
   } catch {
     return null;
   }
+}
+
+/** The question's Discord message: `owner.link`, else `decision.chat_url`; https Discord only. */
+export function discordLinkOf(bead: SupervisorBead): string | null {
+  return discordUrlOrNull(meta(bead, OWNER_LINK_KEY)) ?? discordUrlOrNull(meta(bead, CHAT_URL_KEY));
+}
+
+function isMarkedQuestion(bead: SupervisorBead): boolean {
+  if (bead.status === 'closed') return false;
+  if (!(bead.labels ?? []).some((label) => label.trim() === OWNER_QUESTION_LABEL)) return false;
+  return meta(bead, QUESTION_ID_KEY).length > 0;
+}
+
+/**
+ * A marked owner question the owner cannot act on: no valid Discord link.
+ * It never reaches «Тебя ждёт»; «Застряло» lists it as the Mayor's work (V3).
+ */
+export function isUnlinkedOwnerQuestion(bead: SupervisorBead): boolean {
+  return isMarkedQuestion(bead) && discordLinkOf(bead) === null;
 }
 
 function parseChoices(raw: string): OwnerChoice[] {
@@ -74,10 +95,9 @@ function parseChoices(raw: string): OwnerChoice[] {
 }
 
 export function ownerQuestionOf(bead: SupervisorBead): OwnerQuestion | null {
-  if (bead.status === 'closed') return null;
-  if (!(bead.labels ?? []).some((label) => label.trim() === OWNER_QUESTION_LABEL)) return null;
-  const questionId = meta(bead, QUESTION_ID_KEY);
-  if (questionId.length === 0) return null;
+  if (!isMarkedQuestion(bead)) return null;
+  const chatUrl = discordLinkOf(bead);
+  if (chatUrl === null) return null;
   const decide = meta(bead, DECIDE_KEY);
   return {
     beadId: bead.id,
@@ -85,27 +105,8 @@ export function ownerQuestionOf(bead: SupervisorBead): OwnerQuestion | null {
     question: decide.length > 0 ? decide : bead.title,
     why: orNull(meta(bead, WHY_KEY)),
     choices: parseChoices(meta(bead, CHOICES_KEY)),
-    questionId,
-    chatUrl: httpsOrNull(meta(bead, CHAT_URL_KEY)),
+    questionId: meta(bead, QUESTION_ID_KEY),
+    chatUrl,
     askedAt: orNull(meta(bead, ASKED_AT_KEY)),
-  };
-}
-
-/** The owner's answer as one mail to the Mayor (V3). */
-export function answerMail(
-  q: OwnerQuestion,
-  label: string,
-  atIso: string,
-): { to: 'mayor'; subject: string; body: string } {
-  return {
-    to: 'mayor',
-    subject: `${ANSWER_SUBJECT_PREFIX}${q.beadId}`,
-    body: JSON.stringify({
-      bead: q.beadId,
-      question_id: q.questionId,
-      label,
-      at: atIso,
-      via: 'dashboard',
-    }),
   };
 }

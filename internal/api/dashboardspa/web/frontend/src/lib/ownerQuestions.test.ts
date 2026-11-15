@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SupervisorBead } from '../supervisor/beadReads';
-import { answerMail, OWNER_QUESTION_LABEL, ownerQuestionOf } from './ownerQuestions';
+import { LIVE_59WD5S, LIVE_MQFCX13 } from '../test/fixtures/liveCards';
+import {
+  discordLinkOf,
+  isUnlinkedOwnerQuestion,
+  OWNER_QUESTION_LABEL,
+  ownerQuestionOf,
+} from './ownerQuestions';
 
 // R-A: «Тебя ждёт» holds only beads the Mayor marked as an owner question:
 // label needs/operator plus metadata decision.question_id (Task 5 writes them).
@@ -67,17 +73,12 @@ describe('ownerQuestionOf', () => {
   });
 
   it('dw-mqfcx.13 is not a question', () => {
-    const b = bead('dw-mqfcx.13', {
-      title: 'M03 #13 — повторная проверка очереди',
-      labels: ['milestone:M03'],
-      metadata: { 'devwork.pr_number': '489', 'devwork.pr_url': 'https://github.com/o/r/pull/489' },
-    });
-    expect(ownerQuestionOf(b)).toBeNull();
+    expect(ownerQuestionOf(LIVE_MQFCX13)).toBeNull();
+    expect(isUnlinkedOwnerQuestion(LIVE_MQFCX13)).toBe(false);
   });
 
   it('dw-59wd5s is not a question', () => {
-    const b = bead('dw-59wd5s', { title: 'Почистить старые ветки', status: 'open' });
-    expect(ownerQuestionOf(b)).toBeNull();
+    expect(ownerQuestionOf(LIVE_59WD5S)).toBeNull();
   });
 
   it('bad choices_json gives a legacy question with no choices', () => {
@@ -91,34 +92,44 @@ describe('ownerQuestionOf', () => {
     expect(q?.question).toBe('Когда переносим ящик на основной аккаунт?');
   });
 
-  it('a non-https chat link is dropped', () => {
-    const b = {
+  it('link comes from owner.link, else decision.chat_url', () => {
+    const both = {
       ...QUESTION,
-      metadata: { ...QUESTION.metadata, 'decision.chat_url': 'javascript:alert(1)' },
+      metadata: { ...QUESTION.metadata, 'owner.link': 'https://discord.com/channels/9/8/7' },
     };
-    expect(ownerQuestionOf(b)?.chatUrl).toBeNull();
+    expect(discordLinkOf(both)).toBe('https://discord.com/channels/9/8/7');
+    expect(ownerQuestionOf(both)?.chatUrl).toBe('https://discord.com/channels/9/8/7');
+    expect(discordLinkOf(QUESTION)).toBe('https://discord.com/channels/1/2/3');
+    const legacyHost = {
+      ...QUESTION,
+      metadata: { ...QUESTION.metadata, 'owner.link': 'https://discordapp.com/channels/1/2/4' },
+    };
+    expect(discordLinkOf(legacyHost)).toBe('https://discordapp.com/channels/1/2/4');
+  });
+
+  it('no https link means not a question', () => {
+    const metadata = { ...QUESTION.metadata };
+    delete metadata['decision.chat_url'];
+    const none = { ...QUESTION, metadata };
+    const bad = (link: string) => ({ ...QUESTION, metadata: { ...metadata, 'owner.link': link } });
+    for (const b of [
+      none,
+      bad('javascript:alert(1)'),
+      bad('http://discord.com/channels/1/2/3'),
+      bad('https://example.com/channels/1/2/3'),
+      bad('https://discord.com.evil.io/x'),
+    ]) {
+      expect(discordLinkOf(b)).toBeNull();
+      expect(ownerQuestionOf(b)).toBeNull();
+      expect(isUnlinkedOwnerQuestion(b)).toBe(true);
+    }
+    expect(isUnlinkedOwnerQuestion(QUESTION)).toBe(false);
+    expect(isUnlinkedOwnerQuestion(bead('dw-plain'))).toBe(false);
   });
 
   it('no decide text falls back to the title', () => {
     const metadata = { ...QUESTION.metadata };
     delete metadata['decision.decide'];
     expect(ownerQuestionOf({ ...QUESTION, metadata })?.question).toBe(QUESTION.title);
-  });
-});
-
-describe('answerMail', () => {
-  it('answerMail subject «Ответ владельца: dw-x», JSON body with via dashboard', () => {
-    const q = ownerQuestionOf(QUESTION);
-    if (q === null) throw new Error('fixture is a question');
-    const mail = answerMail(q, 'Сегодня вечером', '2026-11-15T12:30:00Z');
-    expect(mail.to).toBe('mayor');
-    expect(mail.subject).toBe('Ответ владельца: dw-x');
-    expect(JSON.parse(mail.body)).toEqual({
-      bead: 'dw-x',
-      question_id: 'q-2026-11-15-1',
-      label: 'Сегодня вечером',
-      at: '2026-11-15T12:30:00Z',
-      via: 'dashboard',
-    });
   });
 });

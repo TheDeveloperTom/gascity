@@ -4,7 +4,7 @@ import { invalidate } from '../api/cache';
 import { listSupervisorBeads } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
-import { useBoardData } from './useBoardData';
+import { sharedRead, useBoardData } from './useBoardData';
 
 vi.mock('../supervisor/beadReads', () => ({ listSupervisorBeads: vi.fn() }));
 vi.mock('../supervisor/rigReads', () => ({ listSupervisorRigs: vi.fn() }));
@@ -57,6 +57,34 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+describe('sharedRead', () => {
+  it('a fresh read never joins one that started before it was asked for', async () => {
+    let calls = 0;
+    let release: () => void = () => undefined;
+    const fetch = () =>
+      new Promise<number>((resolve) => {
+        calls += 1;
+        const n = calls;
+        release = () => resolve(n);
+      });
+    const nowSpy = vi.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(1_000);
+    const first = sharedRead('k-fresh', fetch);
+    const joined = sharedRead('k-fresh', fetch);
+    expect(calls).toBe(1);
+    nowSpy.mockReturnValue(20_000);
+    const fresh = sharedRead('k-fresh', fetch, { fresh: true });
+    expect(calls).toBe(2);
+    const again = sharedRead('k-fresh', fetch, { fresh: true });
+    expect(calls).toBe(2);
+    release();
+    await expect(fresh).resolves.toBe(2);
+    await expect(again).resolves.toBe(2);
+    expect(first).toBe(joined);
+    nowSpy.mockRestore();
+  });
+});
 
 describe('useBoardData', () => {
   it('Beads and Home share one read', async () => {

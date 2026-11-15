@@ -37,6 +37,17 @@ describe('cityVerdict', () => {
     expect(v.rows).toEqual({ city: 'работает', mac: 'в норме', store: 'в порядке' });
   });
 
+  it('a timeout from hours ago does not make a live supervisor slow', () => {
+    const v = cityVerdict(
+      inputs({
+        lastStatusOkMs: NOW - 90_000,
+        lastStatusTimeoutMs: NOW - 3 * 3_600_000,
+        lastHealthProbeOkMs: NOW - 30_000,
+      }),
+    );
+    expect(v.supervisor).toBe('ok');
+  });
+
   it('a timed-out read on a live supervisor is slow, not down', () => {
     const v = cityVerdict(
       inputs({

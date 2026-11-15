@@ -30,21 +30,36 @@ export interface BoardRead {
   refresh: () => Promise<void>;
 }
 
-const inflight = new Map<string, Promise<unknown>>();
+const inflight = new Map<string, { promise: Promise<unknown>; startedAt: number }>();
+/** Fresh reads asked within this window of a read's start still join it. */
+const FRESH_JOIN_MS = 250;
 
 /**
  * One request per key while it is in flight: a second consumer joins the
- * first's promise instead of starting its own. The caller's abort signal is
- * not passed on, so one consumer unmounting never cancels another's read.
+ * first's promise instead of starting its own. A `fresh` read (an explicit
+ * refresh, e.g. after a write) joins only a read that started within
+ * FRESH_JOIN_MS, so it never lands on a read begun before the write (review
+ * M4). The caller's abort signal is not passed on, so one consumer unmounting
+ * never cancels another's read; an orphaned read simply finishes.
  */
-export function sharedRead<T>(key: string, fetch: () => Promise<T>): Promise<T> {
+export function sharedRead<T>(
+  key: string,
+  fetch: () => Promise<T>,
+  options: { fresh?: boolean } = {},
+): Promise<T> {
+  const now = Date.now();
   const running = inflight.get(key);
-  if (running !== undefined) return running as Promise<T>;
-  const started = fetch().finally(() => {
-    if (inflight.get(key) === started) inflight.delete(key);
+  if (
+    running !== undefined &&
+    (options.fresh !== true || now - running.startedAt <= FRESH_JOIN_MS)
+  ) {
+    return running.promise as Promise<T>;
+  }
+  const promise: Promise<T> = fetch().finally(() => {
+    if (inflight.get(key)?.promise === promise) inflight.delete(key);
   });
-  inflight.set(key, started);
-  return started;
+  inflight.set(key, { promise, startedAt: now });
+  return promise;
 }
 
 export function boardCacheKey(city: string | null): string {
@@ -81,18 +96,24 @@ export function useBoardData(): BoardRead {
   const sessionsKey = sessionsCacheKey(city);
   const rigsKey = rigsCacheKey(city);
 
-  const board = useCachedData(boardKey, () =>
-    sharedRead(boardKey, () =>
-      listSupervisorBeads({
-        withRoutes: true,
-        recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
-      }),
-    ),
+  const readBoard = () =>
+    listSupervisorBeads({
+      withRoutes: true,
+      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
+    });
+  const board = useCachedData(boardKey, () => sharedRead(boardKey, readBoard), {
+    refreshFetcher: () => sharedRead(boardKey, readBoard, { fresh: true }),
+  });
+  const sessions = useCachedData(
+    sessionsKey,
+    () => sharedRead(sessionsKey, listSupervisorSessions),
+    {
+      refreshFetcher: () => sharedRead(sessionsKey, listSupervisorSessions, { fresh: true }),
+    },
   );
-  const sessions = useCachedData(sessionsKey, () =>
-    sharedRead(sessionsKey, listSupervisorSessions),
-  );
-  const rigs = useCachedData(rigsKey, () => sharedRead(rigsKey, listSupervisorRigs));
+  const rigs = useCachedData(rigsKey, () => sharedRead(rigsKey, listSupervisorRigs), {
+    refreshFetcher: () => sharedRead(rigsKey, listSupervisorRigs, { fresh: true }),
+  });
 
   const refreshBoard = board.refresh;
   useGcEventRefresh([GC_EVENT_PREFIX.bead], () => void refreshBoard(), {

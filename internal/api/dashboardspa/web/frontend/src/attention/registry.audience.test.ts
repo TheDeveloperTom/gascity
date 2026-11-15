@@ -26,7 +26,11 @@ function question(id: string, metadata: Record<string, string> = {}): Bead {
     id,
     title: 'Merge the login change?',
     labels: [LABEL],
-    metadata: { 'decision.question_id': `q-${id}`, ...metadata },
+    metadata: {
+      'decision.question_id': `q-${id}`,
+      'owner.link': `https://discord.com/channels/1/2/${id}`,
+      ...metadata,
+    },
   });
 }
 
@@ -71,11 +75,14 @@ function beadsFacts(extra: Partial<NonNullable<AttentionContributorFacts['beads'
 }
 
 describe('attention audience', () => {
-  it('an owner question is owner and carries the chat link', () => {
+  it('an owner question is owner and links to its Discord message', () => {
     const m = model(
       beadsFacts({
         decisions: [
-          question('dw-9', { 'decision.chat_url': 'https://discord.com/channels/1/2/3' }),
+          question('dw-9', {
+            'owner.link': 'https://discord.com/channels/1/2/3',
+            'decision.slack_url': 'https://example.slack.com/archives/C1/p1',
+          }),
         ],
       }),
     );
@@ -87,11 +94,33 @@ describe('attention audience', () => {
     });
   });
 
-  it('an owner question with a javascript: chat_url has no externalHref', () => {
+  // Coupling (review M5): the decision queue is fetched by the configured
+  // label, but an owner question must carry needs/operator. A city that
+  // configures another label gets no owner questions until it uses this one.
+  it('a configured decision label other than needs/operator yields no owner questions', () => {
+    const other = bead({
+      id: 'dw-7',
+      labels: ['needs/stephanie'],
+      metadata: {
+        'decision.question_id': 'q-7',
+        'owner.link': 'https://discord.com/channels/1/2/7',
+      },
+    });
+    const m = model(beadsFacts({ decisionLabel: 'needs/stephanie', decisions: [other] }));
+    expect(m.owner.total).toBe(0);
+  });
+
+  it('no link → not owner', () => {
     const m = model(
-      beadsFacts({ decisions: [question('dw-9', { 'decision.chat_url': 'javascript:alert(1)' })] }),
+      beadsFacts({
+        decisions: [
+          question('dw-9', { 'owner.link': 'javascript:alert(1)' }),
+          question('dw-8', { 'owner.link': '' }),
+        ],
+      }),
     );
-    expect(m.owner.items[0]).not.toHaveProperty('externalHref');
+    expect(m.owner.total).toBe(0);
+    expect(m.owner.items).toEqual([]);
   });
 
   it('owner total equals owner questions', () => {

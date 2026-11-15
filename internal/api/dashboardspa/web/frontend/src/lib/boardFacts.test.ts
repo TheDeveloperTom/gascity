@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../i18n';
 import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
 import type { SupervisorBead } from '../supervisor/beadReads';
+import { LIVE_59WD5S, LIVE_7LPZG7, LIVE_MQFCX13 } from '../test/fixtures/liveCards';
 import { m04Idle } from '../test/fixtures/m04Idle';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type BoardModel } from './boardModel';
 import {
@@ -69,31 +70,12 @@ function working(id: string, silentMs: number, extra: Partial<SupervisorBead> = 
   });
 }
 
-// Live dw-mqfcx.13 (snapshot 15.11), plus the PR facts the city stamps.
-const MQFCX13 = bead('dw-mqfcx.13', {
-  title: 'dw-mqfcx.5 часть 2: миграция 0425 (удаление столбцов слепых вакансий)',
-  parent: 'dw-mqfcx',
-  priority: 3,
-  created_at: '2026-11-12T12:14:34Z',
-  updated_at: '2026-11-12T16:28:56Z',
-  is_blocked: false,
-  metadata: {
-    'devwork.pr_number': '489',
-    'devwork.pr_url': 'https://github.com/TheDeveloperTom/career-ops-platform/pull/489',
-    'devwork.pr_draft': 'true',
-    'devwork.task_branch': 'devwork/task/dw-mqfcx.13',
-  },
-  dependencies: [{ issue_id: 'dw-mqfcx.13', depends_on_id: 'dw-mqfcx', type: 'parent-child' }],
-});
-
-// Live dw-59wd5s: ready, nobody took it since 12.11, no stage label.
-const W59 = bead('dw-59wd5s', {
-  title: 'Land M03 #2 / Task 6: допуск, enqueue и claim по собственному ящику пользователя',
-  priority: 1,
-  created_at: '2026-11-12T07:21:13Z',
-  updated_at: '2026-11-12T07:32:49Z',
-  is_blocked: false,
-});
+// Live cards, verbatim keys (test/fixtures/liveCards): dw-mqfcx.13 has no PR
+// key of its own; PR #489 is on its land bead dw-7lpzg7. dw-59wd5s is ready,
+// nobody took it since 12.11, no stage label.
+const MQFCX13 = LIVE_MQFCX13;
+const LAND = LIVE_7LPZG7;
+const W59 = LIVE_59WD5S;
 
 describe('constants', () => {
   it('are the ruling values', () => {
@@ -167,14 +149,35 @@ describe('stuckItems', () => {
     expect(items[0]?.sinceMs).toBe(NOW - 2 * 60 * MIN);
   });
 
+  it('a ready card between two current milestones is not old-untaken', () => {
+    const old = iso(NOW - 4 * 86_400_000);
+    const model = modelOf({
+      items: [
+        working('dw-4', 5 * MIN, { labels: ['milestone:M04'] }),
+        working('dw-6', 5 * MIN, { labels: ['milestone:M06'] }),
+        bead('dw-5', { labels: ['milestone:M05'], created_at: old }),
+        bead('dw-3', { labels: ['milestone:M03'], created_at: old }),
+      ],
+    });
+    expect(currentMilestones(model, NOW)).toEqual(['M04', 'M06']);
+    expect(oldUntaken(model, NOW).map((c) => c.node.bead.id)).toEqual(['dw-3']);
+  });
+
   it('dw-59wd5s (ready, unclaimed 3 days, blocks nothing current) is not stuck and is old-untaken', () => {
     const model = modelOf({ items: [W59, working('dw-a', 5 * MIN)] });
     expect(stuckItems(model, ctx({ sessions: [session('worker-1', NOW - MIN)] }))).toEqual([]);
     expect(oldUntaken(model, NOW).map((c) => c.node.bead.id)).toEqual(['dw-59wd5s']);
   });
 
-  it('dw-mqfcx.13 with draft PR #489, no assignee for 3 days, is stuck', () => {
-    const model = modelOf({ items: [MQFCX13] });
+  // Live shape: the PR number is read from the land bead (never-invent-keys
+  // ruling); no live key says «черновик», so the reason does not.
+  it('dw-mqfcx.13 with PR #489 on its land bead, no assignee for 3 days, is stuck', () => {
+    const model = modelOf({ items: [MQFCX13, LAND] });
+    expect(model.columns.pr.map((c) => c.node.bead.id)).toEqual(['dw-mqfcx.13']);
+    expect(model.columns.pr[0]?.stage.pr).toEqual({
+      number: '489',
+      url: 'https://github.com/TheDeveloperTom/career-ops-platform/pull/489',
+    });
     const items = stuckItems(model, ctx());
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -183,18 +186,71 @@ describe('stuckItems', () => {
       mayor: 'not-told',
       mayorEvidence: null,
     });
-    expect(items[0]?.reason.text).toBe('PR #489 — черновик, никто не ведёт 3 дн.');
+    expect(items[0]?.reason.text).toBe('PR #489 открыт, никто не ведёт 3 дн.');
+  });
+
+  it('the land bead is found by gc.source_bead_id or devwork.task too', () => {
+    for (const key of ['gc.source_bead_id', 'devwork.task']) {
+      const task = { ...MQFCX13, metadata: { 'devwork.task_branch': 'devwork/task/dw-mqfcx.13' } };
+      const land = {
+        ...LAND,
+        metadata: { [key]: 'dw-mqfcx.13', pr_number: '489' },
+      };
+      const model = modelOf({ items: [task, land] });
+      expect(
+        model.columns.pr.map((c) => c.node.bead.id),
+        key,
+      ).toEqual(['dw-mqfcx.13']);
+    }
+  });
+
+  it('a task with its own devwork.pr_number keeps it', () => {
+    const task = { ...MQFCX13, metadata: { ...MQFCX13.metadata, 'devwork.pr_number': '500' } };
+    const model = modelOf({ items: [task, LAND] });
+    expect(model.columns.pr[0]?.stage.pr?.number).toBe('500');
+  });
+
+  it('without a PR anywhere dw-mqfcx.13 waits and is not stuck', () => {
+    const model = modelOf({ items: [MQFCX13] });
+    expect(model.columns.waiting.map((c) => c.node.bead.id)).toEqual(['dw-mqfcx.13']);
+    expect(stuckItems(model, ctx())).toEqual([]);
+  });
+
+  it('a marked owner question with no Discord link is stuck as the Mayor’s work', () => {
+    const asked = bead('dw-ask', {
+      title: 'Когда переносим ящик?',
+      labels: ['needs/operator'],
+      created_at: iso(NOW - 3 * 60 * MIN),
+      updated_at: iso(NOW - 3 * 60 * MIN),
+      metadata: { 'decision.question_id': 'q-1', 'owner.link': 'javascript:alert(1)' },
+    });
+    const linked = bead('dw-ok', {
+      labels: ['needs/operator'],
+      metadata: {
+        'decision.question_id': 'q-2',
+        'owner.link': 'https://discord.com/channels/1/2/3',
+      },
+    });
+    const items = stuckItems(modelOf({ items: [asked, linked] }), ctx());
+    expect(items.map((i) => i.key)).toEqual(['unlinked-question:dw-ask']);
+    expect(items[0]?.reason.text).toBe('вопрос владельцу без ссылки — Мэр должен переспросить');
+    expect(items[0]?.sinceMs).toBe(NOW - 3 * 60 * MIN);
   });
 
   it('mayor knows from hold:mayor', () => {
-    const model = modelOf({ items: [{ ...MQFCX13, labels: ['hold:mayor'] }] });
+    const model = modelOf({ items: [{ ...MQFCX13, labels: ['hold:mayor'] }, LAND] });
     const item = stuckItems(model, ctx())[0];
     expect(item?.mayor).toBe('knows');
     expect(item?.mayorEvidence).toBe('hold:mayor');
   });
 
+  it('a label merely containing «escalat» is not the escalation label', () => {
+    const model = modelOf({ items: [{ ...MQFCX13, labels: ['escalation-drill'] }, LAND] });
+    expect(stuckItems(model, ctx())[0]?.mayor).toBe('not-told');
+  });
+
   it('mayor knows from a mail naming the root id', () => {
-    const model = modelOf({ items: [MQFCX13] });
+    const model = modelOf({ items: [MQFCX13, LAND] });
     const mentions = new Map([['dw-mqfcx', 'STALL-WATCH stall:dw-mqfcx']]);
     const item = stuckItems(model, ctx({ mayorMentions: mentions }))[0];
     expect(item?.mayor).toBe('knows');
@@ -202,7 +258,7 @@ describe('stuckItems', () => {
   });
 
   it('unread mayor inbox gives unknown', () => {
-    const model = modelOf({ items: [MQFCX13] });
+    const model = modelOf({ items: [MQFCX13, LAND] });
     expect(stuckItems(model, ctx({ mayorMentions: null }))[0]?.mayor).toBe('unknown');
   });
 

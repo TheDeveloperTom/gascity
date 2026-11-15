@@ -338,8 +338,8 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   // Board facts (lib/boardFacts, rulings V1, V2, V4).
   'Its run stopped; the task stays open for {age}': 'Работа остановилась, задача открыта уже {age}',
   'Waiting for a PR, no movement for {age}': 'Ждёт PR, нет движения {age}',
-  'PR #{n} is a draft, nobody is on it for {age}': 'PR #{n} — черновик, никто не ведёт {age}',
-  'PR #{n} is a draft, no movement for {age}': 'PR #{n} — черновик, нет движения {age}',
+  'owner question without a link — the Mayor must ask again':
+    'вопрос владельцу без ссылки — Мэр должен переспросить',
   'PR #{n} is open, nobody is on it for {age}': 'PR #{n} открыт, никто не ведёт {age}',
   'PR #{n}: no movement for {age}': 'PR #{n}: нет движения {age}',
   'In review, no movement for {age}': 'На ревью, нет движения {age}',

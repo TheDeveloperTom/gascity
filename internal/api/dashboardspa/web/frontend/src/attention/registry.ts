@@ -537,11 +537,13 @@ function isMayorDecision(bead: Bead, decisionLabel: string): boolean {
  */
 function mayorDecisionAttention(bead: Bead): AttentionItem {
   const decide = bead.metadata?.[DECISION_DECIDE_META_KEY];
-  const chatHref = decisionChatHref(bead);
-  // Dashboard v3: only a marked owner question (label + decision.question_id)
-  // is the owner's; a legacy decision bead stays with the city until the
-  // Mayor backfills it (V8, Task 5).
-  const isOwnerQuestion = ownerQuestionOf(bead) !== null;
+  // Dashboard v3: only a marked owner question with a Discord link (label +
+  // decision.question_id + owner.link) is the owner's, and its link is that
+  // Discord message (ruling C1). A legacy or link-less decision stays with the
+  // city until the Mayor backfills or re-asks it (V3, V8, Task 5).
+  const question = ownerQuestionOf(bead);
+  const isOwnerQuestion = question !== null;
+  const chatHref = question !== null ? question.chatUrl : decisionChatHref(bead);
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,
     ...(isOwnerQuestion ? { audience: 'owner' as const } : {}),

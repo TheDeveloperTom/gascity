@@ -5,6 +5,7 @@ import { beadRole } from './boardRoles';
 import {
   buildRouteIndex,
   buildStageColumns,
+  safeExternalUrl,
   STAGES,
   stopCardsByTask,
   type StageCard,
@@ -194,6 +195,77 @@ function groupWaiting(
     .map((entry) => entry.group);
 }
 
+// A task's PR when the task itself carries none (dashboard v3, never invent
+// keys): the city's land bead for the task holds it. The task names its land
+// bead (`devwork.land_bead`), or the land bead names its task (`land_source`,
+// `gc.source_bead_id`, `devwork.task`). The number is the bead's
+// `devwork.pr_number` or `pr_number`; the url passes safeExternalUrl.
+const LAND_BEAD_KEY = 'devwork.land_bead';
+const LAND_TASK_KEYS = ['land_source', 'gc.source_bead_id', 'devwork.task'] as const;
+
+function prOfBead(bead: SupervisorBead): { number: string; url: string | null } | null {
+  const number = meta(bead, 'devwork.pr_number') || meta(bead, 'pr_number');
+  if (number.length === 0) return null;
+  return { number, url: safeExternalUrl(meta(bead, 'devwork.pr_url') || meta(bead, 'pr_url')) };
+}
+
+function landPrIndex(
+  tasks: readonly SupervisorBead[],
+): (task: SupervisorBead) => { number: string; url: string | null } | null {
+  const byId = new Map(tasks.map((b) => [b.id, b]));
+  const landsOf = new Map<string, SupervisorBead[]>();
+  for (const bead of tasks) {
+    for (const key of LAND_TASK_KEYS) {
+      const taskId = meta(bead, key);
+      if (taskId.length === 0 || taskId === bead.id) continue;
+      const list = landsOf.get(taskId) ?? [];
+      list.push(bead);
+      landsOf.set(taskId, list);
+    }
+  }
+  return (task) => {
+    const named = byId.get(meta(task, LAND_BEAD_KEY));
+    for (const land of [...(named === undefined ? [] : [named]), ...(landsOf.get(task.id) ?? [])]) {
+      const pr = prOfBead(land);
+      if (pr !== null) return pr;
+    }
+    return null;
+  };
+}
+
+const STAGE_ORDER = new Map(STAGES.map((stage, index) => [stage.id, index]));
+
+/** Open cards with no PR of their own take their land bead's PR, and move to PR (I5). */
+function withLandPrs(
+  columns: Record<StageId, StageCard[]>,
+  tasks: readonly SupervisorBead[],
+): Record<StageId, StageCard[]> {
+  const landPr = landPrIndex(tasks);
+  const out: Record<StageId, StageCard[]> = {
+    waiting: [],
+    working: [],
+    review: [],
+    pr: [],
+    merged: [],
+  };
+  for (const stage of STAGES) {
+    for (const card of columns[stage.id]) {
+      const bead = card.node.bead;
+      const pr = bead.status === 'closed' || card.stage.pr !== null ? null : landPr(bead);
+      if (pr === null) {
+        out[stage.id].push(card);
+        continue;
+      }
+      const target =
+        (STAGE_ORDER.get(card.stage.stage) ?? 0) < (STAGE_ORDER.get('pr') ?? 3)
+          ? 'pr'
+          : card.stage.stage;
+      out[target].push({ ...card, stage: { ...card.stage, stage: target, pr } });
+    }
+  }
+  return out;
+}
+
 export function buildBoardModel(
   data: BoardData,
   rigs: readonly RigPrefix[],
@@ -220,7 +292,7 @@ export function buildBoardModel(
     const node = graph.nodes.get(bead.id);
     return node ? [node] : [];
   });
-  const stageColumns = buildStageColumns(nodes, routeIndex, stopCards);
+  const stageColumns = withLandPrs(buildStageColumns(nodes, routeIndex, stopCards), tasks);
 
   const prefixComplete = rigs.every((rig) => (rig.prefix?.trim() ?? '').length > 0);
   const toCard = (card: StageCard): BoardCard => {

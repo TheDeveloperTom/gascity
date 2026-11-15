@@ -53,7 +53,7 @@ function supervisorState(input: CityInputs): {
   if (within(nowMs, input.lastStatusOkMs, SUPERVISOR_OK_WINDOW_MS))
     return { state: 'ok', sinceMs: null };
   if (
-    input.lastStatusTimeoutMs !== null &&
+    within(nowMs, input.lastStatusTimeoutMs, SUPERVISOR_SLOW_PROBE_WINDOW_MS) &&
     within(nowMs, input.lastHealthProbeOkMs, SUPERVISOR_SLOW_PROBE_WINDOW_MS)
   ) {
     return { state: 'slow', sinceMs: null };
