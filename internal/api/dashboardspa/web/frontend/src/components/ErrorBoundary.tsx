@@ -28,9 +28,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   override render() {
     if (this.state.crashed) {
       return (
-        <main className="max-w-dashboard mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <section className="space-y-4" role="alert">
-            <h1 className="text-display font-semibold text-fg">Dashboard view failed.</h1>
+        <main className="mx-auto max-w-dashboard px-4 py-8 sm:px-6">
+          <section
+            className="mx-auto max-w-[40rem] space-y-2 rounded-lg border border-rule bg-surface-raised p-6"
+            role="alert"
+          >
+            <h1 className="text-headline font-semibold text-fg">Dashboard view failed.</h1>
             <p className="text-body text-fg-muted">
               The error was reported to the local dashboard log. Refresh to retry this view.
             </p>

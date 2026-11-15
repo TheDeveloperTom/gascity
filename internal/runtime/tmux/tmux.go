@@ -2845,9 +2845,31 @@ func (t *Tmux) sendLiteralText(ctx context.Context, target, text string) error {
 // follows as one more newline, so the message stays drafted in its composer:
 // every Mayor startup prompt did. A bracketed paste arrives as one paste, and
 // the Enter after it submits.
+//
+// Claude Code (2.1.319–2.1.325) reads a typed burst as an unbracketed paste,
+// one terminal read (about 1 KB on macOS) at a time, and keeps only the last
+// read: a 1.3 KB Discord envelope reached the Mayor starting mid reply_tool
+// line (2026-11-15), and a 2.5 KB single line kept its last ~1 KB. So for
+// Claude any multi-line text, and any text longer than claudeTypedTextMax,
+// goes as one bracketed paste, which Claude takes whole.
 func (t *Tmux) pastesMultilineText(target, text string) bool {
-	return strings.Contains(text, "\n") && sessionlog.ProviderFamily(t.providerEnv(target)) == "codex"
+	multiline := strings.Contains(text, "\n")
+	if !multiline && len(text) <= claudeTypedTextMax {
+		return false
+	}
+	switch sessionlog.ProviderFamily(t.providerEnv(target)) {
+	case "codex":
+		return multiline
+	case "claude":
+		return true
+	default:
+		return false
+	}
 }
+
+// claudeTypedTextMax is the longest single line typed into Claude Code with
+// send-keys -l: well under one terminal read, so it arrives in one.
+const claudeTypedTextMax = 512
 
 func (t *Tmux) pasteLiteralText(ctx context.Context, target, text string) error {
 	tmp, err := os.CreateTemp("", "gc-tmux-paste-*")

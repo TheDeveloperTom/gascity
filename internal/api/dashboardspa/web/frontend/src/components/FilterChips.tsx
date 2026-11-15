@@ -1,7 +1,6 @@
-// FilterChips: typeset toggle controls. Active state carried by
-// font-weight + underline-offset, NOT by background fill, so the
-// Greyscale Test passes (color is emphasis, not signal) and the
-// One Mark Rule is not violated by stacking maroons.
+// FilterChips: toggle chips. On is a blue chip (you pressed it), off is a
+// hairline outline. aria-pressed carries the state for assistive tech, the
+// blue fill carries it for the eye; the word itself never changes.
 
 interface ChipDef {
   id: string;
@@ -19,10 +18,8 @@ interface FilterChipsProps {
 export function FilterChips({ chips, activeIds, onToggle, legend }: FilterChipsProps) {
   if (chips.length === 0) return null;
   return (
-    <div className="flex items-baseline gap-4 flex-wrap">
-      {legend && (
-        <span className="text-label uppercase tracking-wider text-fg-muted">{legend}</span>
-      )}
+    <div className="flex flex-wrap items-center gap-2">
+      {legend && <span className="mr-1 text-label font-medium text-fg-muted">{legend}</span>}
       {chips.map((chip) => {
         const active = activeIds.has(chip.id);
         return (
@@ -31,10 +28,10 @@ export function FilterChips({ chips, activeIds, onToggle, legend }: FilterChipsP
             type="button"
             onClick={() => onToggle(chip.id)}
             aria-pressed={active}
-            className={`text-label uppercase tracking-wider transition-colors duration-150 ease-out-quart focus-mark rounded-sm ${
+            className={`h-8 rounded-full border px-3 text-label font-medium transition-colors duration-150 ease-out-quart focus-mark ${
               active
-                ? 'text-fg font-semibold underline decoration-fg underline-offset-4'
-                : 'text-fg-muted hover:text-fg'
+                ? 'border-primary/50 bg-primary/10 text-primary'
+                : 'border-rule bg-surface-raised text-fg-muted hover:text-fg'
             }`}
           >
             {chip.label}

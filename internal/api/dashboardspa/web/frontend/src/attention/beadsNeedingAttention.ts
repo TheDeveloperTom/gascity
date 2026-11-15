@@ -1,5 +1,10 @@
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
+import { t } from '../i18n';
+import { isRouteRoot, routeTaskId } from '../lib/stageBoard';
 import { elapsedSince, formatElapsed, formatElapsedFine } from './elapsed';
+
+const NOT_CLAIMABLE_TYPES: ReadonlySet<string> = new Set(['epic', 'gate']);
+const ROUTE_ROOT_META_KEY = 'gc.root_bead_id';
 
 // gascity-dashboard-2j8e.3: the single selector behind the Beads nav badge AND
 // the /beads "Needs you" section. It counts beads that genuinely need the
@@ -105,13 +110,46 @@ export type BeadAttentionSeverity = 'attention' | 'watch';
 
 export interface BeadAttentionRow {
   beadId: string;
+  /** The task's title, so a row reads by name rather than by id. */
+  title: string;
   reason: BeadAttentionReason;
   severity: BeadAttentionSeverity;
   /** Operator-facing one-line context, leading with the bead title (why it is here). */
   summary: string;
   /** Movement timestamp used for ordering and aging. */
   updatedAt: string;
+  /** For `waiting-human`: who it waits on (`human`, `mayor`, a name). */
+  waitingOn?: string;
+  /** False when `waitingOn` is the board's "human" fallback, not a named actor. */
+  waitingOnNamed?: boolean;
+  /** The lowercased `<x>` of a `hold:<x>` label, when the bead carries one. */
+  holdLabel?: string;
+  /**
+   * The facts behind `summary`, so the attention layer can phrase them in the
+   * viewer's language (review I5). `summary` stays the board's English note.
+   */
+  parts?: BeadRowParts;
 }
+
+/** Why an in-progress bead counts as stalled. */
+export type StallCause =
+  | { kind: 'no-assignee' }
+  | { kind: 'no-session'; assignee: string }
+  | { kind: 'session-ended' }
+  | { kind: 'session-state'; state: string }
+  | { kind: 'inactive'; ms: number };
+
+export type BeadRowParts =
+  | { reason: 'escalated' }
+  | { reason: 'ready-unclaimed'; ageMs: number }
+  | {
+      reason: 'waiting-human';
+      who: string | null;
+      waitMs: number | null;
+      /** Set by the attention layer when the wait is on the owner. */
+      toOwner?: boolean;
+    }
+  | { reason: 'stalled'; ageMs: number | null; cause: StallCause; step?: string };
 
 /**
  * The slice of a supervisor session the stall check reads. Structural so the
@@ -132,7 +170,14 @@ export interface BeadAttentionInputs {
   escalations: readonly Bead[];
   /** City sessions for liveness checks; omit when the session read failed. */
   sessions?: readonly BeadAttentionSession[];
+  /** Route beads (workflow roots and their steps), split off `beads`. */
+  routeItems?: readonly Bead[];
+  /** Task id → title, so a stalled step reports its task by name. */
+  taskTitles?: ReadonlyMap<string, string>;
 }
+
+/** Shown when a route's task is outside the fetched window. */
+export const TASK_OUTSIDE_VIEW = 'A task outside this view';
 
 /**
  * Project the bead reads into the operator-actionable attention set. Pure and
@@ -151,14 +196,71 @@ export function selectBeadsNeedingAttention(
   // waiting-human is checked first: a held bead may also be open+unassigned
   // (a gate bead) or look stalled (a parked worker), and the operator-facing
   // fact in every such case is WHO it waits on.
+  // A task its live run is working on is judged by the run's steps, not by
+  // its own assignee: the route does the work, so the task has none (review
+  // I3). Its stalled step reports once, under the task.
+  const routed = tasksWithLiveRoute(inputs.routeItems ?? []);
   for (const bead of inputs.beads) {
     const row =
       waitingHumanRow(bead, nowMs) ??
       readyUnclaimedRow(bead, nowMs) ??
-      stalledRow(bead, inputs.sessions, nowMs);
+      (routed.has(bead.id) ? null : stalledRow(bead, inputs.sessions, nowMs));
     if (row !== null) rows.push(row);
   }
-  return rows;
+  rows.push(...stalledRouteRows(inputs, nowMs));
+  return uniqueRows(rows);
+}
+
+function tasksWithLiveRoute(routeItems: readonly Bead[]): Set<string> {
+  const out = new Set<string>();
+  for (const bead of routeItems) {
+    if (!isRouteRoot(bead) || bead.status === 'closed') continue;
+    const taskId = routeTaskId(bead);
+    if (taskId !== null) out.add(taskId);
+  }
+  return out;
+}
+
+/** One row per bead and reason: the first wins, so ids stay unique. */
+function uniqueRows(rows: readonly BeadAttentionRow[]): BeadAttentionRow[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.beadId}:${row.reason}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// A stalled route step is reported once, under its task's title: the owner
+// knows tasks, not step ids (R6). The first stalled step of a task wins.
+function stalledRouteRows(inputs: BeadAttentionInputs, nowMs: number): BeadAttentionRow[] {
+  const routeItems = inputs.routeItems ?? [];
+  if (routeItems.length === 0) return [];
+  const roots = new Map<string, Bead>();
+  for (const bead of routeItems) {
+    if (isRouteRoot(bead)) roots.set(bead.id, bead);
+  }
+  const byTask = new Map<string, BeadAttentionRow>();
+  for (const step of routeItems) {
+    if (isRouteRoot(step)) continue;
+    const rootId = step.metadata?.[ROUTE_ROOT_META_KEY]?.trim() ?? '';
+    const root = roots.get(rootId);
+    const taskId = (root === undefined ? null : routeTaskId(root)) ?? rootId;
+    if (taskId.length === 0 || byTask.has(taskId)) continue;
+    const stalled = stalledRow(step, inputs.sessions, nowMs);
+    if (stalled === null) continue;
+    byTask.set(taskId, {
+      ...stalled,
+      beadId: taskId,
+      title: inputs.taskTitles?.get(taskId) ?? t(TASK_OUTSIDE_VIEW),
+      summary: `${step.title}: ${stalled.summary}`,
+      ...(stalled.parts?.reason === 'stalled'
+        ? { parts: { ...stalled.parts, step: step.title } }
+        : {}),
+    });
+  }
+  return [...byTask.values()];
 }
 
 /**
@@ -190,9 +292,11 @@ function escalatedRow(bead: Bead): BeadAttentionRow | null {
   if (bead.status === 'closed') return null;
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'escalated',
     severity: 'attention',
     summary: `${bead.title} — escalation raised`,
+    parts: { reason: 'escalated' },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
@@ -203,14 +307,19 @@ function escalatedRow(bead: Bead): BeadAttentionRow | null {
 // surfaced — only genuinely-claimable open beads.
 function readyUnclaimedRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
   if (bead.status !== 'open' || hasAssignee(bead)) return null;
+  // R11: blocked work waits on a dependency, epics are containers and gates
+  // open on their own; none of them is work someone forgot to claim.
+  if (bead.is_blocked === true || NOT_CLAIMABLE_TYPES.has(bead.issue_type)) return null;
   const ageMs = elapsedSince(bead.created_at, nowMs);
   if (ageMs === null || ageMs < READY_UNCLAIMED_WATCH_MS) return null;
   const stale = ageMs >= READY_UNCLAIMED_STALE_MS;
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'ready-unclaimed',
     severity: stale ? 'attention' : 'watch',
     summary: `${bead.title} opened ${formatElapsed(ageMs)} ago`,
+    parts: { reason: 'ready-unclaimed', ageMs },
     updatedAt: bead.created_at,
   };
 }
@@ -226,6 +335,7 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
   if (holdText === null) return null;
   const waitMs = elapsedSince(bead.updated_at ?? bead.created_at, nowMs);
   const who = waitingOn(bead, holdText);
+  const named = namedWaitingActor(bead, holdText);
   const phrase =
     waitMs === null ? `waiting on ${who}` : `waiting on ${who} for ${formatElapsed(waitMs)}`;
   // hold:external means the next actor or condition is outside this bd
@@ -235,9 +345,14 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     waitMs !== null && waitMs >= WAITING_ATTENTION_MS && !hasLabel(bead, HOLD_EXTERNAL_LABEL);
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'waiting-human',
     severity: escalates ? 'attention' : 'watch',
     summary: phrase,
+    waitingOn: who,
+    waitingOnNamed: named !== null,
+    ...(holdLabelValue(bead) === null ? {} : { holdLabel: holdLabelValue(bead) as string }),
+    parts: { reason: 'waiting-human', who: named, waitMs },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
@@ -255,45 +370,64 @@ function stalledRow(
   nowMs: number,
 ): BeadAttentionRow | null {
   if (bead.status !== 'in_progress') return null;
+  // A workflow root is never claimed by anyone; its steps are (R11).
+  if (isRouteRoot(bead)) return null;
   const assignee = bead.assignee?.trim() ?? '';
-  const detail = stalledDetail(bead, assignee, sessions, nowMs);
-  if (detail === null) return null;
+  const cause = stalledCause(bead, assignee, sessions, nowMs);
+  if (cause === null) return null;
+  const detail = causeText(cause);
   const ageMs = elapsedSince(bead.updated_at ?? bead.created_at, nowMs);
   const phrase =
     ageMs === null ? `stalled — ${detail}` : `stalled ${formatElapsed(ageMs)} — ${detail}`;
   return {
     beadId: bead.id,
+    title: bead.title,
     reason: 'stalled',
     severity: 'attention',
     summary: phrase,
+    parts: { reason: 'stalled', ageMs, cause },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
 
-function stalledDetail(
+function stalledCause(
   bead: Bead,
   assignee: string,
   sessions: readonly BeadAttentionSession[] | undefined,
   nowMs: number,
-): string | null {
-  if (assignee.length === 0) return 'no assignee';
+): StallCause | null {
+  if (assignee.length === 0) return { kind: 'no-assignee' };
   if (sessions === undefined) return null;
   const session = resolveSession(bead, sessions);
-  if (session === undefined) {
-    return `no live session for ${assignee}`;
-  }
+  if (session === undefined) return { kind: 'no-session', assignee };
   const state = session.state.trim();
   if (!isLiveSession(state)) {
     // A closed session decodes to the empty state — "closed beads have no
     // runtime state" (internal/session/info_codec.go) — so name that case
     // instead of rendering the dangling "stalled 3h — session ".
-    return state.length === 0 ? 'session ended' : `session ${state}`;
+    return state.length === 0 ? { kind: 'session-ended' } : { kind: 'session-state', state };
   }
   const activityMs = lastActivityElapsedMs(bead, session, nowMs);
   if (activityMs !== null && activityMs >= STALLED_INACTIVITY_MS) {
-    return `no activity for ${formatElapsed(activityMs)}`;
+    return { kind: 'inactive', ms: activityMs };
   }
   return null;
+}
+
+/** The board's English phrase for a stall cause (card notes stay unchanged). */
+function causeText(cause: StallCause): string {
+  switch (cause.kind) {
+    case 'no-assignee':
+      return 'no assignee';
+    case 'no-session':
+      return `no live session for ${cause.assignee}`;
+    case 'session-ended':
+      return 'session ended';
+    case 'session-state':
+      return `session ${cause.state}`;
+    case 'inactive':
+      return `no activity for ${formatElapsed(cause.ms)}`;
+  }
 }
 
 // The assignee names a concrete session (session_name), sometimes an alias or
@@ -355,14 +489,34 @@ function waitingHoldText(bead: Bead): string | null {
 // parenthetical, so they must be mapped explicitly or the most common real
 // input renders as the actorless "waiting on human".
 function waitingOn(bead: Bead, holdText: string): string {
+  return namedWaitingActor(bead, holdText) ?? 'human';
+}
+
+// The actor a bead names, or null when it names none. The board keeps its
+// "human" fallback for the chip; the owner rule must not (review C1: the city
+// labels every planned ticket `hold:plan`, which names nobody).
+function namedWaitingActor(bead: Bead, holdText: string): string | null {
   const stamped = bead.metadata?.[WAITING_WHO_META_KEY]?.trim();
   if (stamped !== undefined && stamped.length > 0) return stamped;
   const canonical = canonicalHoldActor(bead);
   if (canonical !== undefined) return canonical;
+  // The awaiting-human checkpoint names the human by definition (spec §3.2 O4).
+  if (bead.metadata?.['gc.checkpoint'] === WAITING_CHECKPOINT_VALUE) return 'human';
   const parenthetical = /\(([^)]+)\)/.exec(holdText);
   const inner = parenthetical?.[1]?.trim();
   if (inner !== undefined && inner.length > 0) return inner;
-  return 'human';
+  return null;
+}
+
+// The value of the bead's `hold:<x>` label, lowercased, or null. The selector
+// does not know the owner's aliases; the attention layer compares this to
+// them, so `hold:human` or `hold:<operator alias>` marks the owner while
+// `hold:plan` stays city work.
+function holdLabelValue(bead: Bead): string | null {
+  const label = (bead.labels ?? []).find((l) => l.trim().startsWith(HOLD_LABEL_PREFIX));
+  if (label === undefined) return null;
+  const value = label.trim().slice(HOLD_LABEL_PREFIX.length).trim().toLowerCase();
+  return value.length > 0 ? value : null;
 }
 
 // The actor named by a canonical hold label, or undefined for an ad hoc

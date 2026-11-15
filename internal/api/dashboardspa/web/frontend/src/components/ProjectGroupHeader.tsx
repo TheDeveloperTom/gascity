@@ -1,14 +1,11 @@
 import { CollapsibleHeader } from './CollapsibleHeader';
 
-// ProjectGroupHeader: a typeset section divider, clickable to toggle
-// collapse. The chevron is a rotated glyph, not a
-// box. The count badge is plain tabular figures in fg-faint, not a
-// pill. Whitespace + type carries the hierarchy (Flat Page Rule).
+// ProjectGroupHeader: the title above one project's table, clickable to
+// fold it. Project name at title size, the row count in a neutral pill.
 //
-// Non-collapsible variant renders as a small-caps label (no chevron,
-// no count). Used for the Orchestration pseudo-group that pins cross-
-// rig sessions at the top — there's nothing to collapse, and it isn't
-// a rig.
+// The non-collapsible variant is a quiet label (no chevron, no count),
+// used for the Orchestration pseudo-group that pins cross-rig sessions at
+// the top: there is nothing to fold, and it is not a rig.
 
 interface ProjectGroupHeaderProps {
   project: string;
@@ -27,14 +24,8 @@ export function ProjectGroupHeader({
 }: ProjectGroupHeaderProps) {
   if (!collapsible) {
     return (
-      <div
-        role="heading"
-        aria-level={2}
-        className="flex items-baseline gap-2 py-1 text-label uppercase tracking-wider text-fg-faint"
-      >
-        <span aria-hidden>·</span>
-        <span>{project}</span>
-        <span aria-hidden>·</span>
+      <div role="heading" aria-level={2} className="mb-2 py-1 text-label font-medium text-fg-muted">
+        {project}
       </div>
     );
   }
@@ -42,14 +33,16 @@ export function ProjectGroupHeader({
     <CollapsibleHeader
       collapsed={collapsed}
       onToggle={onToggle}
-      className="group flex items-baseline gap-2 w-full text-left focus-mark rounded-sm py-1"
-      glyphClassName="group-hover:text-fg-muted tnum w-3"
+      className="group mb-2 flex w-full items-center gap-2 rounded py-1 text-left focus-mark"
+      glyphClassName="w-3 group-hover:text-fg-muted"
     >
       {({ glyph }) => (
         <>
           {glyph}
-          <span className="text-title font-medium text-fg group-hover:text-fg">{project}</span>
-          <span className="text-label uppercase tracking-wider text-fg-faint tnum">{count}</span>
+          <span className="min-w-0 truncate text-title font-semibold text-fg">{project}</span>
+          <span className="inline-flex min-w-[1.375rem] justify-center rounded-full bg-fg/[0.06] px-1.5 text-label font-semibold text-fg-muted tnum">
+            {count}
+          </span>
         </>
       )}
     </CollapsibleHeader>

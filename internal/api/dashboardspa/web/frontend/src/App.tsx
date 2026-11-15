@@ -9,7 +9,10 @@ import {
 import { Routes, Route, Navigate, useLocation } from 'react-router';
 import { api } from './api/client';
 import { AttentionProvider } from './attention/context';
-import { useLiveAttentionContributors } from './attention/liveContributors';
+import {
+  type OperatorConfigState,
+  useLiveAttentionContributors,
+} from './attention/liveContributors';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { NowProvider } from './contexts/NowContext';
@@ -62,6 +65,10 @@ export function App() {
   // shared by the AttentionRoot (which computes contributors under the
   // RunSummaryProvider) and the OperatorConfigProvider below.
   const operator = resolveOperatorConfig(config);
+  // Owner readiness waits for the real identity (review I2): until /config
+  // lands, the reads run under the neutral fallback.
+  const configState: OperatorConfigState =
+    config !== undefined ? 'ready' : configError !== null ? 'failed' : 'loading';
 
   const enabledViews = useMemo(
     () => filterEnabledViews(ALL_VIEWS, enabledModules),
@@ -86,7 +93,7 @@ export function App() {
         <NowProvider>
           <ReadOnlyProvider readOnly={readOnly}>
             <RunSummaryProvider>
-              <AttentionRoot operator={operator}>
+              <AttentionRoot operator={operator} configState={configState}>
                 <Layout>
                   {configError !== null && <ConfigErrorBanner message={configError} />}
                   <RoutedMain
@@ -109,10 +116,28 @@ export function App() {
  * Runs badge reads the same shared run-summary source the /runs page renders
  * (gascity-dashboard-2j8e.7), then expose the composed model to the tree.
  */
-function AttentionRoot({ operator, children }: { operator: OperatorConfig; children: ReactNode }) {
-  const { source } = useRunSummary();
-  const contributors = useLiveAttentionContributors(operator, source);
-  return <AttentionProvider contributors={contributors}>{children}</AttentionProvider>;
+function AttentionRoot({
+  operator,
+  configState,
+  children,
+}: {
+  operator: OperatorConfig;
+  configState: OperatorConfigState;
+  children: ReactNode;
+}) {
+  const { source, sseState } = useRunSummary();
+  const { contributors, ownerReadiness, cityReadiness, beadSnapshot } =
+    useLiveAttentionContributors(operator, source, { configState, liveFeed: sseState });
+  return (
+    <AttentionProvider
+      contributors={contributors}
+      ownerReadiness={ownerReadiness}
+      cityReadiness={cityReadiness}
+      {...(beadSnapshot === undefined ? {} : { beadSnapshot })}
+    >
+      {children}
+    </AttentionProvider>
+  );
 }
 
 /**
@@ -185,21 +210,24 @@ function ConfigErrorBanner({ message }: { message: string }) {
   return (
     <section
       role="alert"
-      className="mb-8 border border-warn/40 rounded-sm px-4 py-3 text-body text-fg-muted"
+      className="mb-6 rounded-md border border-warn/50 bg-surface-raised px-3 py-2 text-body text-fg"
     >
-      <span className="text-warn">config unavailable:</span> {message} · some controls may be
-      disabled until it loads.
+      <span className="font-semibold text-warn">config unavailable:</span> {message} · some controls
+      may be disabled until it loads.
     </section>
   );
 }
 
 function NotFoundPage() {
   return (
-    <section aria-labelledby="not-found-title" className="space-y-3">
-      <h1 id="not-found-title" className="text-5xl font-semibold tracking-tight text-fg">
+    <section
+      aria-labelledby="not-found-title"
+      className="mx-auto mt-6 max-w-[40rem] space-y-2 rounded-lg border border-rule bg-surface-raised p-6"
+    >
+      <h1 id="not-found-title" className="text-headline font-semibold text-fg">
         Page not found
       </h1>
-      <p className="text-title text-fg-muted">No dashboard route matches this path.</p>
+      <p className="text-body text-fg-muted">No dashboard route matches this path.</p>
     </section>
   );
 }

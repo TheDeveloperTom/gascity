@@ -212,15 +212,15 @@ describe('<CockpitHomePage>', () => {
     mocks.runSummary.mockReturnValue(availableRunSummary());
   });
 
-  it('renders real cockpit readings, canonical run states, and variable run progress', async () => {
+  // HO-10 and HO-11 superseded (OWNER-HOME-PLAN Tasks 6–8): the run rings
+  // gave way to «Что идёт» and the systems lamps to city problems.
+  it('renders real cockpit readings and canonical run states inside Usage and load', async () => {
     render(router(<CockpitHomePage />));
     expect(await screen.findByRole('status', { name: 'model calls today: 42' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'queued: 2' })).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: 'deploy: stage 7 of 7, retry attempt 2' }),
-    ).toBeTruthy();
+    expect(screen.queryByTestId('run-rings')).toBeNull();
     expect(screen.getByRole('link', { name: 'Worker: 65% context used' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'live feed: healthy, connected' })).toBeTruthy();
+    expect(screen.queryByText('Live updates are disconnected')).toBeNull();
   });
 
   it('renders the rolling last-24h token, invocation, and cost tiles', async () => {
@@ -297,7 +297,7 @@ describe('<CockpitHomePage>', () => {
 
     // The rest of the cockpit still mounts.
     expect(await screen.findByRole('status', { name: 'model calls today: 42' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'live feed: healthy, connected' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'City' })).toBeTruthy();
     // The 24h tiles degrade honestly instead of crashing.
     expect(screen.getByRole('status', { name: 'tokens in: unavailable' })).toBeTruthy();
     expect(screen.getByRole('status', { name: 'tokens out: unavailable' })).toBeTruthy();
@@ -461,8 +461,7 @@ describe('<CockpitHomePage>', () => {
     );
     expect(screen.getByTestId('pipeline')).toBeTruthy();
     expect(screen.getByTestId('context-meters')).toBeTruthy();
-    expect(screen.getByTestId('run-rings')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'live feed: unknown, disconnected' })).toBeTruthy();
+    expect(await screen.findByText('could not read')).toBeTruthy();
     expect(screen.getAllByText(/unavailable/i).length).toBeGreaterThan(0);
   });
 
@@ -492,23 +491,19 @@ describe('<CockpitHomePage>', () => {
 
   it('does not present stale status-derived system readings as healthy', async () => {
     const first = render(router(<CockpitHomePage />));
-    expect(await screen.findByRole('link', { name: 'dolt store: healthy, healthy' })).toBeTruthy();
+    expect(await screen.findByText('2 of 2 working')).toBeTruthy();
     first.unmount();
 
     mocks.cityStatus.mockRejectedValue(new Error('status refresh failed'));
     render(router(<CockpitHomePage />));
 
     expect(await screen.findByText('city status is stale · refresh failed')).toBeTruthy();
-    expect(
-      screen.getByRole('link', {
-        name: 'dolt store: unknown, stale · last reported healthy',
-      }),
-    ).toBeTruthy();
+    expect(screen.getByText('Could not read: City status is stale')).toBeTruthy();
   });
 
   it('keeps stale status provenance latched while a retry is in flight', async () => {
     const first = render(router(<CockpitHomePage />));
-    expect(await screen.findByRole('link', { name: 'dolt store: healthy, healthy' })).toBeTruthy();
+    expect(await screen.findByText('2 of 2 working')).toBeTruthy();
     first.unmount();
 
     vi.useFakeTimers();
@@ -521,11 +516,7 @@ describe('<CockpitHomePage>', () => {
     await act(() => vi.advanceTimersByTimeAsync(15_000));
 
     expect(screen.getByText('city status is stale · refresh failed')).toBeTruthy();
-    expect(
-      screen.getByRole('link', {
-        name: 'dolt store: unknown, stale · last reported healthy',
-      }),
-    ).toBeTruthy();
+    expect(screen.getByText('Could not read: City status is stale')).toBeTruthy();
   });
 
   it('uses the session list when detailed active-session counts are absent', async () => {
@@ -539,21 +530,8 @@ describe('<CockpitHomePage>', () => {
     expect(screen.queryByRole('link', { name: 'active sessions: 99' })).toBeNull();
   });
 
-  it('reports failed store maintenance when the size ratio is within threshold', async () => {
-    const current = await mocks.cityStatus();
-    mocks.cityStatus.mockResolvedValue({
-      ...current,
-      store_health: { ...current.store_health, last_gc_status: 'failed', warning: false },
-    });
-
-    render(router(<CockpitHomePage />));
-
-    expect(
-      await screen.findByRole('link', {
-        name: 'dolt store: warning, maintenance failed',
-      }),
-    ).toBeTruthy();
-  });
+  // Review I-4: store maintenance is a city problem in the attention model
+  // (attention/registry.lamps.test.ts); Home lists it from the city slice.
 
   it('marks partial status lamps unknown and reports failed store maintenance', async () => {
     const current = await mocks.cityStatus();
@@ -565,31 +543,29 @@ describe('<CockpitHomePage>', () => {
 
     render(router(<CockpitHomePage />));
 
-    expect(
-      await screen.findByRole('link', {
-        name: 'dolt store: unknown, partial · last reported maintenance failed',
-      }),
-    ).toBeTruthy();
+    // Partial status is unreadable, not a reported failure and not healthy.
+    expect(await screen.findByText('Could not read: City status is partial')).toBeTruthy();
+    expect(screen.queryByText('Task store maintenance failed')).toBeNull();
   });
 
   it('freezes live instrument projections while paused', async () => {
     vi.useFakeTimers();
     const view = render(router(<CockpitHomePage />));
     await act(async () => undefined);
-    expect(screen.getByRole('link', { name: 'live feed: healthy, connected' })).toBeTruthy();
+    expect(screen.queryByText('Live updates are disconnected')).toBeNull();
     expect(mocks.cityUsage).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'pause instruments' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause updates' }));
     mocks.runSummary.mockReturnValue({ ...availableRunSummary(), sseState: 'closed' });
     view.rerender(router(<CockpitHomePage />));
 
     await act(() => vi.advanceTimersByTimeAsync(120_000));
 
-    expect(screen.getByRole('button', { name: 'resume instruments' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'live feed: healthy, connected' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Resume updates' })).toBeTruthy();
+    expect(screen.queryByText('Live updates are disconnected')).toBeNull();
     expect(mocks.cityUsage).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'resume instruments' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume updates' }));
     await act(() => vi.advanceTimersByTimeAsync(15_000));
     expect(mocks.cityUsage).toHaveBeenCalledTimes(2);
   });

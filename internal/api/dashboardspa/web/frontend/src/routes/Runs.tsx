@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router';
 import { useAttentionModel } from '../attention/context';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { Button } from '../components/Button';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { PartialDataNotice } from '../components/PartialDataNotice';
 import { SseIndicator } from '../components/SseIndicator';
@@ -22,7 +23,9 @@ import { useRunSummary } from '../runs/runSummarySubscription';
 // The app-level NowProvider refreshes relative-time labels in lane cards; the
 // shared subscription's SSE path drives actual data updates.
 
-const RUN_PHASE_GRAMMAR = 'Phase grammar: intake, implementation, review, approval, finalization.';
+// C10: the stage order is a legend under the synopsis, not a sentence in it.
+const RUN_STAGE_LEGEND =
+  'Stages, in order: intake, implementation, review, approval, finalization.';
 const HISTORY_QUERY_PARAM = 'history';
 const HISTORY_QUERY_VALUE = '1';
 
@@ -68,7 +71,18 @@ export function RunsPage() {
     [attention],
   );
 
-  const synopsis = runSynopsis(data);
+  const synopsis = (
+    <>
+      {runSynopsis(data)}
+      <span className="mt-1 block text-label text-fg-muted">{RUN_STAGE_LEGEND}</span>
+    </>
+  );
+  const freshnessTone =
+    runs?.status === 'error'
+      ? 'text-accent'
+      : runs?.status === 'stale'
+        ? 'text-warn'
+        : 'text-fg-muted';
 
   const freshnessLabel = runs
     ? runs.status === 'fresh'
@@ -85,26 +99,17 @@ export function RunsPage() {
   return (
     <section>
       <PageHeader
-        title="Formula Runs"
+        title="Runs"
         synopsis={synopsis}
         className="md:items-start"
         meta={
           <>
-            {error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {error}
-              </span>
-            )}
             {freshnessLabel !== null && (
-              <span
-                className={`text-label uppercase tracking-wider tnum ${
-                  runs?.status === 'error' ? 'text-accent' : 'text-fg-faint'
-                }`}
-              >
+              <span className={`text-label font-medium tnum ${freshnessTone}`}>
                 {freshnessLabel}
               </span>
             )}
-            <div className="grid w-full min-w-[18rem] grid-cols-[7rem_minmax(6.5rem,1fr)] items-center gap-x-4 gap-y-3 sm:w-[34rem] sm:grid-cols-[7rem_6.5rem_10rem_7rem]">
+            <div className="grid w-full min-w-[18rem] grid-cols-[7rem_minmax(6.5rem,1fr)] items-center gap-x-3 gap-y-3 sm:w-auto sm:grid-cols-[7rem_6.5rem_auto_auto]">
               <SseIndicator state={sseState} />
               <span>
                 {lanesPartial ? (
@@ -114,7 +119,7 @@ export function RunsPage() {
                     title="one or more rigs' recent runs were unavailable; the lane set may be incomplete"
                   />
                 ) : (
-                  <span aria-hidden="true" className="invisible normal-case text-body text-warn">
+                  <span aria-hidden="true" className="invisible text-label text-warn">
                     runs partial
                   </span>
                 )}
@@ -161,8 +166,10 @@ export function RunsPage() {
         }
       />
 
+      <PageAlerts messages={[error]} />
+
       {data === undefined || runs === null ? (
-        <p className="text-body text-fg-muted italic">Loading formula runs.</p>
+        <p className="text-body text-fg-muted">Loading formula runs.</p>
       ) : (
         <RunMap
           source={runs}
@@ -179,8 +186,8 @@ function runSynopsis(data: SourceState<RunSummary> | undefined): string {
   if (data === undefined) return 'Loading formula run lanes.';
 
   if (data.status !== 'error') {
-    return `${data.data.totalActive} active runs across the supervisor's bead store. ${RUN_PHASE_GRAMMAR}`;
+    return `${data.data.totalActive} active runs across the supervisor's bead store.`;
   }
 
-  return `Run counts unavailable: ${data.error}. ${RUN_PHASE_GRAMMAR}`;
+  return `Run counts unavailable: ${data.error}.`;
 }

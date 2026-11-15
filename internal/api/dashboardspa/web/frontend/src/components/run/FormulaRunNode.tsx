@@ -36,35 +36,33 @@ export function FormulaRunNode({ node, selected, onToggle }: FormulaRunNodeProps
       type="button"
       aria-pressed={selected}
       onClick={() => onToggle(node.id)}
-      className={`focus-mark w-full text-left px-4 py-3 bg-transparent transition-colors duration-150 ease-out-quart ${shapeClass} ${
+      className={`focus-mark w-full text-left px-4 py-3 transition-colors duration-150 ease-out-quart ${shapeClass} ${
         selected
-          ? 'text-fg border-accent bg-surface-tint ring-2 ring-accent/45 ring-offset-2 ring-offset-surface'
-          : 'text-fg border-rule hover:border-fg-faint hover:bg-surface-tint'
+          ? 'text-fg border-primary bg-primary/[0.06] ring-2 ring-primary/40 ring-offset-2 ring-offset-surface-raised'
+          : 'text-fg border-rule bg-surface-raised hover:border-fg-faint hover:bg-surface-tint'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-body text-fg leading-snug">{node.title}</p>
-          <p className="mt-1 text-label uppercase tracking-wider text-fg-faint">
+        <div className="min-w-0">
+          <p className="text-body font-medium text-fg leading-snug [overflow-wrap:anywhere]">
+            {node.title}
+          </p>
+          <p className="mt-0.5 text-label text-fg-muted">
             {constructLabel(node.constructKind)}
             {attemptLabel}
           </p>
         </div>
-        <span className={`text-label uppercase tracking-wider shrink-0 ${statusClass}`}>
+        <span className={`shrink-0 text-label font-medium ${statusClass}`}>
           {statusGlyph(node.status)} {STATUS_LABEL[node.status]}
         </span>
       </div>
-      {history && (
-        <p className="mt-2 text-label uppercase tracking-wider text-fg-faint tnum">
-          stacked history: {history}
-        </p>
-      )}
+      {history && <p className="mt-2 text-label text-fg-muted tnum">stacked history: {history}</p>}
       {node.controlBadges.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {node.controlBadges.map((badge) => (
             <span
               key={badge.id}
-              className="text-label uppercase tracking-wider text-fg-muted border border-rule px-1.5 py-0.5"
+              className="rounded-full bg-fg/[0.06] px-2 py-0.5 text-label font-medium text-fg-muted"
             >
               {badge.label}: {STATUS_LABEL[badge.status]}
             </span>

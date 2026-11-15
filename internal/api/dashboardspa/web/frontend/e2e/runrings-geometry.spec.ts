@@ -186,7 +186,7 @@ test.describe('cockpit run-ring geometry', () => {
     await injectWorstCaseRings(page);
     await gotoCityRoute(page, CITY_BASE, '');
 
-    const region = page.getByRole('region', { name: 'formula run progress' });
+    const region = page.getByRole('region', { name: 'Run progress' });
     await expect(region).toBeVisible();
     const rings = page.getByTestId('run-rings').getByRole('link');
     await expect(rings).toHaveCount(WORST_CASES.length);

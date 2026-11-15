@@ -47,6 +47,9 @@ function readRunMeta(bead: SupervisorBead): RunMeta {
 
 type BeadKind = 'template' | 'wisp' | 'work';
 
+// Sub-section title inside a bead: sentence case, semibold label size.
+const SUBHEAD = 'mb-2 text-label font-semibold text-fg-muted';
+
 function classifyBead(bead: SupervisorBead, wf: RunMeta): BeadKind {
   if (wf.kind === 'run') return 'template';
   if (bead.issue_type === 'molecule') return 'wisp';
@@ -58,12 +61,10 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
   const kind = classifyBead(bead, wf);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {kind === 'template' && (
         <section>
-          <h3 className="text-label uppercase tracking-wider text-fg-faint mb-3">
-            Formula template
-          </h3>
+          <h3 className={SUBHEAD}>Formula template</h3>
           <p className="text-body text-fg-muted max-w-prose">
             This bead is a recipe, not actionable work. Every{' '}
             {bead.ref ? <code className="text-fg-muted">{bead.ref}</code> : 'wisp'} instance is
@@ -76,9 +77,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
 
       {kind === 'wisp' && (
         <section>
-          <h3 className="text-label uppercase tracking-wider text-fg-faint mb-3">
-            Formula instance
-          </h3>
+          <h3 className={SUBHEAD}>Formula instance</h3>
           <p className="text-body text-fg-muted max-w-prose">
             One run of the{' '}
             {bead.title ? <code className="text-fg-muted">{bead.title}</code> : 'formula'} recipe.
@@ -86,7 +85,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
         </section>
       )}
 
-      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-5">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-md bg-surface-tint/60 px-4 py-3 sm:grid-cols-4">
         <Field label="Status">
           <StatusBadge tone={beadStatusTone(bead.status)} label={bead.status} />
         </Field>
@@ -99,9 +98,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
 
       {kind === 'template' && (wf.formulaContract || wf.originBeadId || wf.runTarget) && (
         <section>
-          <h3 className="text-label uppercase tracking-wider text-fg-faint mb-3">
-            Template origin
-          </h3>
+          <h3 className={SUBHEAD}>Template origin</h3>
           <p className="text-body text-fg-muted max-w-prose mb-4">
             Where this formula came from, kept for traceability. The origin bead and target may be
             stale; the formula itself is now used wherever the pool dispatches it.
@@ -135,10 +132,13 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
 
       {Array.isArray(bead.labels) && bead.labels.length > 0 && (
         <section>
-          <h3 className="text-label uppercase tracking-wider text-fg-faint mb-3">Labels</h3>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <h3 className={SUBHEAD}>Labels</h3>
+          <div className="flex flex-wrap gap-1.5">
             {bead.labels.map((l) => (
-              <span key={l} className="text-label uppercase tracking-wider text-fg-muted">
+              <span
+                key={l}
+                className="inline-flex max-w-full rounded-full bg-fg/[0.06] px-2 py-0.5 text-label font-medium text-fg-muted [overflow-wrap:anywhere]"
+              >
                 {l}
               </span>
             ))}
@@ -147,15 +147,13 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
       )}
 
       <section>
-        <h3 className="text-label uppercase tracking-wider text-fg-faint mb-3">
-          {kind === 'template' ? 'Recipe' : 'Description'}
-        </h3>
+        <h3 className={SUBHEAD}>{kind === 'template' ? 'Recipe' : 'Description'}</h3>
         {bead.description && bead.description.length > 0 ? (
-          <pre className="text-body whitespace-pre-wrap leading-relaxed text-fg font-sans">
+          <pre className="max-w-[70ch] whitespace-pre-wrap font-sans text-reading text-fg [overflow-wrap:anywhere]">
             {bead.description}
           </pre>
         ) : (
-          <p className="text-body text-fg-muted italic">No description.</p>
+          <p className="text-body text-fg-muted">No description.</p>
         )}
       </section>
     </div>

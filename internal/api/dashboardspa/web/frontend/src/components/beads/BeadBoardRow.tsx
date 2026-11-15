@@ -1,14 +1,17 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router';
 import type { BeadNode } from '../../lib/beadGraph';
+import { routeRunHref, type StageMark, type TaskStage } from '../../lib/stageBoard';
 import type { BadgeSeverity } from '../../attention/compose';
-import { attentionListItemProps } from '../../attention/routeHighlight';
+import { attentionHighlightClass, attentionListItemProps } from '../../attention/routeHighlight';
+import { StatusShape } from '../icons';
 
-// One bead on the board, in the editorial register: a typeset row, no card,
-// no side-stripe. Selection is carried by weight + a leading "▸" + a warm
-// surface tint, never by a colored left edge (DESIGN.md §6). Clicking a row
-// opens the bead detail pop-out (gascity-dashboard-14s1); the row carries
-// only a compact `needs N · blocks M` annotation, with the full navigable
-// dependency tree living in the modal where it has room to read.
+// One bead on the board: a two-line title, then the bead id as a copyable id
+// tag with its priority and a compact `needs N · blocks M` annotation. No
+// per-row status colour and no side stripe. Selection is a blue tint and an
+// inset hairline (you pressed it), plus `aria-pressed`. Clicking a row opens
+// the bead detail pop-out (gascity-dashboard-14s1), where the full navigable
+// dependency tree has room to read.
 
 interface BeadBoardRowProps {
   node: BeadNode;
@@ -21,12 +24,85 @@ interface BeadBoardRowProps {
    * opening the modal.
    */
   note?: string | null;
+  /**
+   * The task's place on the route (stage board): the current step line with a
+   * link into the run, the PR link, and its marks. Absent for a plain row.
+   */
+  stage?: TaskStage | null;
   onSelect: (beadId: string) => void;
 }
 
-// The note inherits the row's attention tone: maroon for attention
-// (stalled), warm for watch (waiting), quiet otherwise (a healthy
-// assignee · activity line) — the DESIGN.md anomaly-color rule.
+// A route attention mark (stopped, failed route, TDD refused) is the stop
+// shape plus a word, in ink: the card's tint carries the colour, so the board
+// keeps the One Mark Rule (no `.text-accent` per card) and passes greyscale.
+function StageMarkView({ mark }: { mark: StageMark }) {
+  if (mark.tone === 'attention') {
+    return (
+      <span title={mark.title} className="inline-flex items-center gap-1 font-semibold text-fg">
+        <StatusShape tone="stuck" />
+        {mark.label}
+      </span>
+    );
+  }
+  if (mark.tone === 'warn') {
+    return (
+      <span title={mark.title} className="inline-flex items-center gap-1 font-medium text-warn">
+        <StatusShape tone="warn" />
+        {mark.label}
+      </span>
+    );
+  }
+  return (
+    <span title={mark.title} className="text-fg-muted">
+      {mark.label}
+    </span>
+  );
+}
+
+const STEP_LINK =
+  'min-w-0 rounded-sm text-primary underline-offset-2 hover:underline focus-mark [overflow-wrap:anywhere]';
+
+function StageLine({ stage }: { stage: TaskStage }) {
+  const { root, step, stepLabel, pr, marks } = stage;
+  const hasStep = stepLabel !== null && stepLabel.length > 0;
+  if (!hasStep && pr === null && marks.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-2.5 pb-2 text-label">
+      {marks.map((mark) => (
+        <StageMarkView key={mark.kind} mark={mark} />
+      ))}
+      {hasStep &&
+        (root !== null ? (
+          <Link
+            to={routeRunHref(root, step)}
+            title={step !== null ? `Open step ${step.id} in its run` : `Open run ${root.id}`}
+            className={`line-clamp-2 ${STEP_LINK}`}
+          >
+            {stepLabel}
+          </Link>
+        ) : (
+          <span
+            title={stepLabel}
+            className="line-clamp-2 min-w-0 text-fg-muted [overflow-wrap:anywhere]"
+          >
+            {stepLabel}
+          </span>
+        ))}
+      {pr !== null &&
+        (pr.url !== null ? (
+          <a href={pr.url} target="_blank" rel="noreferrer" className={`tnum ${STEP_LINK}`}>
+            {pr.number !== null ? `PR #${pr.number}` : 'PR'}
+          </a>
+        ) : (
+          <span className="tnum text-fg-muted">{`PR #${pr.number}`}</span>
+        ))}
+    </div>
+  );
+}
+
+// The note inherits the row's attention tone: red for attention (stalled),
+// amber for watch (waiting), quiet otherwise (a healthy assignee · activity
+// line).
 function noteTone(severity: BadgeSeverity | null): string {
   if (severity === 'attention') return 'text-accent';
   if (severity === 'watch') return 'text-warn';
@@ -38,8 +114,10 @@ export function BeadBoardRow({
   selected,
   attentionSeverity = null,
   note = null,
+  stage = null,
   onSelect,
 }: BeadBoardRowProps) {
+  const routeAttention = stage?.marks.find((mark) => mark.tone === 'attention') ?? null;
   const { bead, deps, blocks, hasUnresolvedDeps } = node;
   const rowRef = useRef<HTMLLIElement | null>(null);
   const depCount = deps.length;
@@ -57,57 +135,55 @@ export function BeadBoardRow({
     });
   }, [selected]);
 
+  // The attention model's tint wins; a route attention mark tints the card the
+  // same way when the model has nothing to say about this bead.
+  const routeTint =
+    routeAttention !== null && attentionSeverity === null && !selected
+      ? attentionHighlightClass('attention')
+      : '';
+
   return (
     <li
       ref={rowRef}
       {...attentionProps}
-      className={`px-2 py-2 -mx-2 rounded-sm transition-colors duration-150 ease-out-quart ${
-        selected ? 'bg-surface-tint' : 'hover:bg-surface-tint/60'
-      } ${attentionClassName}`}
+      {...(routeAttention === null ? {} : { 'data-route-attention': routeAttention.kind })}
+      className={`rounded-md transition-colors duration-150 ease-out-quart ${
+        selected ? 'bg-surface-tint ring-1 ring-inset ring-primary/40' : 'hover:bg-surface-tint'
+      } ${attentionClassName} ${routeTint}`}
     >
       <button
         type="button"
         onClick={() => onSelect(bead.id)}
-        className="text-left w-full focus-mark rounded-sm"
+        className="block w-full rounded-md px-2.5 py-2 text-left focus-mark"
         aria-pressed={selected}
         title={`Select ${bead.id}`}
       >
-        <span className="flex items-baseline gap-2">
-          <span className="text-fg-faint" aria-hidden="true">
-            {selected ? '▸' : ' '}
-          </span>
-          <span
-            className={`min-w-0 line-clamp-2 text-body ${
-              selected ? 'text-fg font-medium' : 'text-fg'
-            }`}
-          >
-            {bead.title}
-          </span>
+        <span
+          className={`line-clamp-2 min-w-0 text-body text-fg [overflow-wrap:anywhere] ${
+            selected ? 'font-semibold' : 'font-medium'
+          }`}
+        >
+          {bead.title}
         </span>
-        <span className="flex items-baseline gap-3 pl-4 mt-0.5 text-label uppercase tracking-wider text-fg-faint">
-          <span className="tnum">{bead.id}</span>
+        <span className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-label text-fg-muted">
+          <span className="min-w-0 font-mono text-[0.8125rem] text-fg-muted [overflow-wrap:anywhere]">
+            {bead.id}
+          </span>
           {bead.priority != null && <span className="tnum">P{bead.priority}</span>}
           {hasNeighbourhood && (
-            <span className="tnum normal-case tracking-normal">
+            <span className="tnum">
               {depCount > 0 && `needs ${depCount}`}
               {depCount > 0 && blockCount > 0 && ' · '}
               {blockCount > 0 && `blocks ${blockCount}`}
             </span>
           )}
-          {hasUnresolvedDeps && (
-            <span className="normal-case tracking-normal text-warn">unresolved</span>
-          )}
+          {hasUnresolvedDeps && <span className="text-warn">unresolved</span>}
         </span>
         {note !== null && note.length > 0 && (
-          <span
-            className={`block pl-4 mt-0.5 text-label normal-case tracking-normal ${noteTone(
-              attentionSeverity,
-            )}`}
-          >
-            {note}
-          </span>
+          <span className={`mt-0.5 block text-label ${noteTone(attentionSeverity)}`}>{note}</span>
         )}
       </button>
+      {stage !== null && <StageLine stage={stage} />}
     </li>
   );
 }

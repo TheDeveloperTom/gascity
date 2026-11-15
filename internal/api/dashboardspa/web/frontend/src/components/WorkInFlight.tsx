@@ -64,8 +64,8 @@ function WorkerRow({
   // mark appears per viewport.
   const tone = accent ? stateTone(session.state) : 'neutral';
   return (
-    <li className="px-2 py-2 -mx-2 rounded-sm transition-colors duration-150 ease-out-quart hover:bg-surface-tint/60">
-      <div className="flex items-baseline justify-between gap-4">
+    <li className="px-4 py-3 transition-colors duration-150 ease-out-quart hover:bg-surface-tint">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
         <div className="min-w-0 text-body text-fg">
           {/* Consistency with the Available-agents roster (Agents.tsx), whose
               row label is a clickable Link into the agent's detail: the worker
@@ -81,29 +81,29 @@ function WorkerRow({
             className="group text-left cursor-pointer focus-mark"
             title={`Open ${rig} · ${worker.worker} transcript`}
           >
-            <span className="font-medium group-hover:text-accent">{rig}</span>
+            <span className="font-medium group-hover:text-primary">{rig}</span>
             <span className="text-fg-faint" aria-hidden="true">
               {' '}
               ·{' '}
             </span>
-            <span className="text-fg-muted group-hover:text-accent">{worker.worker}</span>
+            <span className="text-fg-muted group-hover:text-primary">{worker.worker}</span>
           </button>
           {bead && (
             <Link
               to={`/beads?bead=${encodeURIComponent(bead.id)}`}
-              className="hover:text-accent focus-mark"
+              className="hover:text-primary focus-mark"
               title={`Open ${bead.id}`}
             >
               <span className="text-fg-faint" aria-hidden="true">
                 {' '}
                 →{' '}
               </span>
-              <span className="tnum text-fg-muted">{bead.id}</span>
+              <span className="font-mono text-[0.8125rem] text-fg-muted">{bead.id}</span>
               <span className="text-fg-muted">: {bead.title}</span>
             </Link>
           )}
         </div>
-        <div className="flex items-baseline gap-3 shrink-0">
+        <div className="flex shrink-0 items-center gap-3">
           <StatusBadge tone={tone} label={session.state} />
           <span className="tnum text-fg-muted w-10 text-right">
             {formatRelative(session.last_active, now)}
@@ -170,36 +170,40 @@ export function WorkInFlight({
   const countLabel = sessionsUnavailable || sessionsPending ? '—' : active.total;
 
   return (
-    <section className="mb-10" aria-label="Workers active">
-      <header className="flex items-baseline justify-between border-b border-rule pb-2 mb-4">
-        <h2 className="text-headline text-fg">Workers active</h2>
-        <span className="text-label tnum text-fg-muted">{countLabel}</span>
+    <section className="mb-10" aria-label="Working now">
+      <header className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-title font-semibold text-fg">Working now</h2>
+        <span className="inline-flex min-w-[1.375rem] justify-center rounded-full bg-fg/[0.06] px-1.5 text-label font-semibold text-fg-muted tnum">
+          {countLabel}
+        </span>
       </header>
-      {sessionsUnavailable ? (
-        <p className="text-body text-fg-muted" role="status">
-          Worker status unavailable.
-        </p>
-      ) : sessionsPending ? (
-        <p className="text-body text-fg-muted" role="status">
-          Checking worker status…
-        </p>
-      ) : active.total === 0 ? (
-        <p className="text-body text-fg-muted">No workers active right now.</p>
-      ) : (
-        <>
-          <p className="text-body text-fg-muted mb-4">{summary}</p>
-          <ul className="space-y-1">
-            {active.workers.map((worker, i) => (
-              <WorkerRow
-                key={worker.session.id}
-                worker={worker}
-                accent={i === accentIndex}
-                onPeek={setPeekSessionId}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+      <div className="rounded-lg border border-rule bg-surface-raised">
+        {sessionsUnavailable ? (
+          <p className="px-4 py-3 text-body text-fg-muted" role="status">
+            Worker status unavailable.
+          </p>
+        ) : sessionsPending ? (
+          <p className="px-4 py-3 text-body text-fg-muted" role="status">
+            Checking worker status…
+          </p>
+        ) : active.total === 0 ? (
+          <p className="px-4 py-3 text-body text-fg-muted">No workers active right now.</p>
+        ) : (
+          <>
+            <p className="border-b border-rule px-4 py-3 text-body text-fg-muted">{summary}</p>
+            <ul className="divide-y divide-rule">
+              {active.workers.map((worker, i) => (
+                <WorkerRow
+                  key={worker.session.id}
+                  worker={worker}
+                  accent={i === accentIndex}
+                  onPeek={setPeekSessionId}
+                />
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
 
       <Modal
         open={peekWorker !== null}
@@ -211,7 +215,7 @@ export function WorkInFlight({
             // is one click away from the transcript.
             <Link
               to={`/beads?bead=${encodeURIComponent(peekWorker.bead.id)}`}
-              className="text-fg-muted hover:text-accent focus-mark"
+              className="text-fg-muted hover:text-primary focus-mark"
               title={`Open ${peekWorker.bead.id}`}
             >
               <span className="tnum">{peekWorker.bead.id}</span>

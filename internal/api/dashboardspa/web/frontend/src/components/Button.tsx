@@ -1,10 +1,10 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-// Buttons are typeset, not boxed. The default carries a hairline
-// border and reads as a deliberate control. The 'quiet' variant has
-// no border and reads as a text link — used for inline list actions
-// (claim / close / nudge / peek). The 'accent' variant is reserved
-// for the rare loud moment (destructive confirms, primary CTA).
+// Actions look like actions (DESIGN-PLAN §9.6): boxed, sentence case,
+// semibold. 'default' is a white box on the pavement. 'accent' is the one
+// primary action of a view, filled Gas-flame blue (the tone keeps its old
+// name so call sites stay put; red is reserved for alarms). 'quiet' is a
+// blue text action for inline list rows (Peek, Approve, Copy attach).
 
 export type ButtonTone = 'default' | 'accent' | 'quiet';
 export type ButtonSize = 'sm' | 'md';
@@ -16,14 +16,15 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const TONE: Record<ButtonTone, string> = {
-  default: 'border border-rule text-fg-muted hover:text-fg hover:bg-surface-tint',
-  accent: 'border border-accent text-accent hover:bg-accent hover:text-surface',
-  quiet: 'border border-transparent text-fg-muted hover:text-fg',
+  default:
+    'border border-rule bg-surface-raised text-fg hover:bg-surface-tint disabled:hover:bg-surface-raised',
+  accent: 'border border-primary bg-primary text-on-primary hover:bg-primary/90',
+  quiet: 'border border-transparent text-primary hover:bg-primary/10 disabled:hover:bg-transparent',
 };
 
 const SIZE: Record<ButtonSize, string> = {
-  sm: 'px-2.5 py-1 text-label uppercase tracking-wider',
-  md: 'px-3.5 py-1.5 text-body',
+  sm: 'h-8 px-3 text-label',
+  md: 'h-9 px-4 text-body',
 };
 
 export function Button({
@@ -36,7 +37,7 @@ export function Button({
   return (
     <button
       {...rest}
-      className={`inline-flex items-center gap-1.5 rounded-sm transition-colors duration-150 ease-out-quart focus-mark disabled:opacity-40 disabled:cursor-not-allowed ${TONE[tone]} ${SIZE[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded font-semibold transition-colors duration-150 ease-out-quart focus-mark disabled:cursor-not-allowed disabled:opacity-45 ${TONE[tone]} ${SIZE[size]} ${className}`}
     >
       {children}
     </button>

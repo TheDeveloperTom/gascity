@@ -11,6 +11,7 @@ import type {
   SourceState,
 } from 'gas-city-dashboard-shared';
 import { Button } from '../components/Button';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { RelatedEntities } from '../components/RelatedEntities';
 import { BeadDetailModal } from '../components/BeadDetailModal';
@@ -156,23 +157,15 @@ export function FormulaRunDetailPage() {
       <PageHeader
         title={detail?.title ?? 'Formula Run'}
         synopsis={synopsis}
+        back={
+          <Link to="/runs" className="focus-mark rounded-sm">
+            <span aria-hidden="true">← </span>Runs
+          </Link>
+        }
         meta={
           <>
-            <Link
-              to="/runs"
-              className="focus-mark text-label uppercase tracking-wider text-fg-muted hover:text-fg"
-            >
-              Runs
-            </Link>
-            {pageError && detail && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {pageError}
-              </span>
-            )}
             {detail && (
-              <span className="text-label uppercase tracking-wider text-fg-faint tnum">
-                {snapshotLabel(detail)}
-              </span>
+              <span className="text-label text-fg-muted tnum">{snapshotLabel(detail)}</span>
             )}
             <Button
               size="sm"
@@ -185,19 +178,23 @@ export function FormulaRunDetailPage() {
         }
       />
 
+      {/* A page error while a detail is on screen (a failed refresh) is one
+          alert line under the header; without a detail it is the body below. */}
+      <PageAlerts messages={[pageError && detail ? pageError : null]} />
+
       {loading && !routeError && !detail ? (
         skeletonLane ? (
           <>
             <StageLadder stages={skeletonLane.stages} label={skeletonLane.title} />
-            <p className="text-body text-fg-muted italic mt-8">Loading run detail.</p>
+            <p className="text-body text-fg-muted mt-8">Loading run detail.</p>
           </>
         ) : warmingUnknownRun ? (
-          <p className="text-body text-fg-muted italic" role="status">
+          <p className="text-body text-fg-muted" role="status">
             This run may still be being recorded — new work can take a couple of minutes to appear —
             or it may no longer exist.
           </p>
         ) : (
-          <p className="text-body text-fg-muted italic">Loading formula run.</p>
+          <p className="text-body text-fg-muted">Loading formula run.</p>
         )
       ) : unsupported ? (
         <p className="text-body text-fg-muted" role="status">
@@ -218,21 +215,26 @@ export function FormulaRunDetailPage() {
           <RunMetadata detail={readyRun.detail} />
           <StageLadder stages={readyRun.detail.stages} label={readyRun.detail.title} />
           <FormulaRunPartialNotice detail={readyRun.detail} />
-          <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(22rem,1.05fr)]">
+          <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1.05fr)]">
             <FormulaRunDiagram
               detail={readyRun.detail}
               selectedNodeId={selectedNodeId}
               onToggleNode={toggleNode}
             />
-            <FormulaRunTabs selectedNode={selectedNode} />
+            {/* The evidence pane follows the reader down a long step list. */}
+            <div className="min-w-0 self-start lg:sticky lg:top-6">
+              <FormulaRunTabs selectedNode={selectedNode} />
+            </div>
           </div>
-          <RelatedEntities
-            view={links.view}
-            loading={links.loading}
-            error={links.error}
-            now={now}
-            onOpenBead={setViewingBeadId}
-          />
+          <div className="mt-12">
+            <RelatedEntities
+              view={links.view}
+              loading={links.loading}
+              error={links.error}
+              now={now}
+              onOpenBead={setViewingBeadId}
+            />
+          </div>
           <BeadDetailModal
             open={viewingBeadId !== null}
             onClose={() => setViewingBeadId(null)}
@@ -264,24 +266,39 @@ function identityIsAmbient(identity: ReturnType<typeof runEventIdentity>): boole
   return identity.runIds.size === 0 && identity.rootBeadIds.size === 0;
 }
 
+// One quiet metadata strip: label then value, wrapping as needed. Ids people
+// copy into `gc` (root, scope, store) are id tags.
 function RunMetadata({ detail }: { detail: FormulaRunDetailData }) {
   const formulaDetail = formulaDetailLabel(detail.formulaDetail);
   return (
-    <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+    <dl className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-rule bg-surface-raised px-4 py-3">
       <FormulaMeta formula={detail.formula} />
-      {formulaDetail !== null && <Meta label="Formula Detail" value={formulaDetail} />}
-      <Meta label="Root" value={detail.rootBeadId} />
-      <Meta label="Scope" value={`${detail.scopeKind}:${detail.scopeRef}`} />
-      <Meta label="Store" value={detail.resolvedRootStore || detail.rootStoreRef || 'unknown'} />
+      {formulaDetail !== null && <Meta label="Formula detail" value={formulaDetail} />}
+      <Meta label="Root" value={detail.rootBeadId} mono />
+      <Meta label="Scope" value={`${detail.scopeKind}:${detail.scopeRef}`} mono />
+      <Meta
+        label="Store"
+        value={detail.resolvedRootStore || detail.rootStoreRef || 'unknown'}
+        mono
+      />
     </dl>
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+const META_ITEM = 'flex min-w-0 max-w-full items-baseline gap-2';
+const META_LABEL = 'shrink-0 text-label font-medium text-fg-muted';
+
+function Meta({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div>
-      <dt className="text-label uppercase tracking-wider text-fg-faint">{label}</dt>
-      <dd className="text-body text-fg break-all tnum">{value}</dd>
+    <div className={META_ITEM}>
+      <dt className={META_LABEL}>{label}</dt>
+      <dd
+        className={`min-w-0 break-all ${
+          mono ? 'font-mono text-[0.8125rem] text-fg' : 'text-body text-fg'
+        }`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -309,17 +326,15 @@ function FormulaMeta({ formula }: { formula: FormulaRunDetailData['formula'] }) 
       return <Meta label="Formula" value={formula.name} />;
     case 'title_fallback':
       return (
-        <div>
-          <dt className="text-label uppercase tracking-wider text-fg-faint">Formula</dt>
+        <div className={META_ITEM}>
+          <dt className={META_LABEL}>Formula</dt>
           <dd
-            className="text-body text-warn break-all tnum"
+            className="min-w-0 break-all text-body text-warn"
             title={TITLE_FALLBACK_TOOLTIP}
             aria-label={`${formula.name} (${TITLE_FALLBACK_TOOLTIP})`}
           >
             {formula.name}
-            <span className="ml-2 text-label uppercase tracking-wider text-warn">
-              inferred from bead title
-            </span>
+            <span className="ml-2 text-label text-warn">inferred from bead title</span>
           </dd>
         </div>
       );
@@ -352,7 +367,7 @@ function FormulaRunPartialNotice({ detail }: { detail: FormulaRunDetailData }) {
   const reasons = pageLevelPartialReasons(detail.completeness.reasons);
   if (reasons.length === 0) return null;
   return (
-    <p className="mt-5 text-label uppercase tracking-wider text-warn" role="status">
+    <p className="mt-4 text-label text-warn" role="status">
       Partial run data: {partialReasonsLabel(reasons)}.
     </p>
   );

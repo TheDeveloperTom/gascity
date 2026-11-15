@@ -41,9 +41,10 @@ describe('BeadsPage supervisor reads', () => {
 
     expect(screen.queryByText('supervisor noise bead')).toBeNull();
     expect(fetchCalls.some((call) => call.path === '/api/city/test-city/beads')).toBe(false);
-    // The windowed read plus the dedicated in-progress leg (gp-6xd F1) —
-    // neither is the slow closed-history (all=true) path.
-    expect(beadFetches()).toHaveLength(2);
+    // The windowed read plus the dedicated in-progress leg (gp-6xd F1), plus the
+    // stage board's one rig-scoped recent-closed leg — none is the slow
+    // closed-history (all=true) path.
+    expect(beadFetches()).toHaveLength(3);
     expect(beadFetches().every((call) => call.query.has('all'))).toBe(false);
     expect(beadFetches().every((call) => call.query.has('type'))).toBe(false);
   });
@@ -78,8 +79,10 @@ describe('BeadsPage supervisor reads', () => {
 
     const dialog = await screen.findByRole('dialog');
 
-    expect(within(dialog).getByRole('heading', { name: 'direct supervisor bead' })).toBeTruthy();
-    expect(within(dialog).getByText('Dependencies')).toBeTruthy();
+    expect(
+      await within(dialog).findByRole('heading', { name: 'direct supervisor bead' }),
+    ).toBeTruthy();
+    expect(await within(dialog).findByText('Dependencies')).toBeTruthy();
     expect(within(dialog).getByText('td-parent-1')).toBeTruthy();
     expect(within(dialog).getByText(/parent bead/)).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: /view live run/i })).toBeTruthy();
@@ -101,14 +104,15 @@ describe('BeadsPage supervisor reads', () => {
     renderPage('/beads?bead=td-bead-abc123', [], { readOnly: true });
 
     const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByRole('heading', { name: 'direct supervisor bead' });
     // Scope to the bead-action group: the modal's own dismiss control also
     // carries aria-label "Close", so locate the action-row Close (its visible
     // text is exactly "Close", unlike the "×" dismiss) and assert the write
     // there is disabled. There is no operator Claim action
     // (gascity-dashboard-2j8e.8) — the human is never a bead assignee.
     const closeButton = within(dialog)
-      .getAllByRole('button', { name: /^close$/i })
-      .find((button) => button.textContent?.trim() === 'Close') as HTMLButtonElement;
+      .getAllByRole('button', { name: /^close bead…$/i })
+      .find((button) => button.textContent?.trim() === 'Close bead…') as HTMLButtonElement;
     expect(closeButton).toBeTruthy();
     const actions = closeButton.parentElement;
     expect(actions).not.toBeNull();

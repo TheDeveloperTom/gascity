@@ -13,6 +13,8 @@ import {
   COMPLETED_FORMULA,
   COMPLETED_PHASE_LABEL,
   COMPLETED_RUN_ID,
+  COMPLETED_RUN_SOURCE_ID,
+  COMPLETED_RUN_SOURCE_TITLE,
   COMPLETED_STEP_APPROVE,
   MAIL_SUBJECT,
   OPERATOR_MAIL_BODY,
@@ -51,15 +53,12 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
   }) => {
     await gotoCityRoute(page, CITY_BASE, '');
     await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
-    // The h1 "Home" renders identically in the loading, error, and
-    // runs-source-error branches, so assert seeded synopsis content that appears
-    // ONLY once the home data loaded: the city name + the status-derived active
-    // session count ("1 active sessions" = the one seeded session bead) and the
-    // census-derived running-run count ("1 running" = the in-progress anchor run).
-    await expect(
-      page.getByText('dashport-city · 1 active sessions · 1 running', { exact: false }),
-    ).toBeVisible();
-    // Dial grid: the "active sessions" instrument carries the SAME status-derived
+    // OWNER-HOME-PLAN Task 8: no synopsis; the instruments live in the closed
+    // «Usage and load» details, so open it before asserting them. The plate,
+    // «What is going on» and «City» come first.
+    await expect(page.getByRole('heading', { name: 'City', level: 2 })).toBeVisible();
+    await page.getByText('Usage and load', { exact: true }).click();
+    // Dial grid: the "active sessions" instrument carries the status-derived
     // count (1). The dial-grid renders identically empty when the home data fails,
     // so a populated instrument value proves the census/status reads wired through.
     const dials = page.getByTestId('dial-grid');
@@ -67,22 +66,10 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     await expect(dials.getByRole('link', { name: 'active sessions: 1' })).toBeVisible();
     // runs-in-flight canonical-state section carries the same run count.
     await expect(
-      page
-        .getByRole('region', { name: 'runs in flight · canonical state' })
-        .getByRole('link', { name: 'running: 1' }),
+      page.getByRole('region', { name: 'Runs by state' }).getByRole('link', { name: 'running: 1' }),
     ).toBeVisible();
-    // formula-run-progress section names the seeded run's formula — a run-summary
-    // derived instrument, empty unless the run projected.
-    await expect(
-      page
-        .getByRole('region', { name: 'formula run progress' })
-        .getByRole('link', { name: new RegExp(ANCHOR_FORMULA) }),
-    ).toBeVisible();
-    // systems section's mail lamp carries the seeded unread count (3 seeded
-    // messages), proving the status read reached the lamps.
-    await expect(
-      page.getByRole('region', { name: 'systems' }).getByRole('link', { name: /3 unread/ }),
-    ).toBeVisible();
+    // Run progress (HO-10) and the systems lamps (HO-11) are superseded by
+    // «What is going on» and the City block; Task 12 replaces their e2e pins.
     // A healthy home shows no alert; the error branches render one.
     await expect(page.getByRole('alert')).toHaveCount(0);
   });
@@ -174,7 +161,7 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     await expect(page.getByText('CPUs', { exact: true })).toBeVisible();
     await expect(page.getByText('Load (1m, 5m, 15m)')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin process', level: 2 })).toBeVisible();
-    await expect(page.getByText('Node', { exact: true })).toBeVisible();
+    await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
 
     // Source 3 — Tool versions (/api/health/local-tools). Probes the host PATH for
     // gc/bd/dolt; a CI runner may report every tool "unavailable", but the table
@@ -199,14 +186,14 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     // rig ("demo") has no on-disk .beads store, so the sampler probes it and the
     // tile renders the rig row in its DESIGNED unreachable state — a populated row
     // (the seeded rig is present) carrying the designed degraded note.
-    await expect(page.getByRole('heading', { name: 'Bead stores · per rig' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Bead stores by rig' })).toBeVisible();
     await expect(page.getByText('.beads store not found on disk')).toBeVisible();
 
     // Source 6 — Dolt-noms · 24 h (/api/city/{c}/dolt-noms/trend). The seeded
     // status reports a store_health.size_bytes, so the sampler appends a trend
     // sample and the tile renders its sparkline. POPULATED: the sparkline figure
     // is present (its aria-label is the stable handle).
-    await expect(page.getByRole('heading', { name: 'Dolt-noms · 24 h' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dolt storage, last 24 hours' })).toBeVisible();
     await expect(page.locator('[aria-label="24 hour dolt-noms size trend"]')).toBeVisible();
   });
 
@@ -256,13 +243,20 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
   test('beads reveals the completed run closed step', async ({ page }) => {
     await gotoCityRoute(page, CITY_BASE, '/beads');
     await expect(page.getByRole('heading', { name: 'Beads', level: 1 })).toBeVisible();
-    // Closed beads are hidden by default; the "closed" status chip widens the
-    // fetch (all=true) and narrows the board to closed rows. The completed run
-    // surfaces via its closed TASK step — its molecule root is filtered out of
-    // the engineering-types board (routes/Beads.tsx, supervisor/beadReads.ts).
-    // Exact id match so a longer id substring cannot satisfy it.
+    // The seeded closed beads live in the city store, which the stage board's
+    // rig-scoped recent-merges leg does not read, so the "closed" status chip
+    // widens the fetch (all=true). Stage board (2026-11-15): the completed run's
+    // step beads fold into its source task, so the card is the closed TASK in
+    // Merged, and its step line is the run's last step (approve), linked into
+    // the run. The step itself is never a card.
     await page.getByRole('button', { name: 'closed' }).click();
-    await expect(page.getByText(COMPLETED_STEP_APPROVE, { exact: true }).first()).toBeVisible();
+    const merged = page.getByRole('region', { name: 'Merged', exact: true });
+    await expect(merged.getByText(COMPLETED_RUN_SOURCE_TITLE, { exact: true })).toBeVisible();
+    await expect(merged.locator(`[title="Select ${COMPLETED_RUN_SOURCE_ID}"]`)).toBeVisible();
+    const step = merged.getByTitle(`Open step ${COMPLETED_STEP_APPROVE} in its run`);
+    await expect(step).toHaveText('approve');
+    await expect(step).toHaveAttribute('href', new RegExp(`/runs/${COMPLETED_RUN_ID}\\?`));
+    await expect(page.locator(`[title="Select ${COMPLETED_STEP_APPROVE}"]`)).toHaveCount(0);
   });
 
   test('activity renders the completed run close edges', async ({ page }) => {
@@ -376,11 +370,12 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
   });
 
   test('bead detail modal renders dependencies and closes cleanly', async ({ page }) => {
-    await gotoCityRoute(page, CITY_BASE, '/beads');
+    // Open the seeded review step, which "needs" the preflight step. Stage board
+    // (2026-11-15): route steps are never board cards, so the step opens through
+    // its deep link (?bead=, BE-16), the way a card's step line reaches it too.
+    await gotoCityRoute(page, CITY_BASE, `/beads?bead=${REVIEW_BEAD_ID}`);
     await expect(page.getByRole('heading', { name: 'Beads', level: 1 })).toBeVisible();
-    // Open the seeded review step, which "needs" the preflight step. Its row button
-    // is anchored by title so the click is unambiguous.
-    await page.locator(`[title="Select ${REVIEW_BEAD_ID}"]`).click();
+    await expect(page.locator(`[title="Select ${REVIEW_BEAD_ID}"]`)).toHaveCount(0);
     const modal = page.getByRole('dialog');
     await expect(modal.getByRole('heading', { name: REVIEW_BEAD_TITLE })).toBeVisible();
     // POPULATED BeadDependencies: the modal renders the single upstream dependency
@@ -389,9 +384,9 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     // the "No dependencies." empty branch.
     await expect(modal.getByRole('heading', { name: 'Dependencies' })).toBeVisible();
     await expect(modal.getByText(REVIEW_DEP_TARGET_ID, { exact: false })).toBeVisible();
-    // Closes cleanly — the modal leaves the DOM, no leaked error boundary. Both
-    // the header "×" (aria-label Close) and the footer "Close" action dismiss it;
-    // the header handle is first in the DOM.
+    // Closes cleanly — the modal leaves the DOM, no leaked error boundary. The
+    // header "×" (aria-label Close) dismisses it and is first in the DOM; the
+    // footer "Close bead…" action opens the close confirm instead.
     await modal.getByRole('button', { name: 'Close' }).first().click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });

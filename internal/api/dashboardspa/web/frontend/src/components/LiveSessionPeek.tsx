@@ -62,7 +62,7 @@ export function LiveSessionPeek({
             tone={badge.tone}
             label={badge.label}
             title={`Session stream: ${sessionState.stream.status}`}
-            className="text-label uppercase tracking-wider"
+            className="text-label"
           />
         </div>
       )}

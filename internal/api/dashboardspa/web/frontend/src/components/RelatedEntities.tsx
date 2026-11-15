@@ -73,10 +73,10 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
   return (
     <section className="mt-12">
       <header className="flex items-baseline justify-between mb-4 gap-3">
-        <h2 className="text-label uppercase tracking-wider text-fg-faint">Related</h2>
+        <h2 className="text-title font-semibold text-fg">Related</h2>
         <div className="flex items-baseline gap-3 min-w-0">
           {view && view.asOf && (
-            <span className="text-label uppercase tracking-wider text-fg-faint tnum shrink-0">
+            <span className="text-label text-fg-faint tnum shrink-0">
               as of {formatRelative(view.asOf, now)}
             </span>
           )}
@@ -89,20 +89,20 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
           {error}
         </p>
       ) : loading && view === null ? (
-        <p className="text-body text-fg-muted italic">Loading related entities.</p>
+        <p className="text-body text-fg-muted">Loading related entities.</p>
       ) : view === null || groups.length === 0 ? (
-        <p className="text-body text-fg-muted italic">No related entities.</p>
+        <p className="text-body text-fg-muted">No related entities.</p>
       ) : (
         <>
           {view.partial && (
-            <p className="text-label uppercase tracking-wider text-warn mb-4" role="status">
+            <p className="text-label text-warn mb-4" role="status">
               Partial: some sources did not load. Links may be incomplete.
             </p>
           )}
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="text-label uppercase tracking-wider text-fg-faint hover:text-fg focus-mark mb-4"
+            className="mb-4 text-label font-medium text-primary underline-offset-2 hover:underline focus-mark"
             aria-expanded={expanded}
           >
             {expanded ? 'Hide detail' : 'Show detail'}
@@ -136,7 +136,7 @@ function SummaryLine({
   showMark: boolean;
 }) {
   if (loading) {
-    return <span className="text-label uppercase tracking-wider text-fg-faint">·</span>;
+    return <span className="text-label text-fg-faint">·</span>;
   }
   const parts: string[] = [];
   if (counts.resolved > 0) parts.push(`${counts.resolved} resolved`);
@@ -146,11 +146,7 @@ function SummaryLine({
   // The single aggregate maroon mark (One Mark Rule): the unresolved count
   // crossing the threshold is the one loud moment in this section.
   return (
-    <span
-      className={`text-label uppercase tracking-wider tnum truncate ${
-        showMark ? 'text-accent' : 'text-fg-faint'
-      }`}
-    >
+    <span className={`text-label tnum truncate ${showMark ? 'text-accent' : 'text-fg-faint'}`}>
       {showMark && <span aria-hidden>■ </span>}
       {text}
     </span>
@@ -173,10 +169,8 @@ function RelatedGroup({
   return (
     <div>
       <header className="flex items-baseline justify-between mb-2">
-        <h3 className="text-label uppercase tracking-wider text-fg-faint">{GROUP_LABEL[type]}</h3>
-        <span className="text-label uppercase tracking-wider text-fg-faint tnum">
-          {rows.length}
-        </span>
+        <h3 className="text-label text-fg-faint">{GROUP_LABEL[type]}</h3>
+        <span className="text-label text-fg-faint tnum">{rows.length}</span>
       </header>
       <ul className="space-y-2">
         {visible.map((row) => (
@@ -188,9 +182,7 @@ function RelatedGroup({
           />
         ))}
       </ul>
-      {overflow > 0 && (
-        <p className="text-label uppercase tracking-wider text-fg-faint mt-2">+ {overflow} more</p>
-      )}
+      {overflow > 0 && <p className="text-label text-fg-faint mt-2">+ {overflow} more</p>}
     </div>
   );
 }
@@ -211,9 +203,7 @@ function RelatedRow({
 
   return (
     <li className="flex items-baseline gap-3 min-w-0">
-      <span className="text-label uppercase tracking-wider text-fg-faint shrink-0 w-20 truncate">
-        {relation}
-      </span>
+      <span className="text-label text-fg-faint shrink-0 w-20 truncate">{relation}</span>
       <span className="min-w-0 flex-1 truncate">
         <NodeLink
           node={node}
@@ -222,7 +212,7 @@ function RelatedRow({
           {...(onOpenBead !== undefined ? { onOpenBead } : {})}
         />
       </span>
-      <span className="text-label uppercase tracking-wider text-fg-faint tnum shrink-0">
+      <span className="text-label text-fg-faint tnum shrink-0">
         {node.unresolved
           ? unresolvedLabel(node)
           : node.fetchedAt
@@ -245,7 +235,7 @@ function NodeLink({
   onOpenBead?: (beadId: string) => void;
 }) {
   const className = `text-body text-left truncate min-w-0 focus-mark ${
-    dimmed ? 'text-fg-muted' : 'text-fg hover:text-accent'
+    dimmed ? 'text-fg-muted' : 'text-fg hover:text-primary'
   }`;
 
   // Beads open the modal in place; sessions/runs route; unresolved

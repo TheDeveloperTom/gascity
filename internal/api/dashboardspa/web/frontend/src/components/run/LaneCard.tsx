@@ -6,12 +6,11 @@ import { formatRelative } from '../../hooks/time';
 import { runDetailHref } from '../../supervisor/runHref';
 import { StageLadder } from './StageLadder';
 
-// Per-lane typographic row. No card chrome — vertical rhythm carries the
-// hierarchy, hairline dividers separate lanes at the RunMap level.
-// The phase label up top, the title underneath, then a glyph row for
-// stage progress (StageLadder, shared with the run-detail view), then
-// secondary metadata. Reads in greyscale: phase identity comes from
-// order + label + stage glyphs, not color.
+// One lane row inside a RunMap panel (hairline dividers between rows). The
+// phase pill and the title link lead, the updated time sits right, then the
+// stage ladder (shared with the run-detail view), then the root id,
+// assignees and status counts. Reads in greyscale: phase identity comes from
+// the pill's word + stage glyphs, not color.
 
 interface LaneCardProps {
   lane: RunLane;
@@ -54,74 +53,84 @@ export function LaneCard({ lane, now, attentionSeverity = null, blocked }: LaneC
   return (
     <li
       {...attentionProps}
-      className={`py-4 transition-colors duration-150 ease-out-quart ${attentionClassName}`}
+      className={`px-4 py-3.5 transition-colors duration-150 ease-out-quart ${attentionClassName}`}
     >
-      <div className="flex items-baseline justify-between gap-4">
-        <span className={`text-label uppercase tracking-wider ${phaseLabelTone(lane.phase)}`}>
-          {lane.phaseLabel}
-          {lane.stale && (
-            <span
-              className="ml-2 text-fg-faint"
-              title={
-                lane.staleSince
-                  ? `no activity since ${lane.staleSince}`
-                  : 'no recent activity'
-              }
-            >
-              · stale
-            </span>
-          )}
-        </span>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span
+            className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-label font-medium ${PHASE_FILL[phaseLabelTone(lane.phase)]} ${phaseLabelTone(lane.phase)}`}
+          >
+            {lane.phaseLabel}
+            {lane.stale && (
+              <span
+                className="ml-1.5 text-fg-faint"
+                title={
+                  lane.staleSince ? `no activity since ${lane.staleSince}` : 'no recent activity'
+                }
+              >
+                · stale
+              </span>
+            )}
+          </span>
+          <Link
+            to={runDetailHref(lane.id, lane.scope)}
+            className="focus-mark min-w-0 rounded-sm text-body font-medium text-fg leading-snug [overflow-wrap:anywhere] hover:text-primary hover:underline"
+          >
+            {lane.title}
+          </Link>
+        </div>
         <span
-          className="text-label uppercase tracking-wider text-fg-faint tnum tabular-nums"
+          className="shrink-0 text-label text-fg-muted tnum"
           title={lane.updatedAt.status === 'available' ? lane.updatedAt.at : lane.updatedAt.error}
         >
           {lane.updatedAt.status === 'available' ? formatRelative(lane.updatedAt.at, now) : '·'}
         </span>
       </div>
 
-      <Link
-        to={runDetailHref(lane.id, lane.scope)}
-        className="focus-mark mt-1 block text-body text-fg leading-snug hover:text-accent"
-      >
-        {lane.title}
-      </Link>
-
       {(lane.external.status !== 'unavailable' || lane.formula.status === 'known') && (
-        <div className="mt-1 flex items-baseline gap-x-4 gap-y-1 flex-wrap text-label">
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-label">
           {lane.external.status !== 'unavailable' &&
             (lane.external.status === 'available' ? (
               <a
                 href={lane.external.url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-fg-muted uppercase tracking-wider hover:text-fg focus-mark"
+                className="rounded-sm font-medium text-primary underline-offset-2 hover:underline focus-mark"
               >
                 {lane.external.label}
               </a>
             ) : (
-              <span className="text-fg-muted uppercase tracking-wider">{lane.external.label}</span>
+              <span className="font-medium text-fg-muted">{lane.external.label}</span>
             ))}
           {lane.formula.status === 'known' && (
-            <span className="text-fg-faint tnum">{lane.formula.name}</span>
+            <span className="text-fg-muted">{lane.formula.name}</span>
           )}
         </div>
       )}
 
       <StageLadder stages={lane.stages} label={lane.title} />
 
-      <div className="mt-2 flex items-baseline gap-x-4 gap-y-1 flex-wrap text-label">
-        <span className="text-fg-faint tnum" title="run root bead">
+      <div className="mt-2 flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1 text-label text-fg-muted">
+        <span className={ID_TAG} title="run root bead">
           {lane.id}
         </span>
         {lane.activeAssignees.length > 0 && (
-          <span className="text-fg-muted lowercase tracking-normal">
-            <span className="uppercase tracking-wider text-fg-faint">on </span>
-            {lane.activeAssignees.join(', ')}
+          <span className="flex min-w-0 max-w-full items-baseline gap-1">
+            <span className="shrink-0 text-fg-faint">on</span>
+            {lane.activeAssignees.map((assignee, index) => (
+              <span
+                key={assignee}
+                className={`${ID_TAG} inline-block min-w-0 max-w-[16rem] truncate align-bottom`}
+                title={assignee}
+              >
+                {assignee}
+                {index < lane.activeAssignees.length - 1 ? ',' : ''}
+              </span>
+            ))}
           </span>
         )}
         {statusEntries.length > 0 && (
-          <span className="text-fg-faint uppercase tracking-wider tnum tabular-nums">
+          <span className="tnum">
             {statusEntries
               .map(([status, count]) => `${count} ${status.replace(/_/g, ' ')}`)
               .join(' · ')}
@@ -130,7 +139,7 @@ export function LaneCard({ lane, now, attentionSeverity = null, blocked }: LaneC
       </div>
 
       {blocked !== undefined && (
-        <div className="mt-2">
+        <div className="mt-2.5">
           <p className="text-body text-fg leading-snug">
             <span aria-hidden="true" className="text-accent">
               ✕
@@ -143,6 +152,17 @@ export function LaneCard({ lane, now, attentionSeverity = null, blocked }: LaneC
     </li>
   );
 }
+
+// Copyable identifiers (run root, sessions) are id tags (DESIGN-PLAN §7).
+const ID_TAG = 'font-mono text-[0.8125rem] text-fg-muted';
+
+// The phase pill's fill. The tone class itself (text-accent / text-fg-muted /
+// text-fg) stays on the pill, so the complete-phase pin keeps holding.
+const PHASE_FILL: Record<ReturnType<typeof phaseLabelTone>, string> = {
+  'text-accent': 'bg-accent/10',
+  'text-fg-muted': 'bg-fg/[0.06]',
+  'text-fg': 'bg-surface-tint',
+};
 
 function statusSortKey(status: string): string {
   const order: Record<string, string> = {

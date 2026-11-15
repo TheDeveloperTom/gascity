@@ -1,19 +1,27 @@
 import type { ReactNode } from 'react';
+import { StatusShape } from './icons';
 
-// Status is always carried by glyph + word + color, in that order of
-// importance. Strip color (the greyscale test) and the badge still
-// reads. Per DESIGN.md §Status, never the primary signal — always
-// paired.
+// Status is a street signal: shape + word + colour, in that order of
+// importance. Strip colour (the greyscale test) and the badge still reads.
+// The pill is the default; `inline` drops the fill and padding so the badge
+// can sit inside a sentence. The tone colour lives on the root only, so the
+// One Mark Rule counts (`.text-accent`) do not change.
 
 export type StatusTone = 'ok' | 'warn' | 'stuck' | 'neutral';
 
 interface StatusBadgeProps {
   tone: StatusTone;
   label: ReactNode;
-  /** Override the default glyph for this tone. */
+  /** Override the default shape with a text glyph (e.g. `◐`). */
   glyph?: ReactNode;
-  /** Extra trailing meta (e.g. " · att" for attached sessions). */
+  /** Extra trailing meta (e.g. "attached"). */
   trailing?: ReactNode;
+  /** `pill` (default) or `inline` for use inside a sentence. */
+  variant?: 'pill' | 'inline';
+  /** Let a sentence-length label wrap instead of truncating (notices, warnings). */
+  wrap?: boolean;
+  /** `sm` (default) is the label-size pill; `md` is the body-size overview pill. */
+  size?: 'sm' | 'md';
   className?: string;
   title?: string;
 }
@@ -25,11 +33,11 @@ const TONE_COLOR: Record<StatusTone, string> = {
   neutral: 'text-fg-muted',
 };
 
-const TONE_GLYPH: Record<StatusTone, string> = {
-  ok: '●', // ●
-  warn: '▲', // ▲
-  stuck: '■', // ■
-  neutral: '·', // ·
+const TONE_FILL: Record<StatusTone, string> = {
+  ok: 'bg-ok/10',
+  warn: 'bg-warn/10',
+  stuck: 'bg-accent/10',
+  neutral: 'bg-fg/[0.06]',
 };
 
 export function StatusBadge({
@@ -37,21 +45,38 @@ export function StatusBadge({
   label,
   glyph,
   trailing,
+  variant = 'pill',
+  wrap = false,
+  size = 'sm',
   className = '',
   title,
 }: StatusBadgeProps) {
+  const pad = size === 'md' ? 'px-3 py-1' : 'px-2 py-0.5';
+  const text = size === 'md' ? 'text-body' : 'text-label';
+  const shape = variant === 'pill' ? `rounded-full ${pad} ${TONE_FILL[tone]}` : '';
+  // Wrapping labels top-align the 8 px shape with the first line (18 px line box).
+  const align = wrap ? 'items-start' : 'items-center';
+  const markOffset = wrap ? 'mt-[5px]' : '';
   return (
     <span
-      className={`inline-flex items-baseline gap-1.5 text-body ${TONE_COLOR[tone]} ${className}`}
-      title={title}
+      className={`inline-flex max-w-full ${align} gap-1.5 align-middle ${text} font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
+      // A text label can be cut by `truncate` in a narrow cell; the title
+      // keeps the full word one hover away. An explicit title wins.
+      title={title ?? (typeof label === 'string' ? label : undefined)}
     >
-      <span aria-hidden className="text-[0.85em] leading-none translate-y-[1px]">
-        {glyph ?? TONE_GLYPH[tone]}
-      </span>
-      <span>{label}</span>
-      {trailing && (
-        <span className="text-fg-faint text-label uppercase tracking-wider">{trailing}</span>
+      {glyph !== undefined ? (
+        <span aria-hidden="true" className={`leading-none ${markOffset}`}>
+          {glyph}
+        </span>
+      ) : (
+        <StatusShape tone={tone} className={markOffset} />
       )}
+      <span
+        className={wrap ? 'min-w-0 whitespace-normal [overflow-wrap:anywhere]' : 'min-w-0 truncate'}
+      >
+        {label}
+      </span>
+      {trailing && <span className="shrink-0 text-fg-muted">{trailing}</span>}
     </span>
   );
 }

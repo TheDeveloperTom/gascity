@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { CityBootstrap } from './CityBootstrap';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { LocaleProvider } from './i18n/LocaleProvider';
 import 'react-diff-view/style/index.css';
 import './styles/index.css';
 
@@ -15,10 +16,12 @@ if (!root) throw new Error('missing #root');
 // the app keeps using city-relative absolute links unchanged.
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <ThemeProvider>
-      <ErrorBoundary>
-        <CityBootstrap />
-      </ErrorBoundary>
-    </ThemeProvider>
+    <LocaleProvider>
+      <ThemeProvider>
+        <ErrorBoundary>
+          <CityBootstrap />
+        </ErrorBoundary>
+      </ThemeProvider>
+    </LocaleProvider>
   </React.StrictMode>,
 );

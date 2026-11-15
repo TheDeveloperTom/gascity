@@ -20,17 +20,17 @@ export function BeadDependencies({ node, onOpenBead }: BeadDependenciesProps) {
 
   return (
     <section>
-      <h3 className="text-label uppercase tracking-wider text-fg-faint mb-3">Dependencies</h3>
+      <h3 className="mb-2 text-label font-semibold text-fg-muted">Dependencies</h3>
       {!hasAny ? (
-        <p className="text-body text-fg-muted italic">No dependencies.</p>
+        <p className="text-body text-fg-muted">No dependencies.</p>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {deps.length > 0 && (
             <div>
-              <p className="text-label uppercase tracking-wider text-fg-muted mb-2">
+              <p className="mb-1.5 text-label font-medium text-fg-muted">
                 Needs <span className="tnum">{deps.length}</span>
               </p>
-              <ul className="space-y-1">
+              <ul className="space-y-1.5">
                 {deps.map((dep) => (
                   <DepLine
                     key={`needs-${dep.id}`}
@@ -45,10 +45,10 @@ export function BeadDependencies({ node, onOpenBead }: BeadDependenciesProps) {
           )}
           {blocks.length > 0 && (
             <div>
-              <p className="text-label uppercase tracking-wider text-fg-muted mb-2">
+              <p className="mb-1.5 text-label font-medium text-fg-muted">
                 Blocks <span className="tnum">{blocks.length}</span>
               </p>
-              <ul className="space-y-1">
+              <ul className="space-y-1.5">
                 {blocks.map((b) => (
                   <DepLine
                     key={`blocks-${b.bead.id}`}
@@ -79,10 +79,8 @@ interface DepLineProps {
 function DepLine({ relation, targetId, targetTitle, onOpenBead }: DepLineProps) {
   const label = (
     <>
-      {relation && (
-        <span className="text-label uppercase tracking-wider text-fg-faint">{relation} </span>
-      )}
-      <span className="tnum text-fg-muted">{targetId}</span>
+      {relation && <span className="text-label text-fg-faint">{relation} </span>}
+      <span className="font-mono text-[0.8125rem] text-fg-muted">{targetId}</span>
       {targetTitle && <span className="text-fg"> · {targetTitle}</span>}
     </>
   );
@@ -93,14 +91,14 @@ function DepLine({ relation, targetId, targetTitle, onOpenBead }: DepLineProps) 
         <button
           type="button"
           onClick={() => onOpenBead(targetId)}
-          className="text-left text-fg-muted hover:text-fg focus-mark rounded-sm"
+          className="rounded-sm text-left text-fg hover:text-primary hover:underline focus-mark"
           title={`Open ${targetId}`}
         >
           {label}
         </button>
       ) : (
         <span title="Outside the fetched window">
-          {label} <span className="text-warn text-label uppercase tracking-wider">unresolved</span>
+          {label} <span className="text-label text-warn">unresolved</span>
         </span>
       )}
     </li>

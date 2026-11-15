@@ -17,18 +17,21 @@ export function FormulaRunDiagram({
 
   if (nodes.length === 0) {
     return (
-      <p className="text-body text-fg-muted italic">
+      <p className="text-body text-fg-muted">
         No graph nodes have materialized for this formula run.
       </p>
     );
   }
 
   return (
-    <section aria-label="Formula run graph">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-title text-fg">Formula Graph</h2>
+    <section
+      aria-label="Formula run graph"
+      className="min-w-0 rounded-lg border border-rule bg-surface-raised"
+    >
+      <div className="flex items-baseline justify-between gap-4 border-b border-rule px-4 py-3">
+        <h2 className="text-title font-semibold text-fg">Steps</h2>
       </div>
-      <ol className="mt-5 space-y-3 relative">
+      <ol className="relative space-y-3 p-4">
         {nodes.map((node, index) => {
           const laneLabel = laneLabels.get(node.id);
           const previousLaneLabel =
@@ -37,7 +40,7 @@ export function FormulaRunDiagram({
           return (
             <li key={node.id} className="relative pl-6">
               {showLaneLabel && (
-                <p className="mb-1 text-label uppercase tracking-wider text-fg-faint">
+                <p className="mb-1.5 text-label font-medium text-fg-muted [overflow-wrap:anywhere]">
                   {laneLabel}
                 </p>
               )}

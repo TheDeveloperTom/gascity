@@ -30,7 +30,7 @@ export function SortToggle<M extends string>({
       aria-label={ariaLabel ?? legend}
       className="flex items-baseline gap-2 text-label"
     >
-      <span className="uppercase tracking-wider text-fg-faint">{legend}</span>
+      <span className="text-fg-muted">{legend}</span>
       <div className="flex items-baseline gap-1">
         {options.map((opt, idx) => {
           const active = opt.id === value;

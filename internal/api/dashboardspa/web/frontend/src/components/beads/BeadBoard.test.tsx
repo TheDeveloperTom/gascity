@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BeadStatus } from 'gas-city-dashboard-shared';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { buildBeadGraph } from '../../lib/beadGraph';
+import { buildRouteIndex, buildStageColumns } from '../../lib/stageBoard';
 import { assertAtMostOneMark } from '../../test/assertions/oneMarkRule';
 import { BeadBoard } from './BeadBoard';
 
@@ -34,30 +36,34 @@ function renderBoard(
   selectedId: string | null = null,
   onSelect = vi.fn(),
 ) {
+  // Stage board (2026-11-15): columns are route stages, derived per task.
   const graph = buildBeadGraph(beads);
+  const columns = buildStageColumns(graph.nodes.values(), buildRouteIndex([]), new Map());
   const result = render(
-    <BeadBoard columns={graph.columns} selectedId={selectedId} onSelect={onSelect} />,
+    <MemoryRouter>
+      <BeadBoard columns={columns} selectedId={selectedId} onSelect={onSelect} />
+    </MemoryRouter>,
   );
   return { ...result, onSelect };
 }
 
 describe('BeadBoard', () => {
-  it('renders every status column as a labelled section', () => {
+  it('renders every stage column as a labelled section', () => {
     renderBoard([bead('A', 'open')]);
-    for (const label of ['ready', 'open', 'in progress', 'blocked', 'done']) {
+    for (const label of ['Waiting', 'Working', 'Review', 'PR', 'Merged']) {
       expect(screen.getByRole('region', { name: label })).toBeTruthy();
     }
   });
 
-  it('places a bead under the column its status maps to', () => {
+  it('places a routeless bead under the stage its status maps to', () => {
     renderBoard([
       bead('A', 'in_progress', { title: 'live one' }),
       bead('Z', 'closed', { title: 'finished one' }),
     ]);
-    const inProgress = screen.getByRole('region', { name: 'in progress' });
-    expect(within(inProgress).getByText('live one')).toBeTruthy();
-    const done = screen.getByRole('region', { name: 'done' });
-    expect(within(done).getByText('finished one')).toBeTruthy();
+    const working = screen.getByRole('region', { name: 'Working' });
+    expect(within(working).getByText('live one')).toBeTruthy();
+    const merged = screen.getByRole('region', { name: 'Merged' });
+    expect(within(merged).getByText('finished one')).toBeTruthy();
   });
 
   it('calls onSelect when a bead is clicked', () => {
@@ -87,14 +93,15 @@ describe('BeadBoard', () => {
 
   it('keeps dependency neighbourhoods row-scoped while the selected row remains clickable', () => {
     const onSelect = vi.fn();
-    // A is closed (done column); B needs A so B is ready (ready column). The
-    // board row carries only the compact neighbourhood summary; the full
-    // navigable dependency tree lives in the bead detail modal.
+    // A is closed (Merged); B needs A so B is ready and waits (Waiting, with a
+    // `ready` mark). The board row carries only the compact neighbourhood
+    // summary; the full navigable dependency tree lives in the bead detail modal.
     renderBoard([bead('A', 'closed'), bead('B', 'open', { needs: ['A'] })], 'B', onSelect);
-    const ready = screen.getByRole('region', { name: 'ready' });
-    expect(within(ready).getByText(/needs 1/)).toBeTruthy();
-    expect(within(ready).queryByTitle('Select A')).toBeNull();
-    fireEvent.click(within(ready).getByTitle('Select B'));
+    const waiting = screen.getByRole('region', { name: 'Waiting' });
+    expect(within(waiting).getByText(/needs 1/)).toBeTruthy();
+    expect(within(waiting).getByText('ready')).toBeTruthy();
+    expect(within(waiting).queryByTitle('Select A')).toBeNull();
+    fireEvent.click(within(waiting).getByTitle('Select B'));
     expect(onSelect).toHaveBeenCalledWith('B');
   });
 
@@ -104,7 +111,7 @@ describe('BeadBoard', () => {
     expect(screen.getAllByText('unresolved').length).toBeGreaterThan(0);
   });
 
-  it('keeps the board to at most one maroon mark (the blocked count)', () => {
+  it('keeps the board to at most one maroon mark', () => {
     const { container } = renderBoard([
       bead('A', 'blocked'),
       bead('B', 'in_progress'),
@@ -113,11 +120,12 @@ describe('BeadBoard', () => {
     assertAtMostOneMark(container);
   });
 
-  it('does not carry status in colour alone — every column is a named heading', () => {
-    // Greyscale Test: the status of a bead is readable from the column
-    // heading it sits under, not from a per-row colour.
+  it('does not carry status in colour alone — stage is the heading, blocked is a word', () => {
+    // Greyscale Test: the stage of a bead is readable from the column heading
+    // it sits under; a blocked bead also says so in words.
     renderBoard([bead('A', 'blocked', { title: 'stuck one' })]);
-    const blocked = screen.getByRole('region', { name: 'blocked' });
-    expect(within(blocked).getByText('stuck one')).toBeTruthy();
+    const waiting = screen.getByRole('region', { name: 'Waiting' });
+    expect(within(waiting).getByText('stuck one')).toBeTruthy();
+    expect(within(waiting).getByText('blocked')).toBeTruthy();
   });
 });
