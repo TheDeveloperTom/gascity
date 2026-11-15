@@ -9,7 +9,16 @@ import { createAttentionContributors } from '../attention/registry';
 import { invalidate } from '../api/cache';
 import { setLocale } from '../i18n';
 import type { RunSummarySubscription } from '../runs/runSummarySubscription';
+import { needsFromBoard, type NeedsModel } from '../lib/needsFromMe';
+import { NOW_MS, needsBoard } from '../vk/needs/needsFixture';
 import { CockpitHomePage } from './CockpitHome';
+
+const EMPTY_NEEDS: NeedsModel = { state: 'ready', needs: [], quiet: [] };
+const needsModel = vi.hoisted(() => ({ current: undefined as unknown }));
+vi.mock('../lib/needsFromMe', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
+  useNeedsModel: () => needsModel.current,
+}));
 
 const mocks = vi.hoisted(() => ({
   cityUsage: vi.fn(),
@@ -72,6 +81,7 @@ function home(
 
 describe('<CockpitHomePage> owner home', () => {
   beforeEach(() => {
+    needsModel.current = EMPTY_NEEDS;
     invalidate('cockpit:');
     mocks.cityUsage.mockReset().mockRejectedValue(new Error('down'));
     mocks.runCensus.mockReset().mockRejectedValue(new Error('down'));
@@ -104,17 +114,12 @@ describe('<CockpitHomePage> owner home', () => {
     setLocale('en');
   });
 
-  it('order is plate, tasks, city, usage', () => {
+  it('order is needs, at work, quiet, city, usage', () => {
     const { container } = home();
     const order = Array.from(container.querySelectorAll('h2, details > summary'))
       .filter((el) => el.tagName === 'SUMMARY' || el.closest('details') === null)
-      .map((el) => el.textContent);
-    expect(order).toEqual([
-      'Nothing waits for you right now.',
-      'What is going on',
-      'City',
-      'Usage and load',
-    ]);
+      .map((el) => el.textContent?.trim());
+    expect(order).toEqual(['Needs from me 0', 'At work', 'Quiet', 'City', 'Usage and load']);
   });
 
   it('usage details closed by default and holds dial-grid', () => {
@@ -130,23 +135,22 @@ describe('<CockpitHomePage> owner home', () => {
     const { container } = home();
     expect(container.textContent).not.toContain('active sessions ·');
     expect(container.textContent).not.toContain('tokens today');
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Home');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Needs from me');
   });
 
-  it('ru renders Главная and the plate sentence', () => {
+  it('ru renders «Нужно от меня» and the all-clear', () => {
     setLocale('ru');
     home();
-    expect(screen.getByRole('heading', { level: 1, name: 'Главная' })).toBeTruthy();
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Сейчас вас ничего не ждёт' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Нужно от меня' })).toBeTruthy();
+    expect(screen.getByText('Сейчас от тебя ничего не нужно.')).toBeTruthy();
     expect(screen.getByText('Расход и нагрузка')).toBeTruthy();
   });
 
-  it('only owner items reach the plate', async () => {
+  it('the needs shelf counts the needs model; city items stay in the city strip', async () => {
     setLocale('ru');
+    needsModel.current = needsFromBoard(needsBoard(), [], [], NOW_MS);
     home([ownerItem, ...Array.from({ length: 40 }, (_, i) => cityItem(i))]);
-    expect(screen.getByRole('heading', { level: 2, name: 'Вас ждёт 1 дело' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Нужно от меня 4' })).toBeTruthy();
     const problems = screen.getByText('Неполадки', { selector: 'dt' })
       .nextElementSibling as HTMLElement;
     expect(problems.querySelector('[data-count]')?.textContent).toBe('40');
@@ -194,9 +198,11 @@ describe('<CockpitHomePage> owner home', () => {
     expect(screen.queryByText('Task store maintenance failed')).toBeNull();
   });
 
-  it('plate stays loading while the owner reads are pending', () => {
+  it('needs stay loading while the board read is pending', () => {
+    needsModel.current = { state: 'loading', needs: [], quiet: [] };
     home([], { state: 'loading' });
-    expect(screen.queryByText(/Nothing waits/)).toBeNull();
-    expect(screen.getByText('Checking whether anything waits for you…')).toBeTruthy();
+    expect(screen.queryByText(/Nothing needs you/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Needs from me' })).toBeTruthy();
+    expect(screen.getAllByText('Reading the board…').length).toBeGreaterThan(0);
   });
 });

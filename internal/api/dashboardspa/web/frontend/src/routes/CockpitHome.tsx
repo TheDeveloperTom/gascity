@@ -21,8 +21,8 @@ import {
 import { burnPerHour, pipelineSegments, tokensPerMinute } from '../components/cockpit/model';
 import { Button } from '../components/Button';
 import { CityStrip, type CityAgents } from '../components/home/CityStrip';
-import { OwnerPlate } from '../components/home/OwnerPlate';
-import { TasksInFlight } from '../components/home/TasksInFlight';
+import { useNeedsModel } from '../lib/needsFromMe';
+import { NeedsShelves } from '../vk/needs/Shelf';
 import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
 import { useCachedData } from '../hooks/useCachedData';
@@ -55,6 +55,7 @@ export function CockpitHomePage() {
   );
   const attention = useAttentionModel();
   const taskStages = useTaskStages();
+  const needs = useNeedsModel();
 
   usePoll(usageState.refresh, usageState.loading, pausedRef);
   usePoll(statusState.refresh, statusState.loading, pausedRef);
@@ -222,11 +223,12 @@ export function CockpitHomePage() {
   // closed «Расход и нагрузка», unchanged inside (test ids, notes, names).
   return (
     <section>
-      <PageHeader title={t('Home')} />
+      <PageHeader title={t('Needs from me')} />
 
-      <OwnerPlate items={attention.owner.items} readiness={attention.ownerReadiness} />
-
-      <TasksInFlight stages={taskStages} />
+      {/* vk lane 3: «Нужно от меня», «Работает», «Тихо» (Attention / Phone-Needs). */}
+      <div className="mb-10 min-w-0">
+        <NeedsShelves model={needs} stages={taskStages} />
+      </div>
 
       <CityStrip
         agents={cityAgents}
