@@ -30,6 +30,11 @@ export function NowProvider({ children, intervalMs = 1000 }: NowProviderProps) {
   return <NowContext.Provider value={now}>{children}</NowContext.Provider>;
 }
 
+/** The shared tick when a NowProvider is above, else null (callers fall back to Date.now()). */
+export function useNowOrNull(): number | null {
+  return useContext(NowContext);
+}
+
 export function useNow(): number {
   const value = useContext(NowContext);
   if (value === null) {

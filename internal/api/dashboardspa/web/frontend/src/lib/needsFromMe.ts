@@ -4,6 +4,8 @@ import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
 import type { AttentionItem } from '../attention/compose';
 import { useAttentionModel } from '../attention/context';
 import { useBoardData } from '../hooks/useBoardData';
+import { usePeerBoards } from '../hooks/usePeerBoards';
+import { topicNeedsOf } from './peerTopics';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
@@ -249,7 +251,14 @@ export function useNeedsModel(): NeedsModel {
   );
 }
 
-/** Count for the red «Нужно от меня» badge (top nav and phone tab). */
+/**
+ * Count for the red «Нужно от меня» badge (top nav and phone tab). vk-final:
+ * plus every paused Mayor topic («Мэры не договорились — нужен человек»).
+ * Peer cards never count (SYNC-PLAN review focus 2).
+ */
 export function useNeedsFromMeCount(): number {
-  return useNeedsModel().count;
+  const own = useNeedsModel().count;
+  const { result } = usePeerBoards();
+  const paused = useMemo(() => topicNeedsOf(result, Date.now()).filter((n) => n.counts).length, [result]);
+  return own + paused;
 }

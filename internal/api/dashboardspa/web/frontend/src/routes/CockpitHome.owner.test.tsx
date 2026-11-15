@@ -12,12 +12,21 @@ import type { RunSummarySubscription } from '../runs/runSummarySubscription';
 import { needsFromBoard, type NeedsModel } from '../lib/needsFromMe';
 import { NOW_MS, needsBoard } from '../vk/needs/needsFixture';
 import { CockpitHomePage } from './CockpitHome';
+import { parsePeerBoards } from '../supervisor/peerBoardReads';
+import { peerBody, peerTopics } from '../test/fixtures/peerBoards';
 
 const EMPTY_NEEDS: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0 };
 const needsModel = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../lib/needsFromMe', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
   useNeedsModel: () => needsModel.current,
+}));
+
+// vk-final part 4: the peer boards (topics) come from the shared poller.
+const peerBoards = vi.hoisted(() => ({ result: null as unknown }));
+vi.mock('../hooks/usePeerBoards', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/usePeerBoards')>()),
+  usePeerBoards: () => ({ sources: [], error: null, result: peerBoards.result }),
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -112,6 +121,15 @@ describe('<CockpitHomePage> owner home', () => {
   afterEach(() => {
     cleanup();
     setLocale('en');
+  });
+
+  it('a paused Mayor topic is listed under «Нужно от меня» (vk-final)', () => {
+    peerBoards.result = parsePeerBoards(peerBody({ topics: peerTopics() }));
+    setLocale('ru');
+    home();
+    const section = screen.getByRole('region', { name: 'Обсуждения Мэров' });
+    expect(within(section).getByRole('link', { name: /Кто обновляет Node 24/ })).toBeTruthy();
+    peerBoards.result = null;
   });
 
   it('order is needs, at work, quiet, city, usage', () => {

@@ -14,6 +14,7 @@ import { asOfClock, boardSourcesOf, type OwnerFilter, type PeerBoardSource } fro
 import { usePeerBoards } from '../hooks/usePeerBoards';
 import type { PeerCard, PeerThread } from '../supervisor/peerBoardReads';
 import { PeerComments, threadSize } from '../vk/comments/PeerComments';
+import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
 import type { BoardCard } from '../lib/boardModel';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
@@ -243,6 +244,34 @@ export function BeadsPage() {
     }
     return byKey;
   }, [peerBoards.result]);
+  // Part 4: Mayor topics with a peer city. `?topics=<login>` opens the panel,
+  // `&topic=<id>` the thread (links from «Нужно от меня»).
+  const topicsLogin = normalizeSelectedBeadParam(searchParams.get('topics'));
+  const topicParam = normalizeSelectedBeadParam(searchParams.get('topic'));
+  const setTopicsParams = useCallback(
+    (login: string | null, topicId: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (login === null) next.delete('topics');
+          else next.set('topics', login);
+          if (topicId === null) next.delete('topic');
+          else next.set('topic', topicId);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const topicsPeer = useMemo(
+    () => (topicsLogin === null ? null : (peerSources.find((p) => p.login === topicsLogin) ?? null)),
+    [peerSources, topicsLogin],
+  );
+  const topicsOf = useCallback(
+    (login: string) => peerBoards.result?.peers.find((p) => p.login === login)?.topics ?? [],
+    [peerBoards.result],
+  );
   const commentCountOf = useCallback(
     (card: BoardCard) => (card.peer === null ? 0 : threadSize(peerThreads.get(card.key))),
     [peerThreads],
@@ -407,6 +436,30 @@ export function BeadsPage() {
           newTaskUrl={mayorChannelUrl()}
           plannedEmpty={plannedEmpty}
         />
+        {peerSources.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {peerSources.map((peer) => {
+              const topics = topicsOf(peer.login);
+              const attention = topics.filter((tp) => tp.status === 'needs_human' || tp.unreadCount > 0).length;
+              return (
+                <button
+                  key={peer.owner}
+                  type="button"
+                  onClick={() => setTopicsParams(peer.login, null)}
+                  className="inline-flex h-11 items-center gap-2 rounded-[3px] border border-vk-border bg-vk-bg-primary px-2.5 font-vk-sans text-[15px] text-vk-text-high focus-mark md:h-8"
+                >
+                  <span aria-hidden="true" className="h-3.5 w-0.5 bg-vk-peer" />
+                  {t('Topics with {owner} city', { owner: peer.label })}
+                  {attention > 0 && (
+                    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-vk-brand-secondary px-[5px] text-[11px] font-semibold text-vk-on-brand tnum">
+                      {attention}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {peerSources
           .filter((peer) => peer.stale)
           .map((peer) => (
@@ -470,6 +523,18 @@ export function BeadsPage() {
             {t('Runs')}
           </Link>
         </p>
+      )}
+
+      {topicsPeer !== null && (
+        <TopicsPanel
+          open
+          onClose={() => setTopicsParams(null, null)}
+          peer={topicsPeer}
+          topics={topicsOf(topicsPeer.login)}
+          selectedTopicId={topicParam}
+          onSelectTopic={(id) => setTopicsParams(topicsPeer.login, id)}
+          nowMs={nowMs}
+        />
       )}
 
       {selectedPeer !== null && (

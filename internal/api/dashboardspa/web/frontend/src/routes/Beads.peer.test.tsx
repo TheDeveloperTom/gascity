@@ -12,7 +12,7 @@ import { LocaleProvider } from '../i18n/LocaleProvider';
 import { resetPeerBoardsForTests } from '../hooks/usePeerBoards';
 import { useNeedsFromMeCount } from '../lib/needsFromMe';
 import type { SupervisorBead } from '../supervisor/beadReads';
-import { peerBody, peerThread } from '../test/fixtures/peerBoards';
+import { peerBody, peerThread, peerTopics } from '../test/fixtures/peerBoards';
 
 // vk-final part 3 (SYNC-PLAN Task 5): Richard's board is a second, read-only
 // source. Review focus 1 and 2: the same id on both boards stays two cards,
@@ -99,10 +99,10 @@ function NeedsCount() {
   return null;
 }
 
-function renderPage() {
+function renderPage(entry = '/beads') {
   return render(
     <LocaleProvider>
-      <MemoryRouter initialEntries={['/beads']}>
+      <MemoryRouter initialEntries={[entry]}>
         <NowProvider intervalMs={1_000_000}>
           <OperatorConfigProvider
             operator={{ operatorAlias: 'owner', operatorWireAlias: 'human', decisionLabel: 'x' }}
@@ -176,6 +176,30 @@ describe('BeadsPage with Richard’s board', () => {
     renderPage();
     await screen.findByText('Изменение схемы users');
     await waitFor(() => expect(needsCount).toBe(0));
+  });
+
+  it('a paused Mayor topic («нужен человек») counts in «Нужно от меня»; unread alone does not', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }));
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    await waitFor(() => expect(needsCount).toBe(1));
+  });
+
+  it('«Обсуждения с городом Ричарда» opens the topics; ?topics=&topic= opens one directly', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }));
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    const open = screen.getByRole('button', { name: /Обсуждения с городом Ричарда/ });
+    // one paused + one unread need attention
+    expect(open.textContent).toContain('2');
+    fireEvent.click(open);
+    const dialog = await screen.findByRole('dialog', { name: 'Обсуждения Мэров' });
+    expect(within(dialog).getByText('Перезагрузка общего CI в 22:00')).toBeTruthy();
+    cleanup();
+    resetPeerBoardsForTests();
+    renderPage('/beads?topics=rich&topic=tp-cccccccccccccccccccc');
+    const direct = await screen.findByRole('dialog', { name: 'Обсуждения Мэров' });
+    expect(within(direct).getByRole('heading', { name: 'Ключ Clerk' })).toBeTruthy();
   });
 
   it('a snapshot older than stale_after_seconds shows «Мак Ричарда не на связи с HH:MM»', async () => {

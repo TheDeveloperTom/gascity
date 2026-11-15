@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { getActiveCity } from '../api/cityBase';
-import { useNow } from '../contexts/NowContext';
+import { useNowOrNull } from '../contexts/NowContext';
 import { peerSourcesOf, type PeerBoardSource } from '../lib/boardOwner';
 import { listPeerBoards, type PeerBoardsResult } from '../supervisor/peerBoardReads';
 
@@ -11,6 +11,7 @@ import { listPeerBoards, type PeerBoardsResult } from '../supervisor/peerBoardRe
 // refreshPeerBoards() so its result shows at once.
 
 export const PEER_BOARDS_POLL_MS = 30_000;
+const STALE_STEP_MS = 15_000;
 
 export interface PeerBoardsState {
   sources: readonly PeerBoardSource[];
@@ -108,8 +109,14 @@ export function usePeerBoards(): PeerBoardsState {
   useEffect(() => {
     if (snap.city !== null && snap.city !== city) void refreshPeerBoards();
   }, [snap.city, city]);
-  const nowMs = useNow();
+  // Staleness moves in 15 s steps, so the 1 s app tick never rebuilds the
+  // board model; the sources keep their identity between steps.
+  const tick = useNowOrNull() ?? Date.now();
+  const bucket = Math.floor(tick / STALE_STEP_MS);
   const result = snap.city === city ? snap.result : null;
-  const sources = useMemo(() => (result === null ? NONE : peerSourcesOf(result, nowMs)), [result, nowMs]);
+  const sources = useMemo(
+    () => (result === null ? NONE : peerSourcesOf(result, bucket * STALE_STEP_MS)),
+    [result, bucket],
+  );
   return { sources, error: snap.city === city ? snap.error : null, result };
 }

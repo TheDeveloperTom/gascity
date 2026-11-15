@@ -4,8 +4,9 @@ import { Link } from 'react-router';
 import { TasksInFlight } from '../../components/home/TasksInFlight';
 import { FoldList } from '../../components/FoldList';
 import type { TaskStages } from '../../hooks/useTaskStages';
-import { t } from '../../i18n';
+import { t, tn } from '../../i18n';
 import type { NeedsModel } from '../../lib/needsFromMe';
+import type { TopicNeed } from '../../lib/peerTopics';
 import { NeedItem } from './NeedItem';
 
 // «Нужно от меня» (vk lane 3, Attention / Phone-Needs frames): three shelves,
@@ -61,7 +62,57 @@ function Status({ children }: { children: ReactNode }) {
   return <p className="py-2 text-body text-vk-text-low">{children}</p>;
 }
 
-export function NeedsShelves({ model, stages }: { model: NeedsModel; stages: TaskStages }) {
+/** vk-final part 4: Mayor topics that need the owner (paused) or have unread messages. */
+function TopicNeeds({ needs }: { needs: readonly TopicNeed[] }) {
+  const headId = useId();
+  return (
+    <section aria-labelledby={headId} className="mt-4 min-w-0">
+      <h3 id={headId} className="pb-2 text-label font-semibold text-vk-text-low">
+        {t('Mayor topics')}
+      </h3>
+      <ul className="flex min-w-0 flex-col gap-2">
+        {needs.map((need) => (
+          <li key={need.key} className="min-w-0">
+            <Link
+              to={need.href}
+              className="focus-mark flex min-h-11 min-w-0 flex-col gap-0.5 rounded-sm border border-vk-border bg-vk-bg-primary p-2"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 text-[15px] text-vk-text-high [overflow-wrap:anywhere]">
+                  {need.title}
+                </span>
+                {need.unread > 0 && (
+                  <span className="inline-flex h-[18px] shrink-0 items-center rounded-full bg-vk-brand-secondary px-1.5 text-[11px] font-semibold text-vk-on-brand">
+                    {tn(need.unread, { one: '{n} new', other: '{n} new messages' })}
+                  </span>
+                )}
+              </span>
+              <span
+                className={
+                  need.needsHuman
+                    ? 'text-[13px] font-medium text-warn'
+                    : 'text-[13px] text-vk-text-low [overflow-wrap:anywhere]'
+                }
+              >
+                {need.needsHuman ? t('The Mayors did not agree — a person is needed') : need.preview}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function NeedsShelves({
+  model,
+  stages,
+  topicNeeds = [],
+}: {
+  model: NeedsModel;
+  stages: TaskStages;
+  topicNeeds?: readonly TopicNeed[];
+}) {
   const stuckId = useId();
   return (
     <div className="flex min-w-0 flex-col gap-2 font-vk-sans">
@@ -84,9 +135,10 @@ export function NeedsShelves({ model, stages }: { model: NeedsModel; stages: Tas
               {t('Could not read the board')}
             </Link>
           </Status>
-        ) : model.needs.length === 0 && model.stalls.length === 0 ? (
+        ) : model.needs.length === 0 && model.stalls.length === 0 && topicNeeds.length === 0 ? (
           <Status>{t('Nothing needs you right now.')}</Status>
         ) : null}
+        {topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
         {model.stalls.length > 0 && (
           <section aria-labelledby={stuckId} className="mt-4 min-w-0">
             <h3 id={stuckId} className="pb-2 text-label font-semibold text-vk-text-low">

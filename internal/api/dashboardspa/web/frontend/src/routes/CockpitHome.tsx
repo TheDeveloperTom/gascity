@@ -22,6 +22,8 @@ import { burnPerHour, pipelineSegments, tokensPerMinute } from '../components/co
 import { Button } from '../components/Button';
 import { CityStrip, type CityAgents } from '../components/home/CityStrip';
 import { useNeedsModel } from '../lib/needsFromMe';
+import { topicNeedsOf } from '../lib/peerTopics';
+import { usePeerBoards } from '../hooks/usePeerBoards';
 import { NeedsShelves } from '../vk/needs/Shelf';
 import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
@@ -56,6 +58,9 @@ export function CockpitHomePage() {
   const attention = useAttentionModel();
   const taskStages = useTaskStages();
   const needs = useNeedsModel();
+  // vk-final part 4: Mayor topics that need the owner or have unread messages.
+  const peerBoards = usePeerBoards();
+  const topicNeeds = useMemo(() => topicNeedsOf(peerBoards.result, Date.now()), [peerBoards.result]);
 
   usePoll(usageState.refresh, usageState.loading, pausedRef);
   usePoll(statusState.refresh, statusState.loading, pausedRef);
@@ -227,7 +232,11 @@ export function CockpitHomePage() {
 
       {/* vk lane 3: «Нужно от меня», «Работает», «Тихо» (Attention / Phone-Needs). */}
       <div className="mb-10 min-w-0">
-        <NeedsShelves model={needs} stages={taskStages} />
+        <NeedsShelves
+          model={{ ...needs, count: needs.count + topicNeeds.filter((n) => n.counts).length }}
+          stages={taskStages}
+          topicNeeds={topicNeeds}
+        />
       </div>
 
       <CityStrip
