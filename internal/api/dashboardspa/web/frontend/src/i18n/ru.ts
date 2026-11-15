@@ -177,4 +177,36 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
     few: 'Вас ждут {n} дела',
     many: 'Вас ждут {n} дел',
   },
+
+  // Why work waits (B3).
+  '{n} tasks of stage {milestone} wait for card {id}': {
+    one: '{n} задача этапа {milestone} ждёт карточку {id}',
+    few: '{n} задачи этапа {milestone} ждут карточку {id}',
+    many: '{n} задач этапа {milestone} ждут карточку {id}',
+  },
+  '{n} tasks of the run wait for card {id}': {
+    one: '{n} задача прогона ждёт карточку {id}',
+    few: '{n} задачи прогона ждут карточку {id}',
+    many: '{n} задач прогона ждут карточку {id}',
+  },
+  '{n} tasks wait for a decision: «{title}»': {
+    one: '{n} задача ждёт решения: «{title}»',
+    few: '{n} задачи ждут решения: «{title}»',
+    many: '{n} задач ждут решения: «{title}»',
+  },
+  '{n} tasks of stage {milestone} are queued; none has started': {
+    one: '{n} задача этапа {milestone} в очереди и ещё не начата',
+    few: '{n} задачи этапа {milestone} в очереди, ни одна ещё не начата',
+    many: '{n} задач этапа {milestone} в очереди, ни одна ещё не начата',
+  },
+  '{n} tasks of the run are queued; none has started': {
+    one: '{n} задача прогона в очереди и ещё не начата',
+    few: '{n} задачи прогона в очереди, ни одна ещё не начата',
+    many: '{n} задач прогона в очереди, ни одна ещё не начата',
+  },
+  'No runs are going. {n} tasks are ready to take.': {
+    one: 'Запущенных прогонов нет. Можно брать {n} задачу.',
+    few: 'Запущенных прогонов нет. Можно брать {n} задачи.',
+    many: 'Запущенных прогонов нет. Можно брать {n} задач.',
+  },
 };
