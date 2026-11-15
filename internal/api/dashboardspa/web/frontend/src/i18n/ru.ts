@@ -78,6 +78,15 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Show all {n}': 'Показать все {n}',
   'Show fewer': 'Свернуть',
 
+  // City block (components/home/CityStrip).
+  Tasks: 'Задачи',
+  Problems: 'Неполадки',
+  'reading…': 'читаю…',
+  'could not read': 'не удалось прочитать',
+  '{running} of {total} working': '{running} из {total} работают',
+  '{inFlight} in progress, {queued} queued': '{inFlight} в работе, {queued} в очереди',
+  'Could not read: {names}': 'Не удалось прочитать: {names}',
+
   // Attention rows (attention/registry).
   'A task outside this view': 'Задача вне окна',
   'awaiting input': 'ждёт ответа',
