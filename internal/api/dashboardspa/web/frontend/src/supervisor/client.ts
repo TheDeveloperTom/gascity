@@ -80,6 +80,7 @@ import {
   supervisorUrl,
 } from './url';
 import { authHeaders } from '../lib/apiBase';
+import { fetchWithSessionRetry } from '../embed/activitySession';
 
 export const SUPERVISOR_REQUEST_TIMEOUT_MS = 60_000;
 export const GC_MUTATION_HEADERS = {
@@ -606,11 +607,19 @@ function withSupervisorTimeout(fetchImpl: typeof fetch, timeoutMs: number): type
       }, timeoutMs);
     });
 
-    const request = new Request(input, { ...init, signal: controller.signal });
-    // vk lane 6: the Activity session headers, read per request so a late
-    // setAuthHeaders (SDK bootstrap) still applies to the cached client.
-    for (const [name, value] of Object.entries(authHeaders())) request.headers.set(name, value);
-    const fetchPromise = fetchImpl(request);
+    // vk lane 6: the Activity session headers, read per attempt so a late
+    // setAuthHeaders (SDK bootstrap) still applies to the cached client. On
+    // the gateway's 401 session_invalid the read re-runs the silent sign-in
+    // once and retries once (Task 6); the timeout covers both attempts.
+    const first = new Request(input, { ...init, signal: controller.signal });
+    // Cloned before the first send: a sent body cannot be cloned afterwards.
+    const spare = first.clone();
+    let attempts = 0;
+    const fetchPromise = fetchWithSessionRetry(() => {
+      const request = attempts++ === 0 ? first : spare;
+      for (const [name, value] of Object.entries(authHeaders())) request.headers.set(name, value);
+      return fetchImpl(request);
+    });
     try {
       return await Promise.race([fetchPromise, timeoutPromise]);
     } finally {
