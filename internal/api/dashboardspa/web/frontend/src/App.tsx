@@ -185,7 +185,7 @@ function ConfigErrorBanner({ message }: { message: string }) {
   return (
     <section
       role="alert"
-      className="mb-6 rounded-md border border-warn/40 bg-warn/[0.08] px-3 py-2 text-body text-fg"
+      className="mb-6 rounded-md border border-warn/50 bg-surface-raised px-3 py-2 text-body text-fg"
     >
       <span className="font-semibold text-warn">config unavailable:</span> {message} · some controls
       may be disabled until it loads.

@@ -35,24 +35,32 @@ export function beadIdFromHref(href: string | undefined): string | null {
 }
 
 export function BeadAttentionPanel({ items, onOpen }: BeadAttentionPanelProps) {
-  // The nav badge counts attention + watch; mirror that exactly so the counts agree.
-  const counted = items.filter(
-    (item) => item.severity === 'attention' || item.severity === 'watch',
-  );
+  // Rows are the badge items (attention + watch), red ones first: the
+  // per-domain list arrives in contributor order, so a stable sort keeps the
+  // fold from hiding the red rows behind "Show all" (final review I-1).
+  const counted = [
+    ...items.filter((item) => item.severity === 'attention'),
+    ...items.filter((item) => item.severity === 'watch'),
+  ];
   if (counted.length === 0) return null;
 
-  const alarm = counted.some((item) => item.severity === 'attention');
-  const band = alarm ? 'border-accent/40 bg-accent/[0.08]' : 'border-warn/40 bg-warn/[0.10]';
+  // "Needs you" means one number everywhere (ruling C1, final review I-2):
+  // attention only. Watch items get their own quiet count, like the Home
+  // board and the amber rail pill.
+  const needsYou = counted.filter((item) => item.severity === 'attention').length;
+  const toWatch = counted.length - needsYou;
+  const band = needsYou > 0 ? 'border-accent/40 bg-accent/[0.08]' : 'border-warn/40 bg-warn/[0.10]';
 
   return (
     <section
       aria-labelledby="beads-attention-title"
       className="mb-8 overflow-hidden rounded-lg border border-rule bg-surface-raised"
     >
-      <div className={`border-b px-4 py-3 ${band}`}>
+      <div className={`flex items-baseline justify-between gap-3 border-b px-4 py-3 ${band}`}>
         <h2 id="beads-attention-title" className="text-title font-semibold text-fg">
-          Needs you <span className="tnum text-fg-muted">({counted.length})</span>
+          Needs you <span className="tnum text-fg-muted">({needsYou})</span>
         </h2>
+        {toWatch > 0 && <p className="text-body text-fg-muted tnum">{toWatch} to watch</p>}
       </div>
       <FoldList
         items={counted}

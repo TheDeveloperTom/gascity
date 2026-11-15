@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { NavLink, useLocation } from 'react-router';
+import { useEffect, useMemo, useRef } from 'react';
+import { Link, NavLink, useLocation } from 'react-router';
 import { api } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
 import { NavAttentionIndicator } from '../attention/NavAttentionIndicator';
@@ -130,6 +130,27 @@ export function Header() {
   // sense inside the mail surface.
   const showReadingAs = !viewingAs.isOperator && pathname.startsWith('/mail');
 
+  // One number for "need you" (ruling C1): attention items across domains,
+  // the same total as the Home board headline and the red rail pills.
+  const needsYou = Object.values(attention.byDomain).reduce(
+    (sum, summary) => sum + summary.attention,
+    0,
+  );
+
+  // On phones the nav is one scrolling row; bring the active item into view
+  // by moving only the row's scrollLeft (never the page). A no-op whenever the
+  // row does not overflow, which includes the desktop rail.
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    if (nav === null || nav.scrollWidth <= nav.clientWidth) return;
+    const active = nav.querySelector<HTMLElement>('a[aria-current="page"]');
+    if (active === null) return;
+    const navBox = nav.getBoundingClientRect();
+    const activeBox = active.getBoundingClientRect();
+    nav.scrollLeft += activeBox.left - navBox.left - (navBox.width - activeBox.width) / 2;
+  }, [pathname, ROUTES]);
+
   const groups = navGroups(ROUTES);
 
   return (
@@ -174,9 +195,20 @@ export function Header() {
               {selectedCity || 'city'}
             </span>
           )}
+          {needsYou > 0 && (
+            <Link
+              to="/"
+              className="focus-mark ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-accent px-2.5 text-label font-semibold text-on-primary tnum lg:hidden"
+            >
+              {needsYou} need you
+            </Link>
+          )}
         </div>
 
-        <nav className="col-span-2 -mx-4 flex min-w-0 items-center overflow-x-auto whitespace-nowrap px-4 py-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:overflow-visible lg:px-0 lg:py-0">
+        <nav
+          ref={navRef}
+          className="col-span-2 -mx-4 flex min-w-0 items-center overflow-x-auto whitespace-nowrap px-4 py-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:overflow-visible lg:px-0 lg:py-0"
+        >
           {groups.map((group, index) => (
             <ul
               key={group[0]?.to ?? index}

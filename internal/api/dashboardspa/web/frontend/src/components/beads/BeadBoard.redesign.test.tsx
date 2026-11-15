@@ -50,11 +50,15 @@ describe('BeadBoard redesign', () => {
     expect(loneDots).toHaveLength(0);
   });
 
-  it('an empty column collapses to its header below sm', () => {
+  // Final review Minor 4: twelve "None" boxes were empty structure. An empty
+  // column is its header strip at every width; screen readers still hear None.
+  it('an empty column collapses to its header at every width', () => {
     renderBoard([bead('A', 'open')]);
-    const none = within(screen.getByRole('region', { name: 'done' })).getByText('None');
-    expect(none.classList.contains('hidden')).toBe(true);
-    expect(none.classList.contains('sm:block')).toBe(true);
+    const done = screen.getByRole('region', { name: 'done' });
+    const none = within(done).getByText('None');
+    expect(none.classList.contains('sr-only')).toBe(true);
+    expect(none.className).not.toMatch(/\bsm:block\b/);
+    expect(done.querySelector('header')?.className).not.toMatch(/border-b/);
   });
 
   it('columns scroll inside', () => {

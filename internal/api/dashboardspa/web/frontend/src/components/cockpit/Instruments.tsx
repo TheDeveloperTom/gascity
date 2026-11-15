@@ -153,17 +153,20 @@ export function ActivityTrace({
           {samples.length > 1 ? `${samples.length} samples` : 'collecting samples'}
         </span>
       </div>
-      <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-16 w-full" aria-hidden>
-        <line x1="0" y1="28" x2="100" y2="28" className="stroke-rule" strokeWidth="0.4" />
-        <polyline
-          points={points}
-          fill="none"
-          className="stroke-fg"
-          strokeWidth="1.2"
-          vectorEffect="non-scaling-stroke"
-          strokeLinejoin="round"
-        />
-      </svg>
+      {/* No band until there is a line to draw; "collecting samples" says why. */}
+      {samples.length > 1 && (
+        <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-16 w-full" aria-hidden>
+          <line x1="0" y1="28" x2="100" y2="28" className="stroke-rule" strokeWidth="0.4" />
+          <polyline
+            points={points}
+            fill="none"
+            className="stroke-fg"
+            strokeWidth="1.2"
+            vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
       {note && <InstrumentNote>{note}</InstrumentNote>}
     </figure>
   );
@@ -321,12 +324,13 @@ export function RunRings({ runs }: { runs: readonly RunRingModel[] }) {
                   transform="rotate(-90 36 36)"
                 />
               </svg>
-              <span className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center text-label text-fg tnum">
+              <span className="absolute inset-0 flex flex-col items-center justify-center px-2.5 text-center text-label text-fg tnum">
                 <span>
                   {run.stage}/{run.totalStages}
                 </span>
+                {/* 12 px stage word so "Review" fits inside the ring (Golos is wider than Inter). */}
                 <span
-                  className={`w-full truncate ${retry ? 'text-warn' : 'text-fg-faint'}`}
+                  className={`w-full truncate text-[0.75rem] leading-4 ${retry ? 'text-warn' : 'text-fg-faint'}`}
                   title={retry ? `retry ${run.attempt}` : run.stageWord}
                 >
                   {retry ? `retry ${run.attempt}` : run.stageWord}

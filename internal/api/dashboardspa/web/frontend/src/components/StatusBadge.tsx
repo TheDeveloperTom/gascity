@@ -20,6 +20,8 @@ interface StatusBadgeProps {
   variant?: 'pill' | 'inline';
   /** Let a sentence-length label wrap instead of truncating (notices, warnings). */
   wrap?: boolean;
+  /** `sm` (default) is the label-size pill; `md` is the body-size overview pill. */
+  size?: 'sm' | 'md';
   className?: string;
   title?: string;
 }
@@ -45,16 +47,19 @@ export function StatusBadge({
   trailing,
   variant = 'pill',
   wrap = false,
+  size = 'sm',
   className = '',
   title,
 }: StatusBadgeProps) {
-  const shape = variant === 'pill' ? `rounded-full px-2 py-0.5 ${TONE_FILL[tone]}` : '';
+  const pad = size === 'md' ? 'px-3 py-1' : 'px-2 py-0.5';
+  const text = size === 'md' ? 'text-body' : 'text-label';
+  const shape = variant === 'pill' ? `rounded-full ${pad} ${TONE_FILL[tone]}` : '';
   // Wrapping labels top-align the 8 px shape with the first line (18 px line box).
   const align = wrap ? 'items-start' : 'items-center';
   const markOffset = wrap ? 'mt-[5px]' : '';
   return (
     <span
-      className={`inline-flex max-w-full ${align} gap-1.5 align-middle text-label font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
+      className={`inline-flex max-w-full ${align} gap-1.5 align-middle ${text} font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
       // A text label can be cut by `truncate` in a narrow cell; the title
       // keeps the full word one hover away. An explicit title wins.
       title={title ?? (typeof label === 'string' ? label : undefined)}

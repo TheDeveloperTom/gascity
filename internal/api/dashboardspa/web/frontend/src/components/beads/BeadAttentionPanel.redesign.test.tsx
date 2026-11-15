@@ -21,7 +21,7 @@ function items(n: number): AttentionItem[] {
 describe('BeadAttentionPanel redesign', () => {
   it('shows the first five rows and a Show all toggle', () => {
     render(<BeadAttentionPanel items={items(7)} onOpen={vi.fn()} />);
-    expect(screen.getByText('Needs you').textContent).toContain('(7)');
+    expect(screen.getByText('Needs you').textContent).toContain('(1)');
     expect(screen.getAllByRole('button', { name: 'Open' })).toHaveLength(5);
     const toggle = screen.getByRole('button', { name: 'Show all 7' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');

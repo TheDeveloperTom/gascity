@@ -1,8 +1,10 @@
 import type { AttentionDomainSummary, BadgeSeverity } from './compose';
 
-// Signal count pill on a nav item: Stop red when anything in the domain
-// needs the owner, Lamp amber when it only needs watching. The text is the
-// number alone; the aria-label carries the full sentence. Hidden at zero.
+// Signal count pills on a nav item. "Needs you" means one number everywhere
+// (ruling C1, final review I-2): the Stop-red pill counts only attention
+// items, so the red pills add up to the Home board headline. Watch items get
+// their own Lamp-amber pill beside it. Each pill's text is the number alone;
+// its aria-label carries the full sentence. Hidden at zero.
 export function NavAttentionIndicator({
   label,
   summary,
@@ -10,16 +12,34 @@ export function NavAttentionIndicator({
   label: string;
   summary: AttentionDomainSummary;
 }) {
-  const total = summary.attention + summary.watch;
-  if (total === 0 || summary.severity === null) return null;
-  const itemWord = total === 1 ? 'item' : 'items';
+  if (summary.attention + summary.watch === 0 || summary.severity === null) return null;
 
   return (
+    <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+      {summary.attention > 0 && (
+        <CountPill label={label} count={summary.attention} severity="attention" />
+      )}
+      {summary.watch > 0 && <CountPill label={label} count={summary.watch} severity="watch" />}
+    </span>
+  );
+}
+
+function CountPill({
+  label,
+  count,
+  severity,
+}: {
+  label: string;
+  count: number;
+  severity: BadgeSeverity;
+}) {
+  const itemWord = count === 1 ? 'item' : 'items';
+  return (
     <span
-      aria-label={`${label}: ${total} ${summary.severity} ${itemWord}`}
-      className={`ml-auto inline-flex min-w-[1.375rem] justify-center rounded-full px-1.5 text-label font-semibold tnum ${severityClass(summary.severity)}`}
+      aria-label={`${label}: ${count} ${severity} ${itemWord}`}
+      className={`inline-flex min-w-[1.375rem] justify-center rounded-full px-1.5 text-label font-semibold tnum ${severityClass(severity)}`}
     >
-      {total}
+      {count}
     </span>
   );
 }

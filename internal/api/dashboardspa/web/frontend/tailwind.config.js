@@ -74,7 +74,6 @@ export default {
       maxWidth: {
         dashboard: '76rem',
         prose: '70ch',
-        reading: '65ch',
       },
       transitionTimingFunction: {
         'out-quart': 'cubic-bezier(0.25, 1, 0.5, 1)',

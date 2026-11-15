@@ -31,7 +31,7 @@ import { DiffView } from './DiffView.js';
 // roleClass suffix → header tone, mirroring SessionPeek's roleTone palette.
 const ROLE_TONE: Record<string, string> = {
   assistant: 'text-fg',
-  system: 'text-warn',
+  system: 'text-fg-muted',
   result: 'text-fg-muted',
   user: 'text-fg',
 };

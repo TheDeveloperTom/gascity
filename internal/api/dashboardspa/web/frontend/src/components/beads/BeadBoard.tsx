@@ -9,7 +9,7 @@ import type { BadgeSeverity } from '../../attention/compose';
 // only red mark on the board is the blocked count when it crosses zero (an
 // anomaly count); status is otherwise carried by the column a bead sits in,
 // not by a per-row badge, so the page reads in greyscale. An empty column
-// says "None" and, below `sm`, collapses to its header.
+// collapses to its header strip at every width (screen readers hear "None").
 //
 // Takes already-grouped `columns` (rather than the whole graph) so the
 // caller can render one board per rig from subsets of a single shared
@@ -50,7 +50,7 @@ export function BeadBoard({
           >
             <header
               className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
-                nodes.length === 0 ? 'sm:border-b sm:border-rule' : 'border-b border-rule'
+                nodes.length === 0 ? '' : 'border-b border-rule'
               }`}
             >
               {/* Sentence case in the text itself (R5: no case transforms);
@@ -61,7 +61,7 @@ export function BeadBoard({
               <span className={countClass}>{nodes.length}</span>
             </header>
             {nodes.length === 0 ? (
-              <p className="hidden px-3 py-3 text-body text-fg-muted sm:block">None</p>
+              <p className="sr-only">None</p>
             ) : (
               <ul className="max-h-[28rem] space-y-0.5 overflow-y-auto overscroll-contain p-1.5">
                 {nodes.map((node) => (

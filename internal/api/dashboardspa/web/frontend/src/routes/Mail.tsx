@@ -428,6 +428,7 @@ export function MailPage() {
             {readOnly && <ReadOnlyBadge />}
             <Button
               size="sm"
+              tone="accent"
               onClick={() => setComposing(true)}
               disabled={readOnly || !viewingAs.isOperator}
               title={

@@ -264,10 +264,9 @@ export function CockpitHomePage() {
   const usageNote = readingNote(usageReading, 'usage', usageDomainNote);
   // Rate dials say which window they read so a 24h-average fallback never
   // masquerades as a live-window rate.
-  const rateNote =
-    [rateWindow?.basis, usageNote]
-      .filter((note): note is string => note !== undefined)
-      .join(' · ') || undefined;
+  // The usage note itself shows once per section (the odometer under Right
+  // now, the 24 h tiles under Usage), not again under every dial.
+  const rateNote = rateWindow?.basis;
   const statusNote = readingNote(
     statusReading,
     'city status',
@@ -473,8 +472,9 @@ export function CockpitHomePage() {
             samples={activitySamples}
             available={usageAvailable}
             note={
-              usageNote ??
-              (activitySamples.length === 0 ? 'waiting for the first usage sample' : undefined)
+              usageNote === undefined && activitySamples.length === 0
+                ? 'waiting for the first usage sample'
+                : undefined
             }
           />
         </div>

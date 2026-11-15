@@ -387,9 +387,9 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     // the "No dependencies." empty branch.
     await expect(modal.getByRole('heading', { name: 'Dependencies' })).toBeVisible();
     await expect(modal.getByText(REVIEW_DEP_TARGET_ID, { exact: false })).toBeVisible();
-    // Closes cleanly — the modal leaves the DOM, no leaked error boundary. Both
-    // the header "×" (aria-label Close) and the footer "Close" action dismiss it;
-    // the header handle is first in the DOM.
+    // Closes cleanly — the modal leaves the DOM, no leaked error boundary. The
+    // header "×" (aria-label Close) dismisses it and is first in the DOM; the
+    // footer "Close bead…" action opens the close confirm instead.
     await modal.getByRole('button', { name: 'Close' }).first().click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });

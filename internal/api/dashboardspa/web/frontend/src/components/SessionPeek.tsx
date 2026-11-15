@@ -194,7 +194,7 @@ function roleTone(role: string): string {
     case 'user':
       return 'text-fg';
     case 'system':
-      return 'text-warn';
+      return 'text-fg-muted';
     case 'tool_use':
     case 'tool_result':
       return 'text-fg-muted';

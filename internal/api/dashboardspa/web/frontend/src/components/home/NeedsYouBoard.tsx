@@ -82,7 +82,7 @@ export function NeedsYouBoard({
 
   return (
     <section
-      aria-labelledby="needs-you-title"
+      aria-labelledby={`${baseId}-title`}
       data-signal={signal}
       className={`mb-10 overflow-hidden rounded-lg border bg-surface-raised ${BAND[signal]}`}
     >
@@ -96,7 +96,7 @@ export function NeedsYouBoard({
           <StatusShape tone={SIGNAL_TONE[signal]} />
         </span>
         <h2
-          id="needs-you-title"
+          id={`${baseId}-title`}
           className="text-[1.75rem] font-semibold leading-tight text-fg sm:text-display"
         >
           {headline}
@@ -141,7 +141,7 @@ export function NeedsYouBoard({
                   <Link
                     to={item.href}
                     aria-describedby={titleId}
-                    className="focus-mark inline-flex h-9 items-center justify-center self-start rounded border border-rule bg-surface-raised px-4 text-body font-semibold text-primary transition-colors duration-150 ease-out-quart hover:bg-surface-tint"
+                    className="focus-mark inline-flex h-9 items-center justify-center self-start rounded border border-rule bg-surface-raised px-4 text-body font-semibold text-fg transition-colors duration-150 ease-out-quart hover:bg-surface-tint"
                   >
                     Open
                   </Link>

@@ -339,7 +339,7 @@ function HealthOverview({
           <StatusBadge
             tone={status.tone}
             label={`${name} ${status.label === 'attention' ? 'need attention' : status.label}`}
-            className="px-3 py-1 text-body"
+            size="md"
           />
         </li>
       ))}

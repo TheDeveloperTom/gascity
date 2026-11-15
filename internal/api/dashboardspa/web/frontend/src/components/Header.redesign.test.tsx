@@ -72,9 +72,10 @@ describe('Header left rail', () => {
       contributor('runs', [item('run-1', 'runs', 'attention'), item('run-2', 'runs', 'watch')]),
       contributor('mail', [item('mail-1', 'mail', 'watch')]),
     ]);
-    const runs = await screen.findByLabelText('Runs: 2 attention items');
+    const runs = await screen.findByLabelText('Runs: 1 attention item');
     expect(runs.className).toContain('bg-accent');
-    expect(runs.textContent).toBe('2');
+    expect(runs.textContent).toBe('1');
+    expect(screen.getByLabelText('Runs: 1 watch item').className).toContain('bg-warn');
     expect(screen.getByLabelText('Mail: 1 watch item').className).toContain('bg-warn');
   });
 

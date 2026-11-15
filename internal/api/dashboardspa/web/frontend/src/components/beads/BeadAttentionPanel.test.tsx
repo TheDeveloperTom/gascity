@@ -64,7 +64,7 @@ describe('BeadAttentionPanel (gascity-dashboard-2j8e.3)', () => {
       />,
     );
 
-    expect(screen.getByText('Needs you').textContent).toContain('(2)');
+    expect(screen.getByText('Needs you').textContent).toContain('(1)');
     // The operator cannot be a bead assignee, so no row offers Claim — only Open.
     expect(screen.queryByRole('button', { name: 'Claim' })).toBeNull();
 
