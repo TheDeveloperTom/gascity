@@ -120,6 +120,8 @@ export interface BeadAttentionRow {
   updatedAt: string;
   /** For `waiting-human`: who it waits on (`human`, `mayor`, a name). */
   waitingOn?: string;
+  /** False when `waitingOn` is the board's "human" fallback, not a named actor. */
+  waitingOnNamed?: boolean;
 }
 
 /**
@@ -290,6 +292,7 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     severity: escalates ? 'attention' : 'watch',
     summary: phrase,
     waitingOn: who,
+    waitingOnNamed: namedWaitingActor(bead, holdText) !== null,
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
@@ -410,6 +413,13 @@ function waitingHoldText(bead: Bead): string | null {
 // parenthetical, so they must be mapped explicitly or the most common real
 // input renders as the actorless "waiting on human".
 function waitingOn(bead: Bead, holdText: string): string {
+  return namedWaitingActor(bead, holdText) ?? 'human';
+}
+
+// The actor a bead names, or null when it names none. The board keeps its
+// "human" fallback for the chip; the owner rule must not (review C1: the city
+// labels every planned ticket `hold:plan`, which names nobody).
+function namedWaitingActor(bead: Bead, holdText: string): string | null {
   const stamped = bead.metadata?.[WAITING_WHO_META_KEY]?.trim();
   if (stamped !== undefined && stamped.length > 0) return stamped;
   const canonical = canonicalHoldActor(bead);
@@ -417,7 +427,7 @@ function waitingOn(bead: Bead, holdText: string): string {
   const parenthetical = /\(([^)]+)\)/.exec(holdText);
   const inner = parenthetical?.[1]?.trim();
   if (inner !== undefined && inner.length > 0) return inner;
-  return 'human';
+  return null;
 }
 
 // The actor named by a canonical hold label, or undefined for an ad hoc

@@ -127,6 +127,8 @@ export interface BeadsAttentionFacts {
   routeItems?: readonly Bead[];
   /** False when the leg that supplied the routes was truncated. */
   routesComplete?: boolean;
+  /** The decision queue read came back incomplete (a backend failed). */
+  decisionsPartial?: boolean;
 }
 
 export interface MailAttentionFacts {
@@ -471,8 +473,11 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     nowMs,
   )) {
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
+    // Owner only when the bead NAMES the owner (review C1); an unknown hold
+    // such as `hold:plan` names nobody and is city work.
     const waitsOnOwner =
       row.reason === 'waiting-human' &&
+      row.waitingOnNamed === true &&
       row.waitingOn !== undefined &&
       ownerAliases.has(row.waitingOn.trim().toLowerCase());
     items.push(
