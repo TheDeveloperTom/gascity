@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Link, NavLink, useLocation } from 'react-router';
+import { NavLink, useLocation } from 'react-router';
 import { api } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
 import { NavAttentionIndicator } from '../attention/NavAttentionIndicator';
@@ -11,9 +11,12 @@ import { ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { useViewingAs } from '../contexts/ViewingAsContext';
 import { displayLabel } from '../hooks/aliasPriority';
 import { useCachedData } from '../hooks/useCachedData';
-import { t, tn } from '../i18n';
+import { t } from '../i18n';
 import { useLocale } from '../i18n/LocaleProvider';
+import { hardNavigate } from '../lib/navigation';
 import { supervisorApi } from '../supervisor/client';
+import { MoreGlyph } from '../vk/shell/BottomTabs';
+import { TopNav } from '../vk/shell/TopNav';
 import { ALL_VIEWS } from '../views/registry';
 import { filterEnabledViews } from '../views/resolve';
 import { Icon, type IconName } from './icons';
@@ -78,11 +81,24 @@ const NAV_ATTENTION_DOMAINS: Readonly<Record<string, AttentionDomain>> = {
   '/health': 'health',
 };
 
-// The header is the left rail (DESIGN-PLAN §6.1): wordmark and city, the
-// app's only <nav> as three signpost groups with signal count pills, then
-// the reading-as line, the read-only badge and the theme toggle. Below
-// `lg` it folds into a top bar whose nav is one horizontally scrolling
-// row, so it never wraps and never widens the page. No hamburger, no state.
+function hhmm(iso: string | undefined): string | null {
+  if (iso === undefined) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Phone tap targets are 44 px; from md the VK bar's 30 px controls.
+const BAR_BUTTON =
+  'inline-flex h-11 min-w-11 items-center justify-center rounded-[3px] px-1.5 text-label font-medium text-vk-text-low transition-colors duration-150 ease-out-quart hover:bg-vk-bg-panel hover:text-vk-text-high focus-mark md:h-[30px] md:min-w-[30px]';
+
+// The VK top bar (vk lane 5, ruling 4: it replaces the left rail). Left: the
+// city mark «DW ГО» and the city switcher, then the section tabs and the ⌘K
+// search (TopNav, desktop). Right: «обновлено HH:MM», the «Ещё» menu, which is
+// the app's full page list so every debug view stays one click away, the
+// read-only badge, theme and language toggles, and the «А» mark. Sticky from
+// md; on phones it is a plain row that scrolls away above the page, whose own
+// sections live in the bottom tabs.
 export function Header() {
   const { resolved, toggle } = useTheme();
   const { locale, setLocale } = useLocale();
@@ -92,12 +108,10 @@ export function Header() {
   const attention = useAttentionModel();
   const { data: config } = useCachedData('config', () => api.config());
   // City switcher source (gascity-dashboard-ucc). Lists every managed city;
-  // selecting one navigates (full reload) to that city's `/city/:name/`
-  // basename so the app remounts with the new active city. A bare full
-  // navigation — not client-side — keeps the active-city base, router
-  // basename, and every city-scoped fetch consistent without a per-fetch
-  // city argument.
-  const { data: cities } = useCachedData('cities', () => supervisorApi().listCities());
+  // selecting one navigates (full reload, through hardNavigate) to that
+  // city's `/city/:name/` basename so the app remounts with the new active
+  // city and every city-scoped fetch follows.
+  const { data: cities, fetchedAt } = useCachedData('cities', () => supervisorApi().listCities());
   const activeCity = getActiveCity();
   const cityItems = cities?.items ?? [];
   // The selected option value. Prefer the URL-derived active city, then the
@@ -107,19 +121,15 @@ export function Header() {
   // list is empty (pre-load or a transient fetch blip) we do NOT flag the city
   // as unknown — only a loaded list that omits it is a real miss.
   const activeCityKnown = selectedCity === '' || cityItems.some((c) => c.name === selectedCity);
-  // Show the switcher whenever there's a choice to make, or when the selected
-  // city is unknown — in the latter case the disabled "(unknown)" option keeps
-  // the stale city visible instead of an empty select.
   const showSwitcher = cityItems.length > 1 || !activeCityKnown;
   const onSwitchCity = (next: string): void => {
     if (next === activeCity) return;
-    window.location.assign(`/city/${encodeURIComponent(next)}/`);
+    hardNavigate(`/city/${encodeURIComponent(next)}/`);
   };
   // PR-C: filter the registry views by the backend-advertised
   // enabledModules so a disabled module's nav entry disappears in lockstep
   // with its route. While the config fetch is in flight `enabledModules`
-  // is null — meaning every firstParty view appears, matching the
-  // first-paint route tree in App.tsx.
+  // is null — meaning every firstParty view appears.
   const ROUTES: ReadonlyArray<NavRoute> = useMemo(() => {
     const enabled = filterEnabledViews(ALL_VIEWS, config?.enabledModules ?? null);
     const registry: NavRoute[] = enabled.flatMap((v) =>
@@ -127,23 +137,13 @@ export function Header() {
         ? []
         : [{ to: v.path, label: v.nav.label, end: v.path === '/', order: v.nav.order }],
     );
-    // Spread already allocates a new mutable array, so .sort() in-place is
-    // safe — no .slice() needed (PR-A Phase-4 TS M4).
     return [...EXPLICIT_ROUTES, ...registry].sort((a, b) => a.order - b.order);
   }, [config?.enabledModules]);
   const { pathname } = useLocation();
-  // "Reading as" is a Mail-only concept — the value persists across views
-  // (for AgentDetail's chat filter) but the header indicator only makes
-  // sense inside the mail surface.
+  // "Reading as" is a Mail-only concept.
   const showReadingAs = !viewingAs.isOperator && pathname.startsWith('/mail');
+  const updated = hhmm(fetchedAt);
 
-  // One number for "need you" (ruling C1, R4): the owner slice's total, the
-  // same number as the Home plate and the sum of the red rail pills.
-  const needsYou = attention.owner.total;
-
-  // On phones the nav is one scrolling row; bring the active item into view
-  // by moving only the row's scrollLeft (never the page). A no-op whenever the
-  // row does not overflow, which includes the desktop rail.
   const localeToggleRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (!refocusLocaleToggle) return;
@@ -151,26 +151,31 @@ export function Header() {
     localeToggleRef.current?.focus();
   }, []);
 
-  const navRef = useRef<HTMLElement>(null);
+  // The «Ещё» menu is a <details>: no state, keyboard and screen-reader
+  // native. It closes whenever the route changes.
+  const moreRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
-    const nav = navRef.current;
-    if (nav === null || nav.scrollWidth <= nav.clientWidth) return;
-    const active = nav.querySelector<HTMLElement>('a[aria-current="page"]');
-    if (active === null) return;
-    const navBox = nav.getBoundingClientRect();
-    const activeBox = active.getBoundingClientRect();
-    nav.scrollLeft += activeBox.left - navBox.left - (navBox.width - activeBox.width) / 2;
-  }, [pathname, ROUTES]);
+    if (moreRef.current !== null) moreRef.current.open = false;
+  }, [pathname]);
 
   const groups = navGroups(ROUTES);
+  const ownerAttention = attention.owner.total;
 
   return (
-    <header className="border-b border-rule bg-surface-raised lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-b-0">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 pb-1 pt-3 sm:px-6 lg:flex lg:min-h-full lg:flex-col lg:items-stretch lg:gap-y-5 lg:px-3 lg:py-5">
-        <div className="flex min-w-0 items-center gap-x-3 lg:flex-col lg:items-start lg:gap-y-1 lg:px-2.5">
-          <span className="flex shrink-0 items-center gap-2 text-title font-semibold text-fg">
-            <Icon name="flame" className="h-5 w-5" />
-            gas city
+    <header className="border-b border-vk-border bg-vk-bg-primary pl-[var(--sail)] pr-[var(--sair)] pt-[var(--sait)] font-vk-sans md:sticky md:top-0 md:z-30">
+      <div className="flex min-h-11 items-center gap-2 px-3 md:gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            title={t('devwork product')}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[4.5px] bg-vk-bg-panel text-[13px] font-medium text-vk-text-high"
+          >
+            DW
+          </span>
+          <span
+            title={t('The city itself')}
+            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[4.5px] text-[13px] font-medium text-vk-text-normal sm:inline-flex"
+          >
+            ГО
           </span>
           {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
@@ -182,13 +187,11 @@ export function Header() {
               id="city-switcher"
               value={selectedCity}
               onChange={(e) => onSwitchCity(e.target.value)}
-              className="-ml-1 min-w-0 max-w-full cursor-pointer truncate rounded border-0 bg-transparent px-1 py-0.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:text-fg focus-mark"
+              className="h-11 min-w-0 max-w-[12rem] cursor-pointer truncate rounded-[3px] border-0 bg-transparent px-1 text-[14px] text-vk-text-normal transition-colors duration-150 ease-out-quart hover:text-vk-text-high focus-mark md:h-[30px]"
             >
               {/* A grammar-valid but unregistered/renamed city in the URL is not
-                  a list member; without this the select would render blank and
-                  the operator couldn't tell which (stale) city they're on. The
-                  disabled option keeps it visible without making it selectable
-                  (gascity-dashboard-ux-stale-city-url-no-recovery). */}
+                  a list member; the disabled option keeps it visible without
+                  making it selectable (gascity-dashboard-ux-stale-city-url-no-recovery). */}
               {!activeCityKnown && selectedCity !== '' ? (
                 <option value={selectedCity} disabled>
                   {t('{city} (unknown)', { city: selectedCity })}
@@ -201,116 +204,116 @@ export function Header() {
               ))}
             </select>
           ) : (
-            <span className="min-w-0 truncate text-label font-medium text-fg-muted">
+            <span className="min-w-0 truncate px-1 text-[14px] text-vk-text-normal">
               {selectedCity || t('city')}
             </span>
           )}
-          {needsYou > 0 && (
-            <Link
-              to="/"
-              className="focus-mark ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-accent px-2.5 text-label font-semibold text-on-primary tnum lg:hidden"
-            >
-              {tn(needsYou, { one: '{n} needs you', other: '{n} need you' })}
-            </Link>
-          )}
         </div>
 
-        <nav
-          ref={navRef}
-          className="col-span-2 -mx-4 flex min-w-0 items-center overflow-x-auto whitespace-nowrap px-4 py-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:overflow-visible lg:px-0 lg:py-0"
-        >
-          {groups.map((group, index) => (
-            <ul
-              key={group[0]?.to ?? index}
-              className={`flex shrink-0 items-center gap-0.5 lg:flex-col lg:items-stretch ${
-                index > 0
-                  ? 'ml-1.5 border-l border-rule pl-1.5 lg:ml-0 lg:mt-2 lg:border-l-0 lg:border-t lg:pl-0 lg:pt-2'
-                  : ''
-              }`}
-            >
-              {group.map((r) => {
-                const domain = NAV_ATTENTION_DOMAINS[r.to];
-                const icon = NAV_ICONS[r.to];
-                return (
-                  <li key={r.to}>
-                    <NavLink
-                      to={r.to}
-                      end={r.end ?? false}
-                      className={({ isActive }) =>
-                        [
-                          'group flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body transition-colors duration-150 ease-out-quart focus-mark',
-                          isActive
-                            ? 'bg-surface-tint font-semibold text-fg'
-                            : 'font-medium text-fg-muted hover:bg-surface-tint/60 hover:text-fg',
-                        ].join(' ')
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          {icon !== undefined && (
-                            <Icon
-                              name={icon}
-                              className={
-                                isActive
-                                  ? 'text-primary'
-                                  : 'text-fg-faint group-hover:text-fg-muted'
-                              }
-                            />
-                          )}
-                          {t(r.label)}
-                          {domain !== undefined && (
-                            <NavAttentionIndicator
-                              label={r.label}
-                              ownerCount={attention.owner.byDomain[domain]}
-                              cityCount={domain === 'health' ? attention.city.total : 0}
-                            />
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                  </li>
-                );
-              })}
-            </ul>
-          ))}
-        </nav>
+        <TopNav />
 
-        {showReadingAs && (
-          <p className="col-span-2 text-label lg:px-2.5">
-            <StatusBadge
-              tone="warn"
-              variant="inline"
-              label={t('Reading as {name}', {
-                name: displayLabel(viewingAs.alias, operatorAlias),
-              })}
-            />
-          </p>
-        )}
-
-        <div className="col-start-2 row-start-1 flex items-center gap-2 lg:mt-auto lg:flex-col lg:items-start lg:gap-3 lg:px-1">
-          {readOnly && (
-            <span className="lg:px-1.5">
-              <ReadOnlyBadge />
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {showReadingAs && (
+            <span className="hidden text-label md:inline">
+              <StatusBadge
+                tone="warn"
+                variant="inline"
+                label={t('Reading as {name}', {
+                  name: displayLabel(viewingAs.alias, operatorAlias),
+                })}
+              />
             </span>
           )}
+          {updated !== null && (
+            <span className="hidden whitespace-nowrap px-1 text-[13px] text-vk-text-low lg:inline">
+              {t('updated {time}', { time: updated })}
+            </span>
+          )}
+          {readOnly && <ReadOnlyBadge />}
+
+          <details ref={moreRef} className="relative">
+            <summary
+              aria-label={t('More')}
+              className={`${BAR_BUTTON} relative cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+            >
+              <MoreGlyph size={18} />
+              {ownerAttention > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1 top-1.5 h-1.5 w-1.5 rounded-full bg-accent md:top-0.5 md:right-0.5"
+                />
+              )}
+            </summary>
+            <nav
+              aria-label={t('All pages')}
+              className="absolute right-0 top-full z-40 mt-1 w-60 max-w-[calc(100vw-1.5rem)] rounded-[4.5px] border border-vk-border bg-vk-bg-primary p-1 shadow-overlay"
+            >
+              {groups.map((group, index) => (
+                <ul
+                  key={group[0]?.to ?? index}
+                  className={index > 0 ? 'mt-1 border-t border-vk-border pt-1' : ''}
+                >
+                  {group.map((r) => {
+                    const domain = NAV_ATTENTION_DOMAINS[r.to];
+                    const icon = NAV_ICONS[r.to];
+                    return (
+                      <li key={r.to}>
+                        <NavLink
+                          to={r.to}
+                          end={r.end ?? false}
+                          className={({ isActive }) =>
+                            [
+                              'group flex h-11 items-center gap-2.5 rounded-[3px] px-2.5 text-[15px] transition-colors duration-150 ease-out-quart focus-mark md:h-9',
+                              isActive
+                                ? 'bg-vk-bg-panel text-vk-text-high'
+                                : 'text-vk-text-normal hover:bg-vk-bg-panel/60 hover:text-vk-text-high',
+                            ].join(' ')
+                          }
+                        >
+                          {({ isActive }) => (
+                            <>
+                              {icon !== undefined && (
+                                <Icon
+                                  name={icon}
+                                  className={
+                                    isActive
+                                      ? 'text-vk-text-high'
+                                      : 'text-vk-text-low group-hover:text-vk-text-normal'
+                                  }
+                                />
+                              )}
+                              {t(r.label)}
+                              {domain !== undefined && (
+                                <NavAttentionIndicator
+                                  label={r.label}
+                                  ownerCount={attention.owner.byDomain[domain]}
+                                  cityCount={domain === 'health' ? attention.city.total : 0}
+                                />
+                              )}
+                            </>
+                          )}
+                        </NavLink>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ))}
+            </nav>
+          </details>
+
           <button
             type="button"
             onClick={toggle}
             aria-label={
               resolved === 'dark' ? t('Switch to light theme') : t('Switch to dark theme')
             }
-            className="inline-flex h-8 items-center gap-2 rounded px-1.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
+            className={BAR_BUTTON}
           >
-            <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[18px] w-[18px]" />
-            {/* Below lg the icon alone (the aria-label names the action), so
-                the city name keeps its room beside the need-you chip. */}
-            <span className="hidden lg:inline">{resolved === 'dark' ? t('Light') : t('Dark')}</span>
+            <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[17px] w-[17px]" />
           </button>
           {/* Language toggle (SH-18, ruling R2): the label names the language
-              it switches TO; the choice persists in gascity:locale. The
-              accessible name, in the current language, contains the visible
-              code (label in name). The tree remounts on a change, so focus is
-              handed back to the new toggle (review M-5). */}
+              it switches TO; the choice persists in gascity:locale. The tree
+              remounts on a change, so focus is handed back (review M-5). */}
           <button
             ref={localeToggleRef}
             type="button"
@@ -323,10 +326,16 @@ export function Header() {
                 ? t('Switch language to English (EN)')
                 : t('Switch language to Russian (RU)')
             }
-            className="inline-flex h-8 items-center rounded px-1.5 text-label font-semibold text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
+            className={`${BAR_BUTTON} font-semibold`}
           >
             {locale === 'ru' ? 'EN' : 'RU'}
           </button>
+          <span
+            title={t('You')}
+            className="ml-1 hidden h-7 w-7 shrink-0 items-center justify-center rounded-full bg-vk-bg-panel text-[13px] font-medium text-vk-text-normal md:inline-flex"
+          >
+            А
+          </span>
         </div>
       </div>
     </header>

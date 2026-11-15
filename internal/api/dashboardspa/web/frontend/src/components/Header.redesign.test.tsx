@@ -8,8 +8,9 @@ import { ViewingAsProvider } from '../contexts/ViewingAsContext';
 import { Header } from './Header';
 import { Layout } from './Layout';
 
-// Left rail (DESIGN-PLAN §6.1, R6): one nav inside the header, three
-// signpost groups, signal count pills, an icon on the theme toggle.
+// The VK top bar (vk lane 5, ruling 4, replaces the DESIGN-PLAN §6.1 rail):
+// the «Ещё» page menu keeps the three signpost groups and signal count pills;
+// the theme toggle is an icon.
 
 vi.mock('../api/client', () => ({
   api: {
@@ -31,7 +32,7 @@ vi.mock('../supervisor/client', () => ({
   }),
 }));
 
-describe('Header left rail', () => {
+describe('Header top bar', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -52,16 +53,19 @@ describe('Header left rail', () => {
     cleanup();
   });
 
-  it('one nav inside the header', () => {
+  // vk lane 5 (ruling 4): the rail became the VK top bar. It holds two navs:
+  // the section tabs (desktop) and the «Ещё» menu with every page.
+  it('two navs inside the header: section tabs and the page menu', () => {
     const { container } = renderHeader([]);
-    expect(container.querySelector('header')!.querySelectorAll('nav')).toHaveLength(1);
+    const navs = Array.from(container.querySelector('header')!.querySelectorAll('nav'));
+    expect(navs.map((n) => n.getAttribute('aria-label'))).toEqual(['Sections', 'All pages']);
   });
 
   it('three groups in signpost order', async () => {
     const { container } = renderHeader([]);
     // Registry views (Activity, Health) join once the config read settles.
     await screen.findByRole('link', { name: /^Health/ });
-    const nav = container.querySelector('header nav')!;
+    const nav = container.querySelector('header details nav')!;
     expect(nav.querySelectorAll('ul')).toHaveLength(3);
     const labels = Array.from(nav.querySelectorAll('a')).map((a) => linkLabel(a));
     expect(labels).toEqual(['Home', 'Runs', 'Agents', 'Beads', 'Mail', 'Activity', 'Health']);
@@ -81,13 +85,11 @@ describe('Header left rail', () => {
     expect((await screen.findByLabelText('Health: 2 city issues')).className).toContain('bg-warn');
   });
 
-  it('the scrolling phone nav row leaves room for the focus ring', () => {
-    // overflow-x-auto clips vertical overflow too; vertical padding keeps the
-    // 2 px ring at 2 px offset visible above and below each link.
+  it('page menu links are 44 px tall on phones', () => {
     const { container } = renderHeader([]);
-    const nav = container.querySelector('header nav')!;
-    expect(nav.className).toContain('overflow-x-auto');
-    expect(nav.className.split(/\s+/)).toContain('py-1');
+    const links = container.querySelectorAll('header details nav a');
+    expect(links.length).toBeGreaterThan(0);
+    for (const a of Array.from(links)) expect(a.className.split(/\s+/)).toContain('h-11');
   });
 
   it('the content column starts at the rail (left-aligned, capped)', () => {
