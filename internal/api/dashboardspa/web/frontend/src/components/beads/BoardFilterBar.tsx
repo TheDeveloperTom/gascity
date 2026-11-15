@@ -1,13 +1,16 @@
-import { useId } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { t } from '../../i18n';
-import type { BoardSource, OwnerFilter } from '../../lib/boardOwner';
-import type { EpicSummary } from '../../lib/epics';
+import { ownerChoicesEnabled, type BoardSource, type OwnerFilter } from '../../lib/boardOwner';
+import { ALL_EPICS, epicLabel, epicProgress, NO_EPIC, type EpicSummary } from '../../lib/epics';
+import { cn } from '../../vk/cn';
+import { ExternalLink } from '../../vk/ExternalLink';
 import { ListSearchBar } from '../ListSearchBar';
 
-// The board's one filter row (B7): which project, a search, and whether test
-// cards show. Nothing here is remembered: the owner starts from «Все» and
-// without test cards on every visit. The project control hides when only one
-// project has cards; the test checkbox hides when there are none.
+// The board's one filter row, VK look (vk lane 4): [Все | Мои | Ричарда],
+// «Эпик: Все ▾», search «Найти задачу…», «Новая задача +». Nothing here is
+// remembered. The project control (only with two or more projects) and the
+// test-card checkbox (only when test cards exist) stay from B7 and hide
+// otherwise. No priority, status or «waiting on me» filters (owner, 15.11).
 
 interface BoardFilterBarProps {
   projects: readonly { key: string; label: string; count: number }[];
@@ -31,6 +34,244 @@ interface BoardFilterBarProps {
   newTaskUrl?: string | null;
 }
 
+const NO_EPICS: readonly EpicSummary[] = [];
+const ONE_SOURCE: readonly BoardSource[] = [{ owner: 'me', label: 'Mine', available: true }];
+
+/** Control height: 44 px tap target on the phone, the VK 32 px row on desktop. */
+const ROW = 'h-11 md:h-8';
+
+/** A stable dot colour per milestone (decorative; never the alarm accent). */
+export function epicDotStyle(key: string): { backgroundColor: string } | undefined {
+  const m = /\d+/.exec(key);
+  if (key === NO_EPIC || m === null) return undefined;
+  return { backgroundColor: `oklch(65% 0.13 ${(Number(m[0]) * 47 + 200) % 360})` };
+}
+
+function OwnerChips({
+  sources,
+  value,
+  onChange,
+}: {
+  sources: readonly BoardSource[];
+  value: OwnerFilter;
+  onChange?: (f: OwnerFilter) => void;
+}) {
+  const enabled = ownerChoicesEnabled(sources);
+  const available = (owner: string) => sources.some((s) => s.owner === owner && s.available);
+  const chips: Array<{ key: OwnerFilter; label: string; on: boolean }> = [
+    { key: 'all', label: t('Owner: all'), on: true },
+    { key: 'me', label: t('Owner: mine'), on: enabled && available('me') },
+    { key: 'richard', label: t("Owner: Richard's"), on: enabled && available('richard') },
+  ];
+  const active = enabled ? value : 'all';
+  return (
+    <div
+      role="group"
+      aria-label={t('Whose tasks')}
+      className="inline-flex overflow-hidden rounded-[3px] border border-vk-border bg-vk-bg-secondary"
+    >
+      {chips.map((chip, i) => {
+        const pressed = chip.key === active;
+        return (
+          <button
+            key={chip.key}
+            type="button"
+            aria-pressed={pressed}
+            disabled={!chip.on}
+            title={chip.on ? undefined : t("Appears after sync with Richard's city")}
+            onClick={() => onChange?.(chip.key)}
+            className={cn(
+              ROW,
+              'px-2.5 font-vk-sans text-[15px] focus-mark disabled:cursor-not-allowed disabled:text-vk-text-low',
+              i > 0 && 'border-l border-vk-border',
+              pressed ? 'bg-vk-bg-primary text-vk-text-high' : 'bg-transparent text-vk-text-normal',
+            )}
+          >
+            {chip.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EpicSelect({
+  epics,
+  value,
+  onChange,
+}: {
+  epics: readonly EpicSummary[];
+  value: string;
+  onChange?: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const chosen = epics.find((e) => e.key === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent | MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    listRef.current?.querySelector<HTMLElement>('[aria-selected="true"], [role="option"]')?.focus();
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const choose = (key: string) => {
+    onChange?.(key);
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const onListKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const options = [...(listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
+    const at = options.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      options[(at + step + options.length) % options.length]?.focus();
+    } else if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
+      event.preventDefault();
+      const key = options[at]?.dataset.key;
+      if (key !== undefined) choose(key);
+    }
+  };
+
+  const named = epics.filter((e) => e.key !== NO_EPIC);
+  const noEpic = epics.find((e) => e.key === NO_EPIC);
+  const option = (key: string, children: ReactNode, extra?: string) => (
+    <div
+      key={key}
+      role="option"
+      tabIndex={-1}
+      data-key={key}
+      aria-selected={key === value}
+      onClick={() => choose(key)}
+      className={cn(
+        'flex min-h-11 cursor-pointer items-center gap-2 rounded-[3px] px-2 text-[15px] focus-mark md:min-h-9',
+        key === value ? 'bg-vk-bg-panel text-vk-text-high' : 'text-vk-text-normal hover:bg-vk-bg-secondary',
+        extra,
+      )}
+    >
+      {children}
+    </div>
+  );
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          ROW,
+          'inline-flex max-w-full items-center gap-1.5 rounded-[3px] border bg-vk-bg-primary pl-2.5 pr-2 font-vk-sans text-[15px] text-vk-text-high focus-mark',
+          open ? 'border-vk-brand' : 'border-vk-border',
+        )}
+      >
+        <span className="text-vk-text-low">{t('Epic:')}</span>{' '}
+        {chosen === undefined ? (
+          t('Epic: all')
+        ) : (
+          <>
+            {epicDotStyle(chosen.key) && (
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={epicDotStyle(chosen.key)} />
+            )}
+            <span className="min-w-0 truncate">
+              {chosen.key === NO_EPIC ? epicLabel(chosen) : `${chosen.key} · ${epicProgress(chosen)}`}
+            </span>
+          </>
+        )}
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d={open ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'}
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={listRef}
+          id={listId}
+          role="listbox"
+          aria-label={t('Choose an epic')}
+          onKeyDown={onListKey}
+          className="absolute left-0 top-full z-30 mt-1 flex w-[min(320px,calc(100vw-32px))] flex-col gap-0.5 rounded-[4.5px] border border-vk-border bg-vk-bg-primary p-1 font-vk-sans shadow-lg"
+        >
+          {option(ALL_EPICS, <><span className="w-3.5" aria-hidden="true" />{t('All tasks')}</>)}
+          {named.map((e) =>
+            option(
+              e.key,
+              <>
+                <span aria-hidden="true" className="flex w-3.5 shrink-0 justify-center">
+                  <span className="h-2 w-2 rounded-full" style={epicDotStyle(e.key)} />
+                </span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{epicLabel(e)}</span>
+                <span className="shrink-0 text-[13px] text-vk-text-low">{epicProgress(e)}</span>
+              </>,
+            ),
+          )}
+          {noEpic !== undefined &&
+            option(
+              NO_EPIC,
+              <>
+                <span className="w-3.5" aria-hidden="true" />
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{epicLabel(noEpic)}</span>
+                <span className="shrink-0 text-[13px] text-vk-text-low">{noEpic.total}</span>
+              </>,
+              'mt-0.5 border-t border-vk-border',
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewTask({ url }: { url: string | null | undefined }) {
+  const className = cn(
+    ROW,
+    'inline-flex items-center gap-1 rounded-[3px] bg-vk-brand-secondary px-2.5 font-vk-sans text-base font-medium text-vk-on-brand focus-mark',
+  );
+  const plus = (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+  if (typeof url !== 'string' || url.length === 0) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={t('The Mayor channel is not configured')}
+        className={cn(className, 'cursor-not-allowed opacity-60')}
+      >
+        {t('New task')}
+        {plus}
+      </button>
+    );
+  }
+  return (
+    <ExternalLink href={url} className={className}>
+      {t('New task')}
+      {plus}
+    </ExternalLink>
+  );
+}
+
 export function BoardFilterBar({
   projects,
   project,
@@ -42,12 +283,33 @@ export function BoardFilterBar({
   testCount,
   showTests,
   onShowTests,
+  epics = NO_EPICS,
+  epic = ALL_EPICS,
+  onEpic,
+  sources = ONE_SOURCE,
+  ownerFilter = 'all',
+  onOwnerFilter,
+  newTaskUrl,
 }: BoardFilterBarProps) {
   const testsId = useId();
   // `all` plus at least two projects with cards.
   const showProjects = projects.length > 2;
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <OwnerChips sources={sources} value={ownerFilter} {...(onOwnerFilter ? { onChange: onOwnerFilter } : {})} />
+      <EpicSelect epics={epics} value={epic} {...(onEpic ? { onChange: onEpic } : {})} />
+      <div className="min-w-0 basis-full md:basis-[220px]">
+        <ListSearchBar
+          value={search}
+          onChange={onSearch}
+          placeholder={t('Find a task…')}
+          matchCount={matched}
+          totalCount={total}
+          ariaLabel={t('Search beads')}
+        />
+      </div>
+      {/* undefined = the page has not wired the seam yet (it still has its own button). */}
+      {newTaskUrl !== undefined && <NewTask url={newTaskUrl} />}
       {showProjects && (
         <div role="group" aria-label={t('Project')} className="flex flex-wrap gap-1.5">
           {projects.map((p) => {
@@ -58,11 +320,13 @@ export function BoardFilterBar({
                 type="button"
                 aria-pressed={pressed}
                 onClick={() => onProject(p.key)}
-                className={`h-8 rounded border px-3 text-label font-medium focus-mark ${
+                className={cn(
+                  ROW,
+                  'rounded-[3px] border px-2.5 font-vk-sans text-[15px] focus-mark',
                   pressed
-                    ? 'border-fg bg-fg text-surface'
-                    : 'border-rule bg-surface-raised text-fg hover:bg-surface-tint'
-                }`}
+                    ? 'border-vk-border bg-vk-bg-panel text-vk-text-high'
+                    : 'border-vk-border bg-vk-bg-primary text-vk-text-normal hover:bg-vk-bg-secondary',
+                )}
               >
                 {p.label} <span className="tnum">{p.count}</span>
               </button>
@@ -70,18 +334,8 @@ export function BoardFilterBar({
           })}
         </div>
       )}
-      <div className="min-w-0 flex-1 basis-64">
-        <ListSearchBar
-          value={search}
-          onChange={onSearch}
-          placeholder={t('Find a task by title, id, label or assignee')}
-          matchCount={matched}
-          totalCount={total}
-          ariaLabel={t('Search beads')}
-        />
-      </div>
       {testCount > 0 && (
-        <label htmlFor={testsId} className="flex items-center gap-2 text-label text-fg">
+        <label htmlFor={testsId} className="flex items-center gap-2 font-vk-sans text-[15px] text-vk-text-normal">
           <input
             id={testsId}
             type="checkbox"
