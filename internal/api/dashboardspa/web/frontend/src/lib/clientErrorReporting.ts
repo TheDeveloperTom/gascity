@@ -1,5 +1,6 @@
 import type { ClientErrorReport } from 'gas-city-dashboard-shared';
 import { errorMessage } from 'gas-city-dashboard-shared';
+import { authHeaders, withApiBase } from './apiBase';
 
 export type ClientErrorReportResult = { status: 'reported' } | { status: 'failed'; error: string };
 
@@ -11,13 +12,14 @@ export async function reportClientError(
   // custom header without a CORS preflight), so telemetry carries it directly —
   // no cookie double-submit. keepalive lets the report survive an unload.
   const headers: Record<string, string> = {
+    ...authHeaders(),
     Accept: 'application/json',
     'Content-Type': 'application/json',
     'X-GC-Request': 'dashboard',
   };
 
   try {
-    const res = await fetch('/api/client-errors', {
+    const res = await fetch(withApiBase('/api/client-errors'), {
       method: 'POST',
       headers,
       credentials: 'same-origin',

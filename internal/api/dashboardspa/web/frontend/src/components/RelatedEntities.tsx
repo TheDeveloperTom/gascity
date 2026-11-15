@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { EntityLinkView, LinkNode, LinkNodeType } from 'gas-city-dashboard-shared';
 import { formatRelative } from '../hooks/time';
+import { ExternalLink } from '../vk/ExternalLink';
 
 // Reusable "Related" section (R5). One component woven into the foot of
 // AgentDetail, FormulaRunDetail, and BeadDetailModal.
@@ -261,15 +262,9 @@ function NodeLink({
   }
   if (node.url) {
     return (
-      <a
-        href={node.url}
-        target="_blank"
-        rel="noreferrer noopener"
-        className={className}
-        title={node.url}
-      >
+      <ExternalLink href={node.url} className={className} title={node.url}>
         {label} <span aria-hidden>↗</span>
-      </a>
+      </ExternalLink>
     );
   }
   return <span className={className}>{label}</span>;

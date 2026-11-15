@@ -4,6 +4,8 @@
 // Kept as an absolute origin (not a bare `/`) so BOTH the generated @hey-api
 // client base AND `supervisorUrl()`/EventSource URLs resolve cleanly — an
 // empty or `/`-only base makes `new URL(suffix, base)` throw in the SSE path.
+import { apiBase } from '../lib/apiBase';
+
 export const SUPERVISOR_PROXY_BASE_URL = '';
 
 export function resolveSupervisorBaseUrl(): string {
@@ -11,9 +13,11 @@ export function resolveSupervisorBaseUrl(): string {
   if (typeof configured === 'string' && configured.trim().length > 0) {
     return configured.trim();
   }
+  // vk lane 6: the one API base (lib/apiBase) follows the origin; '' today.
+  // EventSource URLs built from this base pick it up automatically.
   const origin = globalThis.location?.origin;
   if (typeof origin === 'string' && origin.length > 0 && origin !== 'null') {
-    return origin;
+    return `${origin}${apiBase()}`;
   }
   // No DOM origin (e.g. SSR/tests): fall back to a root-relative base so the
   // generated client still issues `/v0/...` requests. SSE URL construction is

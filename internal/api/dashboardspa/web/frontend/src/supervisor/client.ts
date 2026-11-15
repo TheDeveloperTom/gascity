@@ -79,6 +79,7 @@ import {
   resolveSupervisorBaseUrl,
   supervisorUrl,
 } from './url';
+import { authHeaders } from '../lib/apiBase';
 
 export const SUPERVISOR_REQUEST_TIMEOUT_MS = 60_000;
 export const GC_MUTATION_HEADERS = {
@@ -606,6 +607,9 @@ function withSupervisorTimeout(fetchImpl: typeof fetch, timeoutMs: number): type
     });
 
     const request = new Request(input, { ...init, signal: controller.signal });
+    // vk lane 6: the Activity session headers, read per request so a late
+    // setAuthHeaders (SDK bootstrap) still applies to the cached client.
+    for (const [name, value] of Object.entries(authHeaders())) request.headers.set(name, value);
     const fetchPromise = fetchImpl(request);
     try {
       return await Promise.race([fetchPromise, timeoutPromise]);

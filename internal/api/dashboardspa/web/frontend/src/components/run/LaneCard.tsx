@@ -5,6 +5,7 @@ import { attentionListItemProps } from '../../attention/routeHighlight';
 import { formatRelative } from '../../hooks/time';
 import { runDetailHref } from '../../supervisor/runHref';
 import { StageLadder } from './StageLadder';
+import { ExternalLink } from '../../vk/ExternalLink';
 
 // One lane row inside a RunMap panel (hairline dividers between rows). The
 // phase pill and the title link lead, the updated time sits right, then the
@@ -91,14 +92,12 @@ export function LaneCard({ lane, now, attentionSeverity = null, blocked }: LaneC
         <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-label">
           {lane.external.status !== 'unavailable' &&
             (lane.external.status === 'available' ? (
-              <a
+              <ExternalLink
                 href={lane.external.url}
-                target="_blank"
-                rel="noreferrer"
                 className="rounded-sm font-medium text-primary underline-offset-2 hover:underline focus-mark"
               >
                 {lane.external.label}
-              </a>
+              </ExternalLink>
             ) : (
               <span className="font-medium text-fg-muted">{lane.external.label}</span>
             ))}
