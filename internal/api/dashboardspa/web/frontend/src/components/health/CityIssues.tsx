@@ -3,6 +3,7 @@ import {
   ATTENTION_DOMAINS,
   type AttentionDomain,
   type AttentionItem,
+  type AudienceSlice,
 } from '../../attention/compose';
 import { t, tn } from '../../i18n';
 import { FoldList } from '../FoldList';
@@ -12,14 +13,6 @@ import { FoldList } from '../FoldList';
 // to-do, but it is never hidden. It is listed here, first on Health, grouped
 // by where it lives, five per group with the rest one click away. Lamp amber
 // marks it; red is kept for what waits for the owner.
-
-type CityIssueItem = AttentionItem & { ref?: string; externalHref?: string };
-
-/** Structurally the city `AudienceSlice` of the attention model. */
-export interface CityIssuesSlice {
-  items: readonly AttentionItem[];
-  total: number;
-}
 
 const GROUP_LIMIT = 5;
 
@@ -36,7 +29,7 @@ export function CityIssues({
   slice,
   unreadable,
 }: {
-  slice: CityIssuesSlice;
+  slice: AudienceSlice;
   unreadable: readonly AttentionItem[];
 }) {
   const issues = slice.items.filter((item) => item.severity !== 'unavailable');
@@ -85,7 +78,7 @@ export function CityIssues({
               items={group.items}
               limit={GROUP_LIMIT}
               itemKey={(item) => item.id}
-              renderItem={(item) => <IssueRow item={item as CityIssueItem} />}
+              renderItem={(item) => <IssueRow item={item} />}
               showLabel={(total) => tn(total, { one: 'Show all {n}', other: 'Show all {n}' })}
               hideLabel={t('Show fewer')}
               className="divide-y divide-rule border-l-2 border-warn"
@@ -97,7 +90,7 @@ export function CityIssues({
   );
 }
 
-function IssueRow({ item }: { item: CityIssueItem }) {
+function IssueRow({ item }: { item: AttentionItem }) {
   const body = (
     <>
       <span className="min-w-0 font-medium text-fg [overflow-wrap:anywhere]">{item.title}</span>
