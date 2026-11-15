@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { StatusBadge } from './StatusBadge';
-import { NeedsYouBoard } from './home/NeedsYouBoard';
+import { OwnerPlate } from './home/OwnerPlate';
 
 // Final review Minors 7 and 8: one style per action, and no className
 // override that only wins by Tailwind's emit order.
@@ -28,19 +28,30 @@ describe('StatusBadge size', () => {
 });
 
 describe('one style per action', () => {
-  it('Open on the Home board looks like every other default button (ink, boxed)', () => {
+  // OWNER-HOME-PLAN Task 8: the Home board became the enamel plate, where the
+  // one action style is the white outline button on the plate.
+  it('Open on the plate is the on-plate outline button', () => {
     render(
       <MemoryRouter>
-        <NeedsYouBoard
-          items={[{ id: 'a', domain: 'beads', severity: 'attention', title: 't', href: '/beads' }]}
-          overflow={[]}
+        <OwnerPlate
+          items={[
+            {
+              id: 'a',
+              domain: 'beads',
+              severity: 'attention',
+              audience: 'owner',
+              title: 't',
+              href: '/beads',
+            },
+          ]}
+          readiness={{ state: 'ready' }}
         />
       </MemoryRouter>,
     );
     const open = screen.getByRole('link', { name: 'Open' });
-    expect(open.className).toContain('text-fg');
+    expect(open.className).toContain('text-on-plate');
+    expect(open.className).toContain('border-on-plate');
     expect(open.className).not.toContain('text-primary');
-    expect(open.className).toContain('border-rule');
   });
 
   it('Compose is the filled primary action, like New bead', () => {

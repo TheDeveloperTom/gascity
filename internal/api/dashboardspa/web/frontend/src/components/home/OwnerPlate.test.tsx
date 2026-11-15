@@ -82,7 +82,9 @@ describe('OwnerPlate', () => {
     expect(chat.getAttribute('href')).toBe('https://discord.com/channels/1/2/3');
     expect(chat.getAttribute('target')).toBe('_blank');
     expect(chat.getAttribute('rel')).toBe('noreferrer');
-    expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe('/beads?bead=dw-9');
+    expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(
+      '/beads?bead=dw-9',
+    );
     expect(screen.getByText('dw-9')).toBeTruthy();
   });
 

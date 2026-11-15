@@ -103,10 +103,7 @@ describe('useTaskStages', () => {
     // places it by its frontier step; Home must not claim that stage.
     const stages = stagesOf(
       [task('dw-3', 'Ещё не начато', 'open')],
-      [
-        root('R3', 'dw-3'),
-        step('R3', 'task-review', 'Review round 1', 'review', 'open'),
-      ],
+      [root('R3', 'dw-3'), step('R3', 'task-review', 'Review round 1', 'review', 'open')],
     );
     expect(stages.inFlight).toEqual([]);
     expect(stages.queued).toBe(1);

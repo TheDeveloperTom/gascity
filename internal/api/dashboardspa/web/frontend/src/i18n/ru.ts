@@ -87,6 +87,15 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   '{inFlight} in progress, {queued} queued': '{inFlight} в работе, {queued} в очереди',
   'Could not read: {names}': 'Не удалось прочитать: {names}',
 
+  // Home (routes/CockpitHome).
+  'Usage and load': 'Расход и нагрузка',
+  'City status': 'Состояние города',
+  'City status is stale': 'Состояние города устарело',
+  'City status is partial': 'Состояние города прочитано не полностью',
+  'Live updates are disconnected': 'Живые обновления отключены',
+  'Live updates are degraded': 'Живые обновления работают с перебоями',
+  'Task store maintenance is overdue': 'Обслуживание хранилища задач просрочено',
+
   // Attention rows (attention/registry).
   'A task outside this view': 'Задача вне окна',
   'awaiting input': 'ждёт ответа',
@@ -98,6 +107,16 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   unclaimed: 'никто не взял',
 
   // Plurals.
+  '{n} agents quarantined': {
+    one: '{n} агент на карантине',
+    few: '{n} агента на карантине',
+    many: '{n} агентов на карантине',
+  },
+  '{n} agents suspended': {
+    one: '{n} агент приостановлен',
+    few: '{n} агента приостановлены',
+    many: '{n} агентов приостановлены',
+  },
   '{n} more tasks in the queue': {
     one: 'Ещё {n} задача в очереди',
     few: 'Ещё {n} задачи в очереди',

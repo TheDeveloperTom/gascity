@@ -76,7 +76,10 @@ describe('CityStrip', () => {
   });
 
   it('loading tasks are not zero either', () => {
-    show({ tasks: { state: 'loading', inFlight: [], queued: 0, outsideWindow: 0 }, agents: 'loading' });
+    show({
+      tasks: { state: 'loading', inFlight: [], queued: 0, outsideWindow: 0 },
+      agents: 'loading',
+    });
     expect(valueOf('Tasks').textContent).toBe('reading…');
     expect(valueOf('Agents').textContent).toBe('reading…');
   });
@@ -84,7 +87,9 @@ describe('CityStrip', () => {
   it('no middle dot anywhere', () => {
     const { container } = show({
       issues: [issue(1)],
-      unreadable: [{ id: 'u', domain: 'mail', severity: 'unavailable', title: 'Mail list incomplete' }],
+      unreadable: [
+        { id: 'u', domain: 'mail', severity: 'unavailable', title: 'Mail list incomplete' },
+      ],
     });
     expect(container.textContent).not.toContain('·');
   });

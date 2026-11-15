@@ -166,7 +166,10 @@ export function itemAudience(item: AttentionItem): AttentionAudience {
 
 // Both slices list `unavailable` items (they are shown faintly) and never
 // count them, so a degraded read cannot inflate a number.
-function audienceSlice(items: readonly AttentionItem[], audience: AttentionAudience): AudienceSlice {
+function audienceSlice(
+  items: readonly AttentionItem[],
+  audience: AttentionAudience,
+): AudienceSlice {
   const byDomain = {} as Record<AttentionDomain, number>;
   for (const domain of ATTENTION_DOMAINS) byDomain[domain] = 0;
   const sliced = items.filter((item) => itemAudience(item) === audience);

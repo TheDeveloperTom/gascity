@@ -23,7 +23,9 @@ function headlineFor(counted: number, readiness: OwnerReadiness): string {
   }
   if (readiness.state === 'loading') return t('Checking whether anything waits for you…');
   if (readiness.state === 'degraded') {
-    return t('Could not check: {reasons}.', { reasons: readiness.reasons.map((r) => t(r)).join(', ') });
+    return t('Could not check: {reasons}.', {
+      reasons: readiness.reasons.map((r) => t(r)).join(', '),
+    });
   }
   return t('Nothing waits for you right now.');
 }
@@ -65,7 +67,9 @@ export function OwnerPlate({
           {headline}
         </h2>
         {allClear && (
-          <p className="mt-1 text-body text-on-plate-muted">{t('The city is running on its own.')}</p>
+          <p className="mt-1 text-body text-on-plate-muted">
+            {t('The city is running on its own.')}
+          </p>
         )}
         {degradedNote !== null && (
           <p className="mt-1 text-body text-on-plate-muted [overflow-wrap:anywhere]">
