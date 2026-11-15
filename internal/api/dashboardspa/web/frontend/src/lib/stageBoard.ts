@@ -299,7 +299,9 @@ export function deriveTaskStage(
     }
   } else {
     const position = routePosition(route);
-    stage = position.stage;
+    // Merged means the task is closed (ruling I4): a step labelled `merged`
+    // still waits for the close, so an open task stops at PR.
+    stage = position.stage === 'merged' ? 'pr' : position.stage;
     step = position.step;
     stepLabel = position.label;
   }

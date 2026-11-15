@@ -57,7 +57,8 @@ function root(
 }
 
 // The devwork-development steps in formula order, with the stage the city
-// labels each one with (STAGE-BOARD-PLAN.md, city labels table).
+// labels each one with (STAGE-BOARD-PLAN.md, city labels table; round 1:
+// close-source-anchor is PR, because Merged means the task is closed).
 const DEVWORK_STEPS: ReadonlyArray<[string, StageId]> = [
   ['prepare-worktree', 'working'],
   ['mark-in-progress', 'working'],
@@ -69,7 +70,7 @@ const DEVWORK_STEPS: ReadonlyArray<[string, StageId]> = [
   ['open-pr', 'pr'],
   ['await-merge', 'pr'],
   ['verify-merged', 'pr'],
-  ['close-source-anchor', 'merged'],
+  ['close-source-anchor', 'pr'],
 ];
 
 let seq = 0;
@@ -160,6 +161,23 @@ describe('every devwork-development step maps to its stage', () => {
       ]);
       expect(result.stage).toBe(expected);
     });
+  });
+});
+
+describe('Merged means closed (coordinator ruling I4)', () => {
+  it('an open task is never Merged, even at a step labelled merged', () => {
+    const lastStep = step('close-source-anchor', 'merged', { is_blocked: false });
+    const result = stageOf(task({ status: 'in_progress' }), [root(), lastStep]);
+    expect(result.stage).toBe('pr');
+    expect(result.step?.id).toBe(lastStep.id);
+  });
+
+  it('an open task claimed at a merged-labelled step is still PR', () => {
+    const lastStep = step('close-source-anchor', 'merged', {
+      status: 'in_progress',
+      is_blocked: false,
+    });
+    expect(stageOf(task({ status: 'in_progress' }), [root(), lastStep]).stage).toBe('pr');
   });
 });
 
