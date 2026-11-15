@@ -51,6 +51,12 @@ const MERGED = bead('dw-9', {
   close_reason: 'merged into main at abc (PR #7)',
 });
 
+const CLOSED_STEP = bead('gcg-777', {
+  title: 'Old closed step',
+  status: 'closed',
+  metadata: { 'gc.root_bead_id': 'gcg-776', 'dashboard.stage': 'working' },
+});
+
 const beadQueries: URLSearchParams[] = [];
 /** Extra beads the unscoped open window returns in one test. */
 let windowExtra: SupervisorBead[] = [];
@@ -84,6 +90,10 @@ beforeEach(() => {
         // Like the engine: a rig-scoped read hits the rig's work store alone,
         // which holds tasks but no run roots or steps.
         if (url.searchParams.has('rig')) return json({ items: [TASK], total: 1 });
+        // Like live: the unscoped all=true window is all closed route steps.
+        if (url.searchParams.get('all') === 'true') {
+          return json({ items: [CLOSED_STEP], total: 17962 });
+        }
         if (status === 'in_progress') return json({ items: [TASK, ROOT, STEP, ORPHAN], total: 4 });
         const items = [TASK, ROOT, STEP, NEXT, ORPHAN, ...windowExtra];
         return json({ items, total: windowTotal ?? items.length });
@@ -145,6 +155,19 @@ describe('BeadsPage rig filter keeps stages (review I1)', () => {
       expect(within(working).getByTitle('Open step gcg-2 in its run')).toBeTruthy(),
     );
     expect(screen.queryByTitle('Select gcg-2')).toBeNull();
+  });
+});
+
+describe('BeadsPage closed chip (review I3)', () => {
+  it('keeps merged tasks and live work instead of emptying the board', async () => {
+    renderPage();
+    await screen.findByText('Merged last night');
+    fireEvent.click(screen.getByRole('button', { name: 'closed' }));
+    await waitFor(() => expect(beadQueries.some((q) => q.get('all') === 'true')).toBe(true));
+    const merged = await screen.findByRole('region', { name: 'Merged' });
+    await waitFor(() => expect(within(merged).getByText('Merged last night')).toBeTruthy());
+    expect(screen.queryByText('No beads match the current search or filter.')).toBeNull();
+    expect(screen.queryByTitle('Select gcg-777')).toBeNull();
   });
 });
 

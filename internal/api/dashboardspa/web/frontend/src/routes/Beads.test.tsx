@@ -177,26 +177,34 @@ describe('BeadsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^closed$/i }));
 
-    // Activating `closed` flips the data scope, forcing exactly one fresh
-    // read (window + in-progress leg) whose window now carries all=true
-    // (closed beads included). The leg never carries all — in-progress work is
-    // never closed.
-    // With all=true the recent-closed legs are skipped (closed is already in).
-    await waitFor(() => expect(beadQueries.length).toBe(6));
-    const closedQuery = beadQueries.at(-2);
-    expect(closedQuery?.get('all')).toBe('true');
-    expect(closedQuery?.has('type')).toBe(false);
-    expect(beadQueries.at(-1)?.has('all')).toBe(false);
+    // Activating `closed` flips the data scope, forcing exactly one fresh read
+    // whose window now carries all=true (closed beads included). The
+    // in-progress leg never carries all — in-progress work is never closed.
+    // Stage board (review I3): the rig closed legs still run (uncapped) and an
+    // unscoped open leg keeps live work and its runs, so the chip is a
+    // superset of the default view instead of an all-route-steps window.
+    await waitFor(() => expect(beadQueries.length).toBe(9));
+    const chipRead = beadQueries.slice(4);
+    const allWindow = chipRead.filter((q) => q.get('all') === 'true');
+    expect(allWindow).toHaveLength(1);
+    expect(allWindow[0]?.has('type')).toBe(false);
+    expect(chipRead.filter((q) => q.get('status') === 'in_progress')).toHaveLength(1);
+    expect(chipRead.filter((q) => q.get('status') === 'closed').map((q) => q.get('rig'))).toEqual([
+      'east',
+      'west',
+    ]);
+    const openLeg = chipRead.filter((q) => !q.has('status') && !q.has('all') && !q.has('rig'));
+    expect(openLeg).toHaveLength(1);
 
     // Deactivating `closed` must revert to an open-only fetch — otherwise the
     // chip would read inactive while the board silently keeps scanning closed
     // history (the showClosed/chip desync this dual-state wiring must avoid).
     fireEvent.click(screen.getByRole('button', { name: /^closed$/i }));
-    await waitFor(() => expect(beadQueries.length).toBe(10));
-    const reopenedQuery = beadQueries.at(-4);
-    expect(reopenedQuery?.has('status')).toBe(false);
-    expect(reopenedQuery?.has('all')).toBe(false);
-    expect(reopenedQuery?.has('type')).toBe(false);
+    await waitFor(() => expect(beadQueries.length).toBe(13));
+    const reopened = beadQueries.slice(9);
+    expect(reopened.some((q) => q.has('all'))).toBe(false);
+    expect(reopened.filter((q) => !q.has('status'))).toHaveLength(1);
+    expect(reopened.every((q) => !q.has('type'))).toBe(true);
   });
 
   it('passes the selected rig to the generated supervisor bead query', async () => {

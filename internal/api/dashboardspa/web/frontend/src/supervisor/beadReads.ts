@@ -100,8 +100,11 @@ export async function listSupervisorBeads(
     options.signal === undefined
       ? supervisorApi().listBeads(cityName, query)
       : supervisorApi().listBeads(cityName, query, options.signal);
+  // Under includeClosed (the `closed` chip) the legs still run, uncapped: the
+  // unscoped all=true window is all closed route steps from the city store,
+  // so without them the chip showed no closed task at all (review I3).
   const recentClosedLegs =
-    options.recentClosed !== undefined && !includeClosed
+    options.recentClosed !== undefined
       ? recentClosedRigs(rigFilter).then((rigs) =>
           Promise.all(
             rigs.map((rig) =>
@@ -115,8 +118,10 @@ export async function listSupervisorBeads(
   // Run roots and steps live in the city graph store. A rig-scoped read hits
   // the rig's work store alone (engine storeref.WorkScope), so with a rig
   // filter the routes come from one unscoped open leg, used for route_items
-  // only (review I1).
-  const wantsRouteLeg = options.withRoutes === true && rigFilter.length > 0;
+  // only (review I1). Under includeClosed the main window fills with closed
+  // steps and pushes live runs out, so the same open leg keeps their stages
+  // (review I3).
+  const wantsRouteLeg = options.withRoutes === true && (rigFilter.length > 0 || includeClosed);
   // Best-effort: a failed route leg leaves cards on their status fallback and
   // reports routes as incomplete, so nothing is read as a stopped run.
   const routeLeg = wantsRouteLeg ? listWith({ limit }).catch(() => null) : Promise.resolve(null);
@@ -127,7 +132,10 @@ export async function listSupervisorBeads(
     routeLeg,
   ]);
   const windowItems = uniqueById(list.items ?? []);
-  const items = uniqueById([...windowItems, ...(inProgress?.items ?? [])]);
+  // Without a rig filter the open leg has the rows' own scope, so its tasks
+  // are rows too: under the chip they keep open work on the board (I3).
+  const sameScopeOpen = rigFilter.length === 0 ? (routeList?.items ?? []) : [];
+  const items = uniqueById([...windowItems, ...(inProgress?.items ?? []), ...sameScopeOpen]);
   const statusFiltered = includeClosed ? items : items.filter((bead) => bead.status !== 'closed');
   // The engine lists newest-CREATED first and has no sort, so a task that
   // waited a week and merged tonight sits deep in the closed window. Fetch a
@@ -142,7 +150,7 @@ export async function listSupervisorBeads(
   const recentClosed = closedLegItems
     .filter((bead) => !isRouteBead(bead) && (includeBookkeeping || defaultBeadFilter(bead)))
     .sort(byRecentUpdate)
-    .slice(0, options.recentClosed?.limit ?? 0);
+    .slice(0, includeClosed ? undefined : (options.recentClosed?.limit ?? 0));
   const scoped = [...statusFiltered, ...recentClosed, ...closedRoutes];
   const routeItems = options.withRoutes
     ? uniqueById([...scoped, ...(routeList?.items ?? [])].filter(isRouteBead))

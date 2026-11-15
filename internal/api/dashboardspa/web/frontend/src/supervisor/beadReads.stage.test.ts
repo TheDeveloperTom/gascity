@@ -106,11 +106,38 @@ describe('listSupervisorBeads stage-board options', () => {
     expect(closed).toEqual([{ limit: 1000, status: 'closed', rig: 'east' }]);
   });
 
-  it('skips the closed leg when the board already includes closed beads', async () => {
-    const api = install(async (_city, query) => openWindow(query));
-    await listSupervisorBeads({ includeClosed: true, recentClosed: { limit: 100 } });
-    expect(api.listRigs).not.toHaveBeenCalled();
-    expect(api.listBeads).toHaveBeenCalledTimes(2);
+  // Review I3: under the `closed` chip the unscoped all=true window is all
+  // closed route steps from the city store (live: 1000/1000 gcg), so after
+  // the fold it held no task at all. The chip must be a superset of the
+  // default view: the rig closed legs still run (uncapped), and an unscoped
+  // open leg keeps the live runs' stages.
+  it('keeps closed tasks and live runs under the closed chip', async () => {
+    const OLD_CLOSED = Array.from({ length: 3 }, (_, i) =>
+      bead(`dw-c${i}`, { status: 'closed', updated_at: `2026-11-1${i}T08:00:00Z` }),
+    );
+    const CLOSED_STEP = bead('gcg-9', {
+      status: 'closed',
+      metadata: { 'gc.root_bead_id': 'gcg-8' },
+    });
+    const api = install(async (_city, query) => {
+      if (query['all'] === true) return { items: [CLOSED_STEP], total: 17962 };
+      if (query['status'] === 'closed') return { items: OLD_CLOSED, total: 3 };
+      if (query['status'] === 'in_progress') return { items: [], total: 0 };
+      return { items: [TASK, ROOT, STEP, GATE], total: 4 };
+    });
+    const list = await listSupervisorBeads({
+      includeClosed: true,
+      withRoutes: true,
+      recentClosed: { limit: 1 },
+    });
+    const queries = api.listBeads.mock.calls.map((c) => c[1] as Query);
+    expect(queries).toContainEqual({ limit: 1000, status: 'closed', rig: 'devwork' });
+    expect(queries).toContainEqual({ limit: 1000 });
+    // Every closed task, not just the newest one, plus the open task.
+    expect(list.items.map((b) => b.id).sort()).toEqual(['dw-1', 'dw-c0', 'dw-c1', 'dw-c2']);
+    expect(list.route_items?.map((b) => b.id)).toEqual(
+      expect.arrayContaining(['gcg-1', 'gcg-2', 'gcg-3', 'gcg-9']),
+    );
   });
 
   // Review I1: a rig-scoped read hits the rig's work store alone, which holds
