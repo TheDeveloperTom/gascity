@@ -274,15 +274,20 @@ export function safeExternalUrl(raw: string): string | null {
   return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
 }
 
+/** The PR of a task: number and url each from the first bead (task first,
+ *  then its run's members, the gate among them) that carries it (review M8). */
 function prOf(task: SupervisorBead, route: Route | null): TaskStage['pr'] {
+  let number: string | null = null;
+  let url: string | null = null;
   for (const bead of [task, ...(route?.members ?? [])]) {
-    const number = meta(bead, PR_NUMBER_KEY);
-    const url = safeExternalUrl(meta(bead, PR_URL_KEY));
-    if (number.length > 0 || url !== null) {
-      return { number: number.length > 0 ? number : null, url };
+    if (number === null) {
+      const n = meta(bead, PR_NUMBER_KEY);
+      if (n.length > 0) number = n;
     }
+    if (url === null) url = safeExternalUrl(meta(bead, PR_URL_KEY));
+    if (number !== null && url !== null) break;
   }
-  return null;
+  return number === null && url === null ? null : { number, url };
 }
 
 export function deriveTaskStage(

@@ -423,6 +423,20 @@ describe('marks', () => {
     const result = stageOf(task({ status: 'in_progress' }), [root(), gate, ...routeFrom(8)]);
     expect(result.pr).toEqual({ number: '512', url: 'https://github.com/o/r/pull/512' });
   });
+
+  it('combines a number on the task with the url on the gate (review M8)', () => {
+    const gate = step(
+      'await-merge',
+      null,
+      { issue_type: 'gate' },
+      { 'devwork.pr_url': 'https://github.com/o/r/pull/77' },
+    );
+    const result = stageOf(
+      task({ status: 'in_progress', metadata: { 'devwork.pr_number': '77' } }),
+      [root(), gate, ...routeFrom(8)],
+    );
+    expect(result.pr).toEqual({ number: '77', url: 'https://github.com/o/r/pull/77' });
+  });
 });
 
 describe('PR url safety (agents write card metadata, so the url is untrusted)', () => {
