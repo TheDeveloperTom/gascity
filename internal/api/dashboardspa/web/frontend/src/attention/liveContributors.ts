@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { type RunSummary, type SourceState } from 'gas-city-dashboard-shared';
 import { api, formatApiError } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
@@ -41,6 +41,14 @@ export interface BeadSnapshot {
   items: readonly SupervisorBead[];
   routeItems: readonly SupervisorBead[];
   fetchedAt: string;
+  /** False when the route leg was truncated; absent means complete. */
+  routesComplete?: boolean;
+  /**
+   * `stale`: the last good read, kept after a failed refresh.
+   * `unavailable`: the bead list has never been read in this city.
+   * Absent means fresh.
+   */
+  status?: 'fresh' | 'stale' | 'unavailable';
 }
 
 export interface LiveAttention {
@@ -192,18 +200,52 @@ export function useLiveAttentionContributors(
       }),
     [agents.data, beadsData, activity.data, health.data, runs],
   );
+  // The last snapshot, per city, so a failed refresh keeps the last good read
+  // (as stale) instead of falling back to "reading…" (review I-2).
+  const lastSnapshotRef = useRef<{ city: string; snapshot: BeadSnapshot | undefined } | null>(null);
   const beadSnapshot = useMemo<BeadSnapshot | undefined>(() => {
-    if (beadsRaw?.items === undefined) return undefined;
-    return {
-      items: beadsRaw.items,
-      routeItems: beadsRaw.routeItems ?? [],
-      fetchedAt: beadsFetchedAt ?? new Date(beadsRaw.nowMs ?? Date.now()).toISOString(),
-    };
-  }, [beadsRaw, beadsFetchedAt]);
+    const previous =
+      lastSnapshotRef.current?.city === cacheSuffix ? lastSnapshotRef.current.snapshot : undefined;
+    const next = nextBeadSnapshot(previous, beadsRaw, beadsFetchedAt);
+    lastSnapshotRef.current = { city: cacheSuffix, snapshot: next };
+    return next;
+  }, [beadsRaw, beadsFetchedAt, cacheSuffix]);
   return useMemo(
     () => ({ contributors, ownerReadiness, cityReadiness, beadSnapshot }),
     [contributors, ownerReadiness, cityReadiness, beadSnapshot],
   );
+}
+
+/**
+ * The next shared bead snapshot. No facts yet: pending (undefined). A read
+ * with a bead list: fresh. A read without one (the list failed, the city is
+ * unavailable): the previous good snapshot marked stale, or `unavailable`
+ * when there never was one, so Home says it could not read the board.
+ */
+export function nextBeadSnapshot(
+  previous: BeadSnapshot | undefined,
+  facts: BeadsAttentionFacts | undefined,
+  fetchedAt: string | undefined,
+): BeadSnapshot | undefined {
+  if (facts === undefined) return previous;
+  if (facts.items !== undefined) {
+    return {
+      items: facts.items,
+      routeItems: facts.routeItems ?? [],
+      fetchedAt: fetchedAt ?? new Date(facts.nowMs ?? Date.now()).toISOString(),
+      ...(facts.routesComplete === undefined ? {} : { routesComplete: facts.routesComplete }),
+      status: 'fresh',
+    };
+  }
+  if (previous !== undefined && previous.status !== 'unavailable') {
+    return { ...previous, status: 'stale' };
+  }
+  return {
+    items: [],
+    routeItems: [],
+    fetchedAt: fetchedAt ?? new Date(facts.nowMs ?? Date.now()).toISOString(),
+    status: 'unavailable',
+  };
 }
 
 function uniqueAliases(aliases: readonly string[]): readonly string[] {
@@ -304,6 +346,7 @@ export async function fetchBeadsAttention(
   if (list.status === 'fulfilled') {
     facts.items = list.value.items;
     facts.routeItems = list.value.route_items ?? [];
+    if (list.value.routes_complete !== undefined) facts.routesComplete = list.value.routes_complete;
     facts.partial = list.value.partial === true;
   } else {
     facts.error = formatApiError(list.reason, 'bead list unavailable');

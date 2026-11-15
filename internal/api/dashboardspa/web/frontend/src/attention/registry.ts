@@ -125,6 +125,8 @@ export interface BeadsAttentionFacts {
   operatorAliases?: readonly string[];
   /** Route beads (workflow roots and steps) split off `items` (withRoutes). */
   routeItems?: readonly Bead[];
+  /** False when the leg that supplied the routes was truncated. */
+  routesComplete?: boolean;
 }
 
 export interface MailAttentionFacts {

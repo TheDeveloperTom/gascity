@@ -78,6 +78,7 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   // Tasks in flight (components/home/TasksInFlight).
   'What is going on': 'Что идёт',
   'Reading the board…': 'Читаю доску…',
+  'Could not read the board': 'Не удалось прочитать доску',
   'Nothing is going on right now': 'Сейчас ничего не идёт',
   Working: 'Пишется код',
   PR: 'Вливание',

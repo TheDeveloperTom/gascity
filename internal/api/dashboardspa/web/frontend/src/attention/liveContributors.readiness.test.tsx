@@ -6,7 +6,19 @@ import type { OperatorConfig } from '../contexts/OperatorConfigContext';
 import type * as SupervisorClient from '../supervisor/client';
 import type { RunSummary, SourceState } from 'gas-city-dashboard-shared';
 import { composeAttention } from './compose';
-import { deriveCityReadiness, useLiveAttentionContributors } from './liveContributors';
+import {
+  deriveCityReadiness,
+  nextBeadSnapshot,
+  useLiveAttentionContributors,
+} from './liveContributors';
+
+const TASK_FOR_SNAPSHOT = {
+  created_at: '2026-05-29T20:00:00.000Z',
+  id: 'dw-1',
+  issue_type: 'task',
+  status: 'open',
+  title: 'T',
+};
 
 function freshRuns(): SourceState<RunSummary> {
   return {
@@ -35,6 +47,32 @@ function freshRuns(): SourceState<RunSummary> {
     },
   } as SourceState<RunSummary>;
 }
+
+describe('nextBeadSnapshot', () => {
+  const good = { decisionLabel: 'x', items: [TASK_FOR_SNAPSHOT], routeItems: [], routesComplete: false };
+  it('a good read is fresh and carries routesComplete', () => {
+    expect(nextBeadSnapshot(undefined, good, 'T1')).toMatchObject({
+      status: 'fresh',
+      fetchedAt: 'T1',
+      routesComplete: false,
+    });
+  });
+  it('a failed refresh keeps the last good read as stale', () => {
+    const first = nextBeadSnapshot(undefined, good, 'T1');
+    const next = nextBeadSnapshot(first, { decisionLabel: 'x', error: 'down' }, 'T2');
+    expect(next).toMatchObject({ status: 'stale', fetchedAt: 'T1' });
+    expect(next?.items).toEqual(first?.items);
+  });
+  it('a failure with no earlier read is unavailable', () => {
+    expect(nextBeadSnapshot(undefined, { decisionLabel: 'x', error: 'down' }, 'T2')).toMatchObject({
+      status: 'unavailable',
+      items: [],
+    });
+  });
+  it('no facts yet is still pending', () => {
+    expect(nextBeadSnapshot(undefined, undefined, undefined)).toBeUndefined();
+  });
+});
 
 describe('composeAttention city readiness', () => {
   it('carries the city readiness it is given, ready by default', () => {
@@ -217,6 +255,16 @@ describe('useLiveAttentionContributors owner readiness', () => {
         'Events could not be read',
       ],
     });
+  });
+
+  it('a failed bead list gives an unavailable snapshot, not a pending one', async () => {
+    mockSupervisorApi.listBeads.mockImplementation((_city, query) =>
+      query?.label !== undefined
+        ? Promise.resolve({ total: 0, items: [] })
+        : Promise.reject(new Error('list down')),
+    );
+    const { result } = renderHook(() => useLiveAttentionContributors(operator, undefined));
+    await waitFor(() => expect(result.current.beadSnapshot?.status).toBe('unavailable'));
   });
 
   it('beadSnapshot carries tasks and route items', async () => {

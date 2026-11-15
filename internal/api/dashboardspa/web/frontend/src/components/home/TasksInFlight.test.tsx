@@ -86,6 +86,16 @@ describe('TasksInFlight', () => {
     expect(screen.getByText('Nothing is going on right now')).toBeTruthy();
   });
 
+  it('unavailable says the board could not be read, with a link', () => {
+    setLocale('ru');
+    show({ state: 'unavailable', inFlight: [], queued: 0, outsideWindow: 0 });
+    expect(screen.queryByText('Читаю доску…')).toBeNull();
+    expect(screen.queryByText('Сейчас ничего не идёт')).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Не удалось прочитать доску' }).getAttribute('href'),
+    ).toBe('/beads');
+  });
+
   it('loading says it is reading, never empty', () => {
     show({ state: 'loading', inFlight: [], queued: 0, outsideWindow: 0 });
     expect(screen.queryByText('Nothing is going on right now')).toBeNull();
