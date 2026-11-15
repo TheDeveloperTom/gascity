@@ -55,6 +55,8 @@ import { RunningDots } from './RunningDots';
 /** Milestone tag colours: the design's dots, picked by a stable hash of the key. */
 const TAG_COLORS = ['#0EA5E9', '#EC4899', '#22C55E', '#F59E0B', '#8B5CF6', '#14B8A6'] as const;
 const NEEDS_YOU_COLOR = '#F59E0B';
+/** The project tag's dot (design Main: the slate «crm-api» tag). */
+export const PROJECT_COLOR = '#64748B';
 const SHORT_TITLE = 28;
 const VISIBLE_RELATIONS = 2;
 
@@ -206,6 +208,7 @@ export function KanbanCard({
 
       {/* Row 5: tags, PR, relationships */}
       {(milestone !== null ||
+        card.tag !== null ||
         needsYou ||
         urgent ||
         stalledFor !== null ||
@@ -214,6 +217,7 @@ export function KanbanCard({
         stage.marks.length > 0) && (
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {milestone !== null && <KanbanBadge name={milestone} color={tagColor(milestone)} />}
+          {card.tag !== null && <KanbanBadge name={card.tag} color={PROJECT_COLOR} />}
           {needsYou && <KanbanBadge name={t('needs you')} color={NEEDS_YOU_COLOR} />}
           {pr !== null &&
             (pr.url !== null ? (

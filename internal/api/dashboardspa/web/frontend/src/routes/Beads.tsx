@@ -66,12 +66,29 @@ export function BeadsPage() {
   const readOnly = useReadOnly();
   const cityName = getActiveCity();
   const cityCacheKey = cityName ?? 'no-city';
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const selectedBeadParam = normalizeSelectedBeadParam(searchParams.get('bead'));
   // «Вся история» widens the fetch to closed beads (the old `closed` chip's
   // data effect). It drives BOTH the fetch (includeClosed) and the cache key.
   const [showAllHistory, setShowAllHistory] = useState(false);
-  const [project, setProject] = useState<string>(ALL_PROJECTS);
+  // vk-final: `?project=<key>` preselects the project and follows the menu.
+  const projectParam = normalizeSelectedBeadParam(searchParams.get('project'));
+  const [project, setProjectState] = useState<string>(projectParam ?? ALL_PROJECTS);
+  const setProject = useCallback(
+    (key: string) => {
+      setProjectState(key);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (key === ALL_PROJECTS) next.delete('project');
+          else next.set('project', key);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const [search, setSearch] = useState('');
   const [showTests, setShowTests] = useState(false);
   const epicParam = normalizeSelectedBeadParam(searchParams.get('epic'));
@@ -152,6 +169,10 @@ export function BeadsPage() {
   useEffect(() => {
     if (epicParam !== null) setEpic(epicParam);
   }, [epicParam]);
+
+  useEffect(() => {
+    if (projectParam !== null) setProjectState(projectParam);
+  }, [projectParam]);
 
   const runClose = useCallback(
     async (bead: SupervisorBead) => {

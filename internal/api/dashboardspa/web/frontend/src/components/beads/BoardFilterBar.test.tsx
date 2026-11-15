@@ -115,6 +115,43 @@ describe('BoardFilterBar (vk)', () => {
     expect(screen.queryByText('Новая задача')).toBeNull();
   });
 
+  // vk-final part 2: the project chips became «Проект: Все ▾» beside «Эпик».
+  const PROJECTS = [
+    { key: 'all', label: 'Все', count: 229 },
+    { key: 'devwork', label: 'devwork', count: 225 },
+    { key: 'city', label: 'Город', count: 4 },
+  ];
+
+  it('the project control is a «Проект: Все ▾» menu with counts inside', () => {
+    const onProject = vi.fn();
+    renderBar({ projects: PROJECTS, onProject, epics: EPICS });
+    expect(screen.queryByRole('group', { name: 'Проект' })).toBeNull();
+    const button = screen.getByRole('button', { name: /Проект:/ });
+    expect(button.textContent).toBe('Проект: Все');
+    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
+    // it sits right after the epic control
+    const epicButton = screen.getByRole('button', { name: /Эпик:/ });
+    expect(epicButton.parentElement?.nextElementSibling?.contains(button)).toBe(true);
+    fireEvent.click(button);
+    const list = screen.getByRole('listbox', { name: 'Выбрать проект' });
+    const options = Array.from(list.querySelectorAll('[role="option"]')).map((o) => o.textContent);
+    expect(options).toEqual(['Все229', 'devwork225', 'Город4']);
+    fireEvent.click(screen.getByRole('option', { name: /devwork/ }));
+    expect(onProject).toHaveBeenCalledWith('devwork');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('the project button names the chosen project', () => {
+    renderBar({ projects: PROJECTS, project: 'city' });
+    expect(screen.getByRole('button', { name: /Проект:/ }).textContent).toBe('Проект: Город');
+  });
+
+  it('no project control with one project', () => {
+    renderBar({ projects: PROJECTS.slice(0, 2) });
+    expect(screen.queryByRole('button', { name: /Проект:/ })).toBeNull();
+  });
+
   it('search is «Найти задачу…»', () => {
     const props = renderBar();
     const box = screen.getByRole('searchbox', { name: 'Найти задачу' }) as HTMLInputElement;

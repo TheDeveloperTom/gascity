@@ -344,13 +344,12 @@ export function buildBoardModel(
     if (city > 0) projects.push({ key: CITY_PROJECT_KEY, label: t('City'), count: city });
   }
 
-  const rigsWithCards = projects.filter(
-    (p) => p.key !== ALL_PROJECTS && p.key !== CITY_PROJECT_KEY,
-  ).length;
+  // vk-final: with more than one project on the board every card carries its
+  // project tag; one project (or a project chosen) needs no tag.
+  const projectsWithCards = projects.filter((p) => p.key !== ALL_PROJECTS).length;
   const tagOf = (card: BoardCard): string | null => {
     if (!prefixComplete || filters.project !== ALL_PROJECTS) return null;
-    if (rigsWithCards >= 2) return card.project.label;
-    return card.project.kind === 'city' ? card.project.label : null;
+    return projectsWithCards >= 2 ? card.project.label : null;
   };
 
   const needle = filters.search.trim().toLowerCase();

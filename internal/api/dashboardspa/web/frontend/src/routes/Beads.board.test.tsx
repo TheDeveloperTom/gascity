@@ -111,10 +111,10 @@ afterEach(() => {
   act(() => setLocale('en'));
 });
 
-function renderPage(contributors: AttentionContributor[] = []) {
+function renderPage(contributors: AttentionContributor[] = [], entry = '/beads') {
   return render(
     <LocaleProvider>
-      <MemoryRouter initialEntries={['/beads']}>
+      <MemoryRouter initialEntries={[entry]}>
         <NowProvider intervalMs={1_000_000}>
           <OperatorConfigProvider
             operator={{ operatorAlias: 'owner', operatorWireAlias: 'human', decisionLabel: 'x' }}
@@ -161,21 +161,37 @@ describe('BeadsPage one board', () => {
     renderPage();
     await screen.findByText('Приёмка города: часть B');
     const before = beadQueries.length;
-    const group = screen.getByRole('group', { name: 'Project' });
-    fireEvent.click(within(group).getByRole('button', { name: /^City/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
+    fireEvent.click(screen.getByRole('option', { name: /^City/ }));
     expect(screen.getByText('Приёмка города: часть B')).toBeTruthy();
     expect(screen.queryByText('M04 — приёмка этапа')).toBeNull();
     expect(beadQueries.length).toBe(before);
   });
 
-  it('the project control lists the real rigs and the city', async () => {
+  it('the project menu lists the real rigs and the city, with counts', async () => {
     renderPage();
     await screen.findByText('Приёмка города: часть B');
-    const names = within(screen.getByRole('group', { name: 'Project' }))
-      .getAllByRole('button')
+    fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
+    const names = within(screen.getByRole('listbox', { name: 'Choose a project' }))
+      .getAllByRole('option')
       .map((b) => b.textContent);
-    expect(names).toEqual(['All 2', 'devwork 1', 'City 1']);
+    expect(names).toEqual(['All2', 'devwork1', 'City1']);
     for (const name of names) expect(name).not.toContain('/r/');
+  });
+
+  it('?project=city preselects the project', async () => {
+    renderPage([], '/beads?project=city');
+    await screen.findByText('Приёмка города: часть B');
+    expect(screen.queryByText('M04 — приёмка этапа')).toBeNull();
+    expect(screen.getByRole('button', { name: /Project:/ }).textContent).toBe('Project: City');
+  });
+
+  it('every card carries its project tag when two projects exist', async () => {
+    renderPage();
+    await screen.findByText('Приёмка города: часть B');
+    const card = (id: string) => document.querySelector(`[data-bead-id="${id}"]`) as HTMLElement;
+    expect(within(card('dw-iy9a')).getByText('devwork')).toBeTruthy();
+    expect(within(card('dp-dh6')).getByText('City')).toBeTruthy();
   });
 
   it('test cards stay hidden until asked', async () => {

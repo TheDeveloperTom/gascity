@@ -48,8 +48,15 @@ describe('buildBoardModel', () => {
       ['city', 1],
     ]);
     const card = (id: string) => model.columns.waiting.find((c) => c.node.bead.id === id)!;
+    // vk-final: more than one project ⇒ every card carries its project tag.
     expect(card('dp-dh6').tag).toBe('City');
-    expect(card('dw-iy9a').tag).toBeNull();
+    expect(card('dw-iy9a').tag).toBe('devwork');
+  });
+
+  it('one project only ⇒ no project tags', () => {
+    const model = buildBoardModel(data([IY]), RIGS, NO_FILTERS);
+    expect(model.projects.map((p) => p.key)).toEqual(['all', 'devwork']);
+    expect(model.columns.waiting.every((c) => c.tag === null)).toBe(true);
   });
 
   it('project filter', () => {

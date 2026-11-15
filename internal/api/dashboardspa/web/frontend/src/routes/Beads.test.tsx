@@ -227,10 +227,12 @@ describe('BeadsPage', () => {
     renderPage();
 
     await screen.findByText('East work');
-    const names = within(screen.getByRole('group', { name: 'Project' }))
-      .getAllByRole('button')
-      .map((button) => button.textContent ?? '');
-    expect(names).toEqual(['All 3', 'east 1', 'west 1', 'City 1']);
+    // vk-final: the project chips became the «Project:» menu.
+    fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
+    const names = within(screen.getByRole('listbox', { name: 'Choose a project' }))
+      .getAllByRole('option')
+      .map((option) => option.textContent ?? '');
+    expect(names).toEqual(['All3', 'east1', 'west1', 'City1']);
     for (const name of names) {
       expect(name).not.toContain('/home/ds');
       expect(name).not.toContain('gascity-main');

@@ -176,6 +176,23 @@ describe('PhoneBoard', () => {
     expect(screen.getByRole('button', { name: /^Ревью/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('phone cards carry the project tag when two projects exist (vk-final)', () => {
+    const model = buildBoardModel(
+      boardData([bead('dw-a', 'open', { title: 'rig card' }), bead('gc-b', 'open', { title: 'city card' })]),
+      [{ name: 'devwork', prefix: 'dw' }],
+      { project: ALL_PROJECTS, search: '', showTests: false },
+    );
+    render(
+      <MemoryRouter>
+        <PhoneBoard model={model} nowMs={NOW} selectedId={null} onSelect={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const rig = screen.getByText('rig card').closest('article') as HTMLElement;
+    expect(within(rig).getByText('devwork')).toBeTruthy();
+    const city = screen.getByText('city card').closest('article') as HTMLElement;
+    expect(within(city).getByText('Город')).toBeTruthy();
+  });
+
   it('an empty model renders without throwing', () => {
     renderPhone([]);
     expect(screen.getByRole('button', { name: /^Ждёт/ })).toBeTruthy();
