@@ -123,9 +123,16 @@ describe('route recognition', () => {
     expect(isRouteBead(task())).toBe(false);
   });
 
-  it('links a root to its task through the engine keys, source bead first', () => {
+  it('links a root to its task through the engine keys, the city anchor first', () => {
     expect(routeTaskId(root())).toBe(TASK);
     expect(routeTaskId(root({}, { 'gc.source_bead_id': 'dw-src' }))).toBe('dw-src');
+    // Review M9: the city's own resolver (devwork-strand.sh) reads
+    // gc.source_anchor_id first, so the board does too.
+    expect(
+      routeTaskId(
+        root({}, { 'gc.source_bead_id': 'dw-src', 'gc.source_anchor_id': 'dw-anchor' }),
+      ),
+    ).toBe('dw-anchor');
     expect(
       routeTaskId(
         bead('gcg-1', { metadata: { 'gc.kind': 'workflow', 'gc.source_anchor_id': 'dw-anchor' } }),

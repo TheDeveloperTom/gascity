@@ -52,11 +52,13 @@ const WORKFLOW_KIND = 'workflow';
 /** Compile-time records that stay open without being work in progress. */
 const IGNORED_MEMBER_KINDS: ReadonlySet<string> = new Set(['spec']);
 
-/** Root → task link, first non-empty wins: engine sling/dispatch, the city's
- *  prepare-worktree anchor, the engine drain member, the sling `issue` var. */
+/** Root → task link, first non-empty wins: the city's anchor (stamped by
+ *  prepare-worktree, attach and repair; read first by the city's own
+ *  resolver, devwork-strand.sh), engine sling/dispatch, the engine drain
+ *  member, the sling `issue` var (review M9). */
 const ROOT_TASK_KEYS = [
-  'gc.source_bead_id',
   'gc.source_anchor_id',
+  'gc.source_bead_id',
   'gc.drain_member_id',
   'gc.var.issue',
 ] as const;
