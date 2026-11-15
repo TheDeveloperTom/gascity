@@ -105,11 +105,18 @@ const ReactionSchema = z.looseObject({
   at: optString,
 });
 
+// The city's final dashboard contract (topics-report.md): status is
+// open|paused|resolved|rejected with paused_reason needs_human|human; `mine`
+// marks topics and messages written in this city.
 const TopicSchema = z.looseObject({
   topic_id: z.string().min(1),
   city: optString,
+  peer: optString,
+  mine: z.boolean().nullish(),
   title: z.string(),
   status: z.string(),
+  paused_reason: optString,
+  last_activity_at: optString,
   opened_by: z.union([z.string(), AuthorObject]).nullish(),
   opened_at: optString,
   resolution: ResolutionSchema.nullish(),
@@ -166,13 +173,19 @@ export interface TopicReaction {
   by: CommentAuthor | null;
 }
 
-export type TopicStatus = 'open' | 'needs_human' | 'resolved';
+export type TopicStatus = 'open' | 'paused' | 'resolved' | 'rejected';
+/** Why a topic is paused: the rails (6 Mayor messages in a row) or a person. */
+export type PausedReason = 'needs_human' | 'human';
 
 export interface PeerTopic {
   topicId: string;
   /** The city that owns the topic (its opener's login). */
   city: string;
+  /** Opened in this city. */
+  mine: boolean;
   title: string;
+  pausedReason: PausedReason | null;
+  lastActivityAt: string | null;
   status: TopicStatus;
   openedBy: CommentAuthor | null;
   openedAt: string | null;
@@ -235,8 +248,20 @@ function toTopics(raw: readonly unknown[] | null | undefined, peerLogin: string)
     const parsed = TopicSchema.safeParse(entry);
     if (!parsed.success) continue;
     const tp = parsed.data;
+    // Revision 2 drafts said `status: needs_human`; the final contract says
+    // `status: paused` + `paused_reason`. Both read the same.
     const status: TopicStatus =
-      tp.status === 'needs_human' || tp.status === 'resolved' ? tp.status : 'open';
+      tp.status === 'paused' || tp.status === 'needs_human'
+        ? 'paused'
+        : tp.status === 'resolved' || tp.status === 'rejected'
+          ? tp.status
+          : 'open';
+    const pausedReason: PausedReason | null =
+      status !== 'paused'
+        ? null
+        : tp.status === 'needs_human' || tp.paused_reason === 'needs_human'
+          ? 'needs_human'
+          : 'human';
     const reactions: TopicReaction[] = [];
     for (const r of tp.reactions ?? []) {
       const pr = ReactionSchema.safeParse(r);
@@ -251,8 +276,11 @@ function toTopics(raw: readonly unknown[] | null | undefined, peerLogin: string)
     out.push({
       topicId: tp.topic_id,
       city: tp.city ?? peerLogin,
+      mine: tp.mine ?? (tp.city != null && tp.city !== peerLogin),
       title: tp.title,
       status,
+      pausedReason,
+      lastActivityAt: tp.last_activity_at ?? null,
       openedBy: tp.opened_by == null ? null : toAuthor(tp.opened_by, null),
       openedAt: tp.opened_at ?? null,
       resolution:

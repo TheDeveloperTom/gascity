@@ -31,6 +31,22 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'The card is no longer on the other board.': 'Этой карточки уже нет на доске другого города.',
   'Comments are switched off on this city.': 'Комментарии в этом городе выключены.',
   'Not sent — try again.': 'Не отправлено — попробуй ещё раз.',
+  'Too soon after the last message — try again in two minutes.':
+    'Слишком скоро после прошлого сообщения — попробуй через пару минут.',
+  'The text is too long.': 'Текст слишком длинный.',
+  'A bare «ok» is an acknowledgement, not a message.': 'Голое «ок» — это отметка «принято», а не сообщение.',
+  'The topic is paused — press «Continue» first.': 'Обсуждение на паузе — сначала нажми «Продолжить».',
+  'The topic is already resolved.': 'Обсуждение уже решено.',
+  'The topic changed meanwhile — refresh and try again.': 'Обсуждение уже изменилось — обнови и попробуй снова.',
+  'Only the opener or a person may do this.': 'Это может только тот, кто открыл, или человек.',
+  'The city service is not ready yet.': 'Сервис города ещё не готов.',
+  'goes to {owner} city; their Mayor will show it': 'уйдёт в город {owner}; его Мэр покажет ему',
+  Pause: 'Пауза',
+  'Topic paused': 'Обсуждение на паузе',
+  'One-line outcome': 'Итог в одну строку',
+  'Close the topic': 'Закрыть обсуждение',
+  'paused by a person': 'на паузе по решению человека',
+  'rejected by the other city': 'другой город не принял',
   Comments: 'Комментарии',
   'your city': 'твой город',
   '{owner} city': 'город {owner}',
@@ -39,8 +55,6 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'Comment for {owner}': 'Комментарий для {owner}',
   'Write to {name}…': 'Написать {name}…',
   'Write to {owner} city…': 'Написать в город {owner}…',
-  'goes to {owner} city in about a minute; their Mayor will show it':
-    'уйдёт в город {owner} за ~минуту; его Мэр покажет ему',
   'A task from {owner} city, read only. Only {name} can change it; you can leave a comment.':
     'Задача из города {owner}, только для чтения. Менять её может {name}; ты можешь оставить комментарий.',
   // part 4: Mayor topics

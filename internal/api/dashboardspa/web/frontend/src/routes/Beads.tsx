@@ -485,7 +485,9 @@ export function BeadsPage() {
           <div className="mt-3 flex flex-wrap gap-2">
             {peerSources.map((peer) => {
               const topics = topicsOf(peer.login);
-              const attention = topics.filter((tp) => tp.status === 'needs_human' || tp.unreadCount > 0).length;
+              const attention = topics.filter(
+                (tp) => (tp.status === 'paused' && tp.pausedReason === 'needs_human') || tp.unreadCount > 0,
+              ).length;
               return (
                 <button
                   key={peer.owner}

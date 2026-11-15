@@ -4,8 +4,9 @@ import {
   CommentWriteError,
   commentErrorText,
   markTopicRead,
+  openTopic,
   postCardComment,
-  postTopicEvent,
+  postTopicAction,
 } from './peerCommentWrites';
 
 // vk-final part 4: the one write path, the city service's
@@ -45,27 +46,72 @@ describe('peer comment writes', () => {
     expect(out).toMatchObject({ id: 'xc-1', state: 'queued' });
   });
 
-  it('a topic event names the topic owner city and the event', async () => {
-    fetchMock.mockResolvedValue(json({ ok: true }));
-    await postTopicEvent({ city: 'rich', topicId: 'tp-1' }, { event: 'topic_message', text: 'вмешиваюсь' });
-    expect(lastCall().body).toEqual({
-      target: { kind: 'topic', city: 'rich', topic_id: 'tp-1' },
-      event: 'topic_message',
-      text: 'вмешиваюсь',
-    });
-    await postTopicEvent({ city: 'rich' }, { event: 'topic_open', title: 'Тема', text: 'Первое' });
-    expect(lastCall().body).toEqual({
-      target: { kind: 'topic', city: 'rich' },
-      event: 'topic_open',
-      title: 'Тема',
-      text: 'Первое',
-    });
+  // The city's final contract (topics-report.md «Final dashboard contract»):
+  // one route per action under /v1/topics, the same header gate as comments.
+  const BASE = '/v0/city/test-city/svc/peer-boards/v1/topics';
+
+  it('opening a topic POSTs /v1/topics {to, title, text}', async () => {
+    fetchMock.mockResolvedValue(json({ topic: { topic_id: 'tp-1' } }));
+    await openTopic('rich', 'Тема', 'Первое');
+    const { url, init, body } = lastCall();
+    expect(url).toBe(BASE);
+    expect((init.headers as Record<string, string>)['X-GC-Request']).toBe('1');
+    expect(body).toEqual({ to: 'rich', title: 'Тема', text: 'Первое' });
   });
 
-  it('a read stamp is {kind: read, topic_id, at}', async () => {
+  it('each action has its own route and body', async () => {
+    fetchMock.mockResolvedValue(json({ topic: {} }));
+    const target = { city: 'rich', topicId: 'tp-1' };
+    await postTopicAction(target, { action: 'message', text: 'вмешиваюсь' });
+    expect(lastCall().url).toBe(`${BASE}/message`);
+    expect(lastCall().body).toEqual({ city: 'rich', topic_id: 'tp-1', text: 'вмешиваюсь' });
+    await postTopicAction(target, { action: 'resolve', reason: 'resolved', summary: 'договорились' });
+    expect(lastCall().url).toBe(`${BASE}/resolve`);
+    expect(lastCall().body).toEqual({ city: 'rich', topic_id: 'tp-1', reason: 'resolved', summary: 'договорились' });
+    await postTopicAction(target, {
+      action: 'resolve',
+      reason: 'duplicate',
+      summary: 'то же, что tp-0',
+      decidingMessageId: 'te-9',
+    });
+    expect(lastCall().body).toEqual({
+      city: 'rich',
+      topic_id: 'tp-1',
+      reason: 'duplicate',
+      summary: 'то же, что tp-0',
+      deciding_message_id: 'te-9',
+    });
+    for (const action of ['pause', 'continue', 'reopen'] as const) {
+      await postTopicAction(target, { action });
+      expect(lastCall().url).toBe(`${BASE}/${action}`);
+      expect(lastCall().body).toEqual({ city: 'rich', topic_id: 'tp-1' });
+    }
+    await postTopicAction(target, { action: 'react', messageId: 'te-3' });
+    expect(lastCall().url).toBe(`${BASE}/react`);
+    expect(lastCall().body).toEqual({ city: 'rich', topic_id: 'tp-1', message_id: 'te-3' });
+  });
+
+  it('a read stamp POSTs /v1/topics/read {city, topic_id, at}', async () => {
     fetchMock.mockResolvedValue(json({ ok: true }, 200));
-    await markTopicRead('tp-1', '2026-11-15T18:52:00Z');
-    expect(lastCall().body).toEqual({ kind: 'read', topic_id: 'tp-1', at: '2026-11-15T18:52:00Z' });
+    await markTopicRead({ city: 'rich', topicId: 'tp-1' }, '2026-11-15T18:52:00Z');
+    expect(lastCall().url).toBe(`${BASE}/read`);
+    expect(lastCall().body).toEqual({ city: 'rich', topic_id: 'tp-1', at: '2026-11-15T18:52:00Z' });
+  });
+
+  it('topic refusals keep their code and get plain text', async () => {
+    const target = { city: 'rich', topicId: 'tp-1' };
+    for (const [status, code] of [
+      [409, 'needs_human'],
+      [409, 'resolved'],
+      [429, 'too_soon'],
+      [429, 'topic_cap'],
+      [400, 'too_long'],
+    ] as const) {
+      fetchMock.mockResolvedValueOnce(json({ error: code }, status));
+      const err = await postTopicAction(target, { action: 'message', text: 'x' }).catch((e: unknown) => e);
+      expect((err as CommentWriteError).code).toBe(code);
+      expect(commentErrorText(err)).not.toBe('Not sent — try again.');
+    }
   });
 
   it('errors carry the service code; 403/405 mean comments are switched off', async () => {

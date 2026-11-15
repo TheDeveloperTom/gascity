@@ -9,8 +9,10 @@ import type { PeerComment, PeerTopic } from '../../supervisor/peerBoardReads';
 import {
   commentErrorText,
   markTopicRead,
-  postTopicEvent,
-  type TopicEvent,
+  openTopic,
+  postTopicAction,
+  type TopicAction,
+  type TopicTarget,
 } from '../../supervisor/peerCommentWrites';
 import { cn } from '../cn';
 import { DiscussButton } from '../DiscussButton';
@@ -115,6 +117,7 @@ function useReadStamps(topic: PeerTopic | null, writable: boolean) {
   useEffect(() => {
     if (topic === null || !writable || unread.size === 0 || typeof IntersectionObserver === 'undefined') return;
     const topicId = topic.topicId;
+    const target: TopicTarget = { city: topic.city, topicId };
     observer.current = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
@@ -124,7 +127,7 @@ function useReadStamps(topic: PeerTopic | null, writable: boolean) {
         const last = sent.current.get(topicId);
         if (last !== undefined && last >= msg.createdAt) continue;
         sent.current.set(topicId, msg.createdAt);
-        void markTopicRead(topicId, msg.createdAt).catch(() => undefined);
+        void markTopicRead(target, msg.createdAt).catch(() => undefined);
       }
     }, { threshold: 0.6 });
     return () => {
@@ -158,11 +161,15 @@ function TopicView({
   peer: PeerBoardSource;
   nowMs: number;
   writable: boolean;
-  send: (target: { city: string; topicId?: string }, event: TopicEvent) => Promise<void>;
+  send: (target: TopicTarget, action: TopicAction) => Promise<void>;
   onBack: () => void;
   composerRef: RefObject<HTMLTextAreaElement>;
 }) {
-  const target = { city: topic.city, topicId: topic.topicId };
+  const target: TopicTarget = { city: topic.city, topicId: topic.topicId };
+  const closed = topic.status === 'resolved' || topic.status === 'rejected';
+  const [resolving, setResolving] = useState(false);
+  const [outcome, setOutcome] = useState('');
+  const outcomeId = useId();
   const { unread, itemRef } = useReadStamps(topic, writable);
   const acks = useMemo(
     () => new Set(topic.reactions.filter((r) => r.kind === 'ack').map((r) => r.messageId)),
@@ -174,9 +181,9 @@ function TopicView({
   const lastId = topic.messages.at(-1)?.id;
   const resolution = topic.resolution;
   const [error, setError] = useState<string | null>(null);
-  const act = (event: TopicEvent) => {
+  const act = (action: TopicAction, then?: () => void) => {
     setError(null);
-    send(target, event).catch((err: unknown) => setError(commentErrorText(err)));
+    send(target, action).then(then, (err: unknown) => setError(commentErrorText(err)));
   };
 
   return (
@@ -201,7 +208,7 @@ function TopicView({
             </span>
           </div>
         </div>
-        {writable && topic.status !== 'resolved' && (
+        {writable && !closed && (
           <DiscussButton
             ctx={{
               kind: 'need',
@@ -216,12 +223,34 @@ function TopicView({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
-        {topic.status === 'needs_human' && (
+        {topic.status === 'paused' && topic.pausedReason === 'needs_human' && (
           <NeedsHumanBanner
             writable={writable}
-            onContinue={() => act({ event: 'topic_continue' })}
+            onContinue={() => act({ action: 'continue' })}
             onDecide={() => composerRef.current?.focus()}
           />
+        )}
+        {topic.status === 'paused' && topic.pausedReason !== 'needs_human' && (
+          <div className="flex flex-wrap items-center gap-2 rounded-sm border border-vk-border bg-vk-bg-secondary p-2 text-[13px] text-vk-text-normal">
+            <span className="flex text-warn">
+              <PauseGlyph />
+            </span>
+            <span className="flex-1">{t('Topic paused')}</span>
+            {writable && (
+              <button
+                type="button"
+                onClick={() => act({ action: 'continue' })}
+                className="h-11 rounded-sm border border-vk-border bg-vk-bg-primary px-2.5 text-[13px] text-vk-text-high focus-mark md:h-7"
+              >
+                {t('Continue')}
+              </button>
+            )}
+          </div>
+        )}
+        {topic.status === 'rejected' && (
+          <div className="rounded-sm border border-vk-border bg-vk-bg-secondary p-2 text-[13px] text-vk-text-low">
+            {t('rejected by the other city')}
+          </div>
         )}
         {resolution !== null && topic.status === 'resolved' && (
           <div
@@ -241,7 +270,7 @@ function TopicView({
             )}
           </div>
         )}
-        <div className={cn(topic.status === 'resolved' && 'opacity-70')}>
+        <div className={cn(closed && 'opacity-70')}>
           <CommentList
             comments={topic.messages}
             nowMs={nowMs}
@@ -270,14 +299,54 @@ function TopicView({
           className="flex flex-none flex-col gap-2 border-t border-vk-border px-3 pt-2"
           style={{ paddingBottom: 'calc(0.75rem + var(--saib, env(safe-area-inset-bottom)))' }}
         >
-          {topic.status !== 'resolved' && (
-            <div className="flex gap-2">
+          {!closed && (
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => act({ event: 'topic_resolve', reason: 'resolved' })}
+                aria-expanded={resolving}
+                onClick={() => setResolving((v) => !v)}
                 className="inline-flex h-11 items-center gap-1.5 rounded-sm border border-vk-border bg-vk-bg-secondary px-2.5 text-sm text-vk-text-high focus-mark md:h-8"
               >
                 {t('Resolved ✓')}
+              </button>
+              {topic.status !== 'paused' && (
+                <button
+                  type="button"
+                  onClick={() => act({ action: 'pause' })}
+                  className="inline-flex h-11 items-center gap-1.5 rounded-sm border border-vk-border bg-vk-bg-secondary px-2.5 text-sm text-vk-text-high focus-mark md:h-8"
+                >
+                  <PauseGlyph />
+                  {t('Pause')}
+                </button>
+              )}
+            </div>
+          )}
+          {!closed && resolving && (
+            // the contract needs a one-line outcome with every resolve
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor={outcomeId} className="sr-only">
+                {t('One-line outcome')}
+              </label>
+              <input
+                id={outcomeId}
+                value={outcome}
+                maxLength={200}
+                placeholder={t('One-line outcome')}
+                onChange={(e) => setOutcome(e.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-sm border border-vk-border bg-vk-bg-secondary px-2 text-base text-vk-text-high focus-mark md:h-8"
+              />
+              <button
+                type="button"
+                disabled={outcome.trim().length === 0}
+                onClick={() =>
+                  act({ action: 'resolve', reason: 'resolved', summary: outcome.trim() }, () => {
+                    setResolving(false);
+                    setOutcome('');
+                  })
+                }
+                className="h-11 rounded-sm bg-vk-brand-secondary px-3 text-sm font-medium text-vk-on-brand focus-mark disabled:opacity-50 md:h-8"
+              >
+                {t('Close the topic')}
               </button>
             </div>
           )}
@@ -290,7 +359,7 @@ function TopicView({
             label={t('Message to the topic')}
             placeholder={t('Step in: write to the topic…')}
             hint={t('both Mayors and {name} will see it', { name: peer.name })}
-            onSubmit={(text) => send(target, { event: 'topic_message', text })}
+            onSubmit={(text) => send(target, { action: 'message', text })}
             errorText={commentErrorText}
             textareaRef={composerRef}
           />
@@ -306,7 +375,7 @@ function NewTopic({
   onBack,
 }: {
   peer: PeerBoardSource;
-  send: (target: { city: string }, event: TopicEvent) => Promise<void>;
+  send: (to: string, title: string, text: string) => Promise<void>;
   onBack: () => void;
 }) {
   const titleId = useId();
@@ -321,7 +390,7 @@ function NewTopic({
     setSending(true);
     setError(null);
     try {
-      await send({ city: peer.login }, { event: 'topic_open', title: title.trim(), text: text.trim() });
+      await send(peer.login, title.trim(), text.trim());
       onBack();
     } catch (err) {
       setError(commentErrorText(err));
@@ -406,8 +475,12 @@ export function TopicsPanel({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const send = useCallback(async (target: { city: string; topicId?: string }, event: TopicEvent) => {
-    await postTopicEvent(target, event);
+  const send = useCallback(async (target: TopicTarget, action: TopicAction) => {
+    await postTopicAction(target, action);
+    void refreshPeerBoards();
+  }, []);
+  const open_ = useCallback(async (to: string, title: string, text: string) => {
+    await openTopic(to, title, text);
     void refreshPeerBoards();
   }, []);
 
@@ -489,15 +562,21 @@ export function TopicsPanel({
                       </span>
                       <span className="min-w-0 flex-1 text-[15px] text-vk-text-high">{tp.title}</span>
                     </button>
-                    <NeedsHumanBanner
-                      writable={writable}
-                      onContinue={() => void send({ city: tp.city, topicId: tp.topicId }, { event: 'topic_continue' }).catch(() => undefined)}
-                      onDecide={() => {
-                        setCreating(false);
-                        onSelectTopic(tp.topicId);
-                        requestAnimationFrame(() => composerRef.current?.focus());
-                      }}
-                    />
+                    {tp.pausedReason === 'needs_human' ? (
+                      <NeedsHumanBanner
+                        writable={writable}
+                        onContinue={() =>
+                          void send({ city: tp.city, topicId: tp.topicId }, { action: 'continue' }).catch(() => undefined)
+                        }
+                        onDecide={() => {
+                          setCreating(false);
+                          onSelectTopic(tp.topicId);
+                          requestAnimationFrame(() => composerRef.current?.focus());
+                        }}
+                      />
+                    ) : (
+                      <span className="text-[13px] text-vk-text-low">{t('paused by a person')}</span>
+                    )}
                   </div>
                 ))}
               </>
@@ -524,7 +603,9 @@ export function TopicsPanel({
                     </span>
                     {tp.ticket !== null
                       ? t('→ task {id}', { id: tp.ticket })
-                      : `→ ${tp.resolution?.summary ?? t(RESOLUTION_LABEL[tp.resolution?.reason ?? 'resolved'] ?? '')}`}
+                      : tp.status === 'rejected'
+                        ? `→ ${t('rejected by the other city')}`
+                        : `→ ${tp.resolution?.summary ?? t(RESOLUTION_LABEL[tp.resolution?.reason ?? 'resolved'] ?? '')}`}
                   </span>,
                 ),
               )}
@@ -548,7 +629,7 @@ export function TopicsPanel({
 
         <div className={cn('min-h-0 min-w-0 flex-1 flex-col', showPane ? 'flex' : 'hidden md:flex')}>
           {creating ? (
-            <NewTopic peer={peer} send={send} onBack={() => setCreating(false)} />
+            <NewTopic peer={peer} send={open_} onBack={() => setCreating(false)} />
           ) : selected !== null ? (
             <TopicView
               topic={selected}

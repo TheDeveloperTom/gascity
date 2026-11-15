@@ -53,7 +53,9 @@ export function PeerComments({ peer, rig, cardId, thread, nowMs }: PeerCommentsP
   };
 
   return (
-    <section aria-labelledby="peer-comments-title" className="flex flex-col border-t border-vk-border">
+    // flex-1 + the composer's mt-auto: the composer sits on the drawer's bottom
+    // edge even when the thread is short, and sticks there when it scrolls.
+    <section aria-labelledby="peer-comments-title" className="flex flex-1 flex-col border-t border-vk-border">
       <h3 id="peer-comments-title" className="flex items-center gap-1.5 py-1 text-base font-medium text-vk-text-normal">
         {t('Comments')}
         {comments.length > 0 && <span className="font-normal text-vk-text-low">{comments.length}</span>}
@@ -86,7 +88,7 @@ export function PeerComments({ peer, rig, cardId, thread, nowMs }: PeerCommentsP
       {writable && (
         <div
           data-testid="peer-composer"
-          className="sticky bottom-0 -mx-4 border-t border-vk-border bg-vk-bg-primary px-4 pb-2 pt-2"
+          className="sticky bottom-0 -mx-4 mt-auto border-t border-vk-border bg-vk-bg-primary px-4 pb-2 pt-2 md:-mb-6"
           style={{ paddingBottom: 'calc(0.5rem + var(--saib, env(safe-area-inset-bottom)))' }}
         >
           <CommentComposer
@@ -96,7 +98,7 @@ export function PeerComments({ peer, rig, cardId, thread, nowMs }: PeerCommentsP
                 ? t('Write to {name}…', { name: peer.dative })
                 : t('Write to {owner} city…', { owner: peer.label })
             }
-            hint={t('goes to {owner} city in about a minute; their Mayor will show it', { owner: peer.label })}
+            hint={t('goes to {owner} city; their Mayor will show it', { owner: peer.label })}
             onSubmit={submit}
             errorText={commentErrorText}
           />

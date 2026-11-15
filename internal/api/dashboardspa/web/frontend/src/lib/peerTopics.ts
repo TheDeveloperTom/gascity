@@ -11,7 +11,7 @@ export const PREVIEW_MAX = 80;
 
 export interface TopicSections {
   open: readonly PeerTopic[];
-  /** `needs_human`: the Mayors did not agree, a person is needed. */
+  /** `paused`: by the rails (needs_human, the Mayors did not agree) or by a person. */
   paused: readonly PeerTopic[];
   resolved: readonly PeerTopic[];
 }
@@ -23,21 +23,28 @@ const at = (iso: string | null): number => {
 
 function lastActivity(topic: PeerTopic): number {
   const last = topic.messages.at(-1);
-  return Math.max(at(last?.createdAt ?? null), at(topic.openedAt));
+  return Math.max(at(topic.lastActivityAt), at(last?.createdAt ?? null), at(topic.openedAt));
 }
+
+const isClosed = (tp: PeerTopic) => tp.status === 'resolved' || tp.status === 'rejected';
+const closedAt = (tp: PeerTopic) => at(tp.resolvedAt) || lastActivity(tp);
 
 export function topicSections(topics: readonly PeerTopic[], nowMs: number): TopicSections {
   const byRecent = (a: PeerTopic, b: PeerTopic) => lastActivity(b) - lastActivity(a);
+  const railsFirst = (a: PeerTopic, b: PeerTopic) =>
+    Number(b.pausedReason === 'needs_human') - Number(a.pausedReason === 'needs_human') || byRecent(a, b);
   return {
     open: topics.filter((tp) => tp.status === 'open').sort(byRecent),
-    paused: topics.filter((tp) => tp.status === 'needs_human').sort(byRecent),
+    // the rails' pause (a person is needed) before a person's own pause
+    paused: topics.filter((tp) => tp.status === 'paused').sort(railsFirst),
+    // resolved, and opens the peer refused (`rejected`), for 14 days
     resolved: topics
-      .filter((tp) => tp.status === 'resolved')
+      .filter(isClosed)
       .filter((tp) => {
-        const done = at(tp.resolvedAt);
+        const done = closedAt(tp);
         return done === 0 || nowMs - done <= RESOLVED_WINDOW_MS;
       })
-      .sort((a, b) => at(b.resolvedAt) - at(a.resolvedAt)),
+      .sort((a, b) => closedAt(b) - closedAt(a)),
   };
 }
 
@@ -51,7 +58,7 @@ export interface Waiting {
 
 /** «ждёт ответа от Мэра Ричарда с 18:40»: the last word is ours, the topic still open. */
 export function waitingOn(topic: PeerTopic): Waiting | null {
-  if (topic.status === 'resolved') return null;
+  if (isClosed(topic)) return null;
   const last = topic.messages.at(-1);
   if (last === undefined || !last.mine) return null;
   return { side: 'peer', kind: last.author.kind === 'person' ? 'person' : 'mayor', since: last.createdAt };
@@ -106,7 +113,8 @@ export function topicNeedsOf(result: PeerBoardsResult | null, nowMs: number): To
       counts: needsHuman,
       href: topicHref(peer.login, tp.topicId),
     });
-    for (const tp of sections.paused) paused.push(need(tp, true));
+    // a person's own pause is a choice, not a need
+    for (const tp of sections.paused) if (tp.pausedReason === 'needs_human') paused.push(need(tp, true));
     for (const tp of sections.open) if (tp.unreadCount > 0) unread.push(need(tp, false));
   }
   return [...paused, ...unread];

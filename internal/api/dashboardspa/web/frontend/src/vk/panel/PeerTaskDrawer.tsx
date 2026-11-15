@@ -67,7 +67,7 @@ export function PeerTaskDrawer({
 
   return (
     <TaskDrawer open={open} onClose={onClose} chips={chips} title={bead.title} aboveTabs>
-      <div data-testid="peer-card" className="-mt-2 flex flex-col gap-4">
+      <div data-testid="peer-card" className="-mt-2 flex flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-center gap-1">
           <Chip>
             <span aria-hidden="true" className="mr-1.5 h-2 w-2 rounded-full bg-vk-text-low" />

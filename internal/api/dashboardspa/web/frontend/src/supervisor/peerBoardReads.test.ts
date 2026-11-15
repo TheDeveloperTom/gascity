@@ -134,16 +134,27 @@ describe('listPeerBoards', () => {
     expect(peer!.threads[0]!.comments).toHaveLength(6);
   });
 
-  it('parses topics: status, resolution, reactions, unread, summaries', async () => {
+  it('parses topics in the final contract: status, paused_reason, mine, resolution, reactions', async () => {
     fetchMock.mockResolvedValue(json(peerBody({ topics: peerTopics() })));
     const [peer] = (await listPeerBoards()).peers;
-    const [open, paused, resolved] = peer!.topics;
-    expect(open).toMatchObject({ topicId: 'tp-aaaaaaaaaaaaaaaaaaaa', city: 'rich', status: 'open', unreadCount: 1 });
+    const [open, paused, pausedByHuman, resolved] = peer!.topics;
+    expect(open).toMatchObject({
+      topicId: 'tp-aaaaaaaaaaaaaaaaaaaa',
+      city: 'rich',
+      mine: false,
+      status: 'open',
+      pausedReason: null,
+      unreadCount: 1,
+      lastActivityAt: '2026-11-15T18:40:00Z',
+    });
     expect(open!.messages[0]!.summary).toBe('Можно ли в 22:00 перезагрузить CI?');
+    // `mine` on a message comes from the service, not from guessing the city
+    expect(open!.messages.map((m) => m.mine)).toEqual([false, true]);
     expect(open!.reactions).toEqual([
       { messageId: 'm-1', kind: 'ack', by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null } },
     ]);
-    expect(paused!.status).toBe('needs_human');
+    expect(paused).toMatchObject({ status: 'paused', pausedReason: 'needs_human', mine: true });
+    expect(pausedByHuman).toMatchObject({ status: 'paused', pausedReason: 'human' });
     expect(resolved!.resolution).toMatchObject({
       reason: 'resolved',
       decidingMessageId: 'c-2',

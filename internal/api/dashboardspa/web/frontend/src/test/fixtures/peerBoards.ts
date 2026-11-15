@@ -72,58 +72,101 @@ export function peerThread() {
 const RICH_MAYOR = { kind: 'mayor', city: 'rich', name: 'mayor' };
 const MY_MAYOR = { kind: 'mayor', city: 'me', name: 'mayor' };
 
-/** Topics (Revision 2): one open with unread, one paused, one resolved. */
+/**
+ * Topics in the city's final dashboard contract (topics-report.md «Final
+ * dashboard contract»): one open with unread, one paused by the rails
+ * (needs_human), one paused by a person, one resolved.
+ */
 export function peerTopics() {
   return [
     {
       topic_id: 'tp-aaaaaaaaaaaaaaaaaaaa',
       city: 'rich',
+      peer: 'me',
+      mine: false,
       title: 'Перезагрузка общего CI в 22:00',
       status: 'open',
+      paused_reason: null,
+      last_activity_at: '2026-11-15T18:40:00Z',
+      duplicate_resolutions: [],
       opened_by: RICH_MAYOR,
       opened_at: '2026-11-15T18:35:00Z',
       opened_because: { kind: 'owner_request', message_id: 'm-0' },
       resolution: null,
       ticket: null,
       unread_count: 1,
-      reactions: [{ message_id: 'm-1', kind: 'ack', by: MY_MAYOR, at: '2026-11-15T18:36:30Z' }],
+      reactions: [{ message_id: 'm-1', kind: 'ack', by: MY_MAYOR, at: '2026-11-15T18:36:30Z', mine: true }],
       messages: [
         {
           id: 'm-1',
+          kind: 'open',
           author: RICH_MAYOR,
           text: 'Ричард хочет в 22:00 перезагрузить общий CI. Вашему городу подходит?',
           summary: 'Можно ли в 22:00 перезагрузить CI?',
           created_at: '2026-11-15T18:35:00Z',
+          mine: false,
           state: null,
+          reason: null,
+          reopened: false,
+          needs_owner_decision: true,
         },
         {
           id: 'm-2',
+          kind: 'message',
           author: MY_MAYOR,
           text: 'Уточняю у Артёма.',
           summary: 'Уточняю у Артёма',
           created_at: '2026-11-15T18:40:00Z',
+          mine: true,
           state: 'delivered',
+          reason: null,
+          reopened: false,
+          needs_owner_decision: false,
         },
       ],
     },
     {
       topic_id: 'tp-bbbbbbbbbbbbbbbbbbbb',
       city: 'me',
+      peer: 'rich',
+      mine: true,
       title: 'Кто обновляет Node 24',
-      status: 'needs_human',
+      status: 'paused',
+      paused_reason: 'needs_human',
+      last_activity_at: '2026-11-15T17:00:00Z',
       opened_by: MY_MAYOR,
       opened_at: '2026-11-15T17:00:00Z',
       resolution: null,
       unread_count: 0,
       messages: [
-        { id: 'n-1', author: MY_MAYOR, text: 'Кто обновит Node?', summary: 'Кто обновит Node?', created_at: '2026-11-15T17:00:00Z', state: 'delivered' },
+        { id: 'n-1', kind: 'open', author: MY_MAYOR, text: 'Кто обновит Node?', summary: 'Кто обновит Node?', created_at: '2026-11-15T17:00:00Z', mine: true, state: 'delivered' },
+      ],
+    },
+    {
+      topic_id: 'tp-dddddddddddddddddddd',
+      city: 'me',
+      peer: 'rich',
+      mine: true,
+      title: 'Ночная сборка',
+      status: 'paused',
+      paused_reason: 'human',
+      last_activity_at: '2026-11-15T16:00:00Z',
+      opened_by: { kind: 'person', city: 'me', name: 'Артём' },
+      opened_at: '2026-11-15T16:00:00Z',
+      resolution: null,
+      unread_count: 0,
+      messages: [
+        { id: 'd-1', kind: 'open', author: { kind: 'person', city: 'me', name: 'Артём' }, text: 'Подождём до утра.', summary: 'Подождём до утра', created_at: '2026-11-15T16:00:00Z', mine: true, state: 'delivered' },
       ],
     },
     {
       topic_id: 'tp-cccccccccccccccccccc',
       city: 'rich',
+      peer: 'me',
+      mine: false,
       title: 'Ключ Clerk',
       status: 'resolved',
+      paused_reason: null,
       opened_by: RICH_MAYOR,
       opened_at: '2026-11-14T10:00:00Z',
       resolution: {

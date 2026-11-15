@@ -11,11 +11,11 @@ function result(topics: unknown[] = peerTopics()) {
 }
 
 describe('topic sections', () => {
-  it('open, paused (needs_human) and resolved within 14 days', () => {
+  it('open, paused (needs_human first, then paused by a person) and resolved within 14 days', () => {
     const topics = result().peers[0]!.topics;
     const s = topicSections(topics, NOW);
     expect(s.open.map((x) => x.title)).toEqual(['Перезагрузка общего CI в 22:00']);
-    expect(s.paused.map((x) => x.title)).toEqual(['Кто обновляет Node 24']);
+    expect(s.paused.map((x) => x.title)).toEqual(['Кто обновляет Node 24', 'Ночная сборка']);
     expect(s.resolved.map((x) => x.title)).toEqual(['Ключ Clerk']);
     expect(RESOLVED_WINDOW_MS).toBe(14 * 86_400_000);
     const late = topicSections(topics, Date.parse('2026-12-01T00:00:00Z'));
@@ -38,7 +38,7 @@ describe('waitingOn', () => {
       text: 'Ждём.',
       created_at: '2026-11-15T18:52:00Z',
     });
-    const [open, , resolved] = result(topics).peers[0]!.topics;
+    const [open, , , resolved] = result(topics).peers[0]!.topics;
     expect(waitingOn(open!)).toBeNull();
     expect(waitingOn(resolved!)).toBeNull();
   });
@@ -52,6 +52,17 @@ describe('unread', () => {
 });
 
 describe('«Нужно от меня» topics', () => {
+  it('a topic paused by a person is not a need; a rejected open shows among the closed', () => {
+    const topics = peerTopics();
+    (topics[0] as Record<string, unknown>).status = 'rejected';
+    const s = topicSections(result(topics).peers[0]!.topics, NOW);
+    expect(s.open).toEqual([]);
+    expect(s.resolved.map((x) => [x.title, x.status])).toEqual([
+      ['Перезагрузка общего CI в 22:00', 'rejected'],
+      ['Ключ Clerk', 'resolved'],
+    ]);
+  });
+
   it('lists needs_human topics (they count) and topics with unread (they do not)', () => {
     const needs = topicNeedsOf(result(), NOW);
     expect(needs.map((n) => [n.title, n.needsHuman, n.counts])).toEqual([

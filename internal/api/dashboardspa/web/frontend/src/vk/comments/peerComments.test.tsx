@@ -33,7 +33,8 @@ describe('PeerComments', () => {
   it('the owner gets the composer', () => {
     render(<PeerComments {...props()} />);
     expect(screen.getByRole('textbox', { name: 'Комментарий для Ричарда' })).toBeTruthy();
-    expect(screen.getByText('уйдёт в город Ричарда за ~минуту; его Мэр покажет ему')).toBeTruthy();
+    // neutral: the transport is about to change, so no promised delay
+    expect(screen.getByText('уйдёт в город Ричарда; его Мэр покажет ему')).toBeTruthy();
   });
 
   it('a reader sees the thread and no composer', () => {

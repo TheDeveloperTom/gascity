@@ -83,7 +83,8 @@ export function boardColumns(model: BoardModel, nowMs: number): VkColumn[] {
 export const KanbanProvider = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div
     className={cn(
-      'flex min-w-0 flex-col md:grid md:min-h-full md:w-full md:min-w-[800px] md:max-w-[1600px] md:grid-cols-4 md:items-stretch md:divide-x md:divide-vk-border md:border-x md:border-vk-border',
+      // vk-final: the four columns share the full width (no 1600 px cap).
+      'flex min-w-0 flex-col md:grid md:min-h-full md:w-full md:min-w-[800px] md:grid-cols-4 md:items-stretch md:divide-x md:divide-vk-border md:border-x md:border-vk-border',
       className,
     )}
   >

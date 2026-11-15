@@ -228,7 +228,9 @@ export function CockpitHomePage() {
   // closed «Расход и нагрузка», unchanged inside (test ids, notes, names).
   return (
     <section>
-      <PageHeader title={t('Needs from me')} />
+      {/* vk-final: the shelf below already reads «Нужно от меня» with its
+          count, so the page title stays for screen readers only. */}
+      <PageHeader title={t('Needs from me')} className="sr-only" />
 
       {/* vk lane 3: «Нужно от меня», «Работает», «Тихо» (Attention / Phone-Needs). */}
       <div className="mb-10 min-w-0">
