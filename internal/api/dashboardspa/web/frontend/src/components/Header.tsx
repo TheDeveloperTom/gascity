@@ -133,12 +133,9 @@ export function Header() {
   // sense inside the mail surface.
   const showReadingAs = !viewingAs.isOperator && pathname.startsWith('/mail');
 
-  // One number for "need you" (ruling C1): attention items across domains,
-  // the same total as the Home board headline and the red rail pills.
-  const needsYou = Object.values(attention.byDomain).reduce(
-    (sum, summary) => sum + summary.attention,
-    0,
-  );
+  // One number for "need you" (ruling C1, R4): the owner slice's total, the
+  // same number as the Home plate and the sum of the red rail pills.
+  const needsYou = attention.owner.total;
 
   // On phones the nav is one scrolling row; bring the active item into view
   // by moving only the row's scrollLeft (never the page). A no-op whenever the
@@ -253,7 +250,8 @@ export function Header() {
                           {domain !== undefined && (
                             <NavAttentionIndicator
                               label={r.label}
-                              summary={attention.byDomain[domain]}
+                              ownerCount={attention.owner.byDomain[domain]}
+                              cityCount={domain === 'health' ? attention.city.total : 0}
                             />
                           )}
                         </>

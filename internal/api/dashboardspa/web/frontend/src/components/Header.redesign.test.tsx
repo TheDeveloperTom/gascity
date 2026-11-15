@@ -67,16 +67,18 @@ describe('Header left rail', () => {
     expect(labels).toEqual(['Home', 'Runs', 'Agents', 'Beads', 'Mail', 'Activity', 'Health']);
   });
 
+  // Task 9 (supersedes SH-12): red counts owner items per domain; city items
+  // (runs, unless they wait for the owner) are one amber count on Health.
   it('signal pills', async () => {
     renderHeader([
       contributor('runs', [item('run-1', 'runs', 'attention'), item('run-2', 'runs', 'watch')]),
-      contributor('mail', [item('mail-1', 'mail', 'watch')]),
+      contributor('mail', [{ ...item('mail-1', 'mail', 'watch'), audience: 'owner' }]),
     ]);
-    const runs = await screen.findByLabelText('Runs: 1 attention item');
-    expect(runs.className).toContain('bg-accent');
-    expect(runs.textContent).toBe('1');
-    expect(screen.getByLabelText('Runs: 1 watch item').className).toContain('bg-warn');
-    expect(screen.getByLabelText('Mail: 1 watch item').className).toContain('bg-warn');
+    const mail = await screen.findByLabelText('Mail: 1 attention item');
+    expect(mail.className).toContain('bg-accent');
+    expect(mail.textContent).toBe('1');
+    expect(screen.queryByLabelText(/^Runs:/)).toBeNull();
+    expect((await screen.findByLabelText('Health: 2 city issues')).className).toContain('bg-warn');
   });
 
   it('the scrolling phone nav row leaves room for the focus ring', () => {

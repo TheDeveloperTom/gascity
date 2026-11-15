@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttentionProvider } from '../attention/context';
-import type { AttentionContributor } from '../attention/compose';
+import type { AttentionContributor, AttentionItem } from '../attention/compose';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { ViewingAsProvider } from '../contexts/ViewingAsContext';
 import { LOCALE_STORAGE_KEY, setLocale } from '../i18n';
@@ -109,4 +109,68 @@ describe('Header language toggle', () => {
     expect(nav.className).toContain('whitespace-nowrap');
     expect(within(nav).getByText('Главная')).toBeTruthy();
   });
+
+  it('pills count owner items only', async () => {
+    renderHeader([
+      contributor('mail', [
+        item('mail-1', 'mail', 'attention', 'owner'),
+        item('mail-2', 'mail', 'watch', 'owner'),
+        item('mail-3', 'mail', 'attention'),
+      ]),
+      contributor('runs', [item('run-1', 'runs', 'attention'), item('run-2', 'runs', 'watch')]),
+      contributor('agents', [item('agent-1', 'agents', 'attention', 'owner')]),
+    ]);
+    const mail = await screen.findByLabelText('Mail: 2 attention items');
+    expect(mail.textContent).toBe('2');
+    expect(mail.className).toContain('bg-accent');
+    expect(screen.getByLabelText('Agents: 1 attention item').textContent).toBe('1');
+    // Runs items are the city's: no badge on Runs.
+    expect(screen.queryByLabelText(/^Runs:/)).toBeNull();
+    // The phone chip is the owner total.
+    expect(screen.getByRole('link', { name: '3 need you' })).toBeTruthy();
+  });
+
+  it('health pill counts city items in amber', async () => {
+    renderHeader([
+      contributor('runs', [item('run-1', 'runs', 'attention'), item('run-2', 'runs', 'watch')]),
+      contributor('health', [
+        item('health-1', 'health', 'watch'),
+        item('health-2', 'health', 'unavailable'),
+      ]),
+      contributor('mail', [item('mail-1', 'mail', 'attention', 'owner')]),
+    ]);
+    const health = await screen.findByLabelText('Health: 3 city issues');
+    expect(health.textContent).toBe('3');
+    expect(health.className).toContain('bg-warn');
+    expect(screen.queryByLabelText(/^Health: .*attention/)).toBeNull();
+  });
+
+  it('health pill reads Russian', async () => {
+    setLocale('ru');
+    renderHeader([contributor('runs', [item('run-1', 'runs', 'watch')])]);
+    expect((await screen.findByLabelText('Здоровье: 1 неполадка города')).textContent).toBe('1');
+  });
 });
+
+function contributor(
+  domain: AttentionItem['domain'],
+  items: readonly AttentionItem[],
+): AttentionContributor {
+  return { id: `${domain}-test`, domain, getItems: () => items };
+}
+
+function item(
+  id: string,
+  domain: AttentionItem['domain'],
+  severity: AttentionItem['severity'],
+  audience?: AttentionItem['audience'],
+): AttentionItem {
+  return {
+    id,
+    domain,
+    severity,
+    title: id,
+    href: `/${domain}`,
+    ...(audience !== undefined ? { audience } : {}),
+  };
+}

@@ -48,16 +48,18 @@ describe('Header attention indicators', () => {
     cleanup();
   });
 
-  it('rolls up highest severity and count from the shared attention model', async () => {
+  // Task 9 (supersedes SH-12): runs and activity items are the city's, so
+  // their nav items carry no badge; owner mail keeps its red pill.
+  it('rolls up owner counts from the shared attention model', async () => {
     renderHeader([
       contributor('runs', [item('run-1', 'runs', 'attention'), item('run-2', 'runs', 'watch')]),
-      contributor('mail', [item('mail-1', 'mail', 'watch')]),
+      contributor('mail', [{ ...item('mail-1', 'mail', 'watch'), audience: 'owner' }]),
       contributor('activity', [item('activity-1', 'activity', 'attention')]),
     ]);
 
-    expect((await screen.findByLabelText('Runs: 1 attention item')).textContent).toBe('1');
-    expect(screen.getByLabelText('Mail: 1 watch item').textContent).toBe('1');
-    expect(screen.getByLabelText('Activity: 1 attention item').textContent).toBe('1');
+    expect((await screen.findByLabelText('Mail: 1 attention item')).textContent).toBe('1');
+    expect(screen.queryByLabelText(/^Runs:/)).toBeNull();
+    expect(screen.queryByLabelText(/^Activity:/)).toBeNull();
     expect(screen.queryByLabelText(/Agents:/)).toBeNull();
   });
 });

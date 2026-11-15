@@ -49,7 +49,9 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   Light: 'Светлая',
   Dark: 'Тёмная',
   '{n} need you': { one: '{n} ждёт вас', few: '{n} ждут вас', many: '{n} ждут вас' },
-  '{label}: {n} items waiting for you': {
+  // The owner pill keeps the old English aria form (Mail pin); in Russian it
+  // says what it means.
+  '{label}: {n} attention items': {
     one: '{label}: {n} дело ждёт вас',
     few: '{label}: {n} дела ждут вас',
     many: '{label}: {n} дел ждут вас',
