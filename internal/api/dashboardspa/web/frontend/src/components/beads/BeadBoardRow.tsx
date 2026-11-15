@@ -3,12 +3,12 @@ import type { BeadNode } from '../../lib/beadGraph';
 import type { BadgeSeverity } from '../../attention/compose';
 import { attentionListItemProps } from '../../attention/routeHighlight';
 
-// One bead on the board, in the editorial register: a typeset row, no card,
-// no side-stripe. Selection is carried by weight + a leading "▸" + a warm
-// surface tint, never by a colored left edge (DESIGN.md §6). Clicking a row
-// opens the bead detail pop-out (gascity-dashboard-14s1); the row carries
-// only a compact `needs N · blocks M` annotation, with the full navigable
-// dependency tree living in the modal where it has room to read.
+// One bead on the board: a two-line title, then the bead id as a copyable id
+// tag with its priority and a compact `needs N · blocks M` annotation. No
+// per-row status colour and no side stripe. Selection is a blue tint and an
+// inset hairline (you pressed it), plus `aria-pressed`. Clicking a row opens
+// the bead detail pop-out (gascity-dashboard-14s1), where the full navigable
+// dependency tree has room to read.
 
 interface BeadBoardRowProps {
   node: BeadNode;
@@ -24,9 +24,9 @@ interface BeadBoardRowProps {
   onSelect: (beadId: string) => void;
 }
 
-// The note inherits the row's attention tone: maroon for attention
-// (stalled), warm for watch (waiting), quiet otherwise (a healthy
-// assignee · activity line) — the DESIGN.md anomaly-color rule.
+// The note inherits the row's attention tone: red for attention (stalled),
+// amber for watch (waiting), quiet otherwise (a healthy assignee · activity
+// line).
 function noteTone(severity: BadgeSeverity | null): string {
   if (severity === 'attention') return 'text-accent';
   if (severity === 'watch') return 'text-warn';
@@ -61,51 +61,40 @@ export function BeadBoardRow({
     <li
       ref={rowRef}
       {...attentionProps}
-      className={`px-2 py-2 -mx-2 rounded-sm transition-colors duration-150 ease-out-quart ${
-        selected ? 'bg-surface-tint' : 'hover:bg-surface-tint/60'
+      className={`rounded-md transition-colors duration-150 ease-out-quart ${
+        selected ? 'bg-primary/[0.08] ring-1 ring-inset ring-primary/40' : 'hover:bg-surface-tint'
       } ${attentionClassName}`}
     >
       <button
         type="button"
         onClick={() => onSelect(bead.id)}
-        className="text-left w-full focus-mark rounded-sm"
+        className="block w-full rounded-md px-2.5 py-2 text-left focus-mark"
         aria-pressed={selected}
         title={`Select ${bead.id}`}
       >
-        <span className="flex items-baseline gap-2">
-          <span className="text-fg-faint" aria-hidden="true">
-            {selected ? '▸' : ' '}
-          </span>
-          <span
-            className={`min-w-0 line-clamp-2 text-body ${
-              selected ? 'text-fg font-medium' : 'text-fg'
-            }`}
-          >
-            {bead.title}
-          </span>
+        <span
+          className={`line-clamp-2 min-w-0 text-body text-fg [overflow-wrap:anywhere] ${
+            selected ? 'font-semibold' : 'font-medium'
+          }`}
+        >
+          {bead.title}
         </span>
-        <span className="flex items-baseline gap-3 pl-4 mt-0.5 text-label uppercase tracking-wider text-fg-faint">
-          <span className="tnum">{bead.id}</span>
+        <span className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-label text-fg-muted">
+          <span className="min-w-0 font-mono text-[0.8125rem] text-fg-muted [overflow-wrap:anywhere]">
+            {bead.id}
+          </span>
           {bead.priority != null && <span className="tnum">P{bead.priority}</span>}
           {hasNeighbourhood && (
-            <span className="tnum normal-case tracking-normal">
+            <span className="tnum">
               {depCount > 0 && `needs ${depCount}`}
               {depCount > 0 && blockCount > 0 && ' · '}
               {blockCount > 0 && `blocks ${blockCount}`}
             </span>
           )}
-          {hasUnresolvedDeps && (
-            <span className="normal-case tracking-normal text-warn">unresolved</span>
-          )}
+          {hasUnresolvedDeps && <span className="text-warn">unresolved</span>}
         </span>
         {note !== null && note.length > 0 && (
-          <span
-            className={`block pl-4 mt-0.5 text-label normal-case tracking-normal ${noteTone(
-              attentionSeverity,
-            )}`}
-          >
-            {note}
-          </span>
+          <span className={`mt-0.5 block text-label ${noteTone(attentionSeverity)}`}>{note}</span>
         )}
       </button>
     </li>

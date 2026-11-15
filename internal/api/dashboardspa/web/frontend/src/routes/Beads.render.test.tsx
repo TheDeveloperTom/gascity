@@ -110,8 +110,8 @@ describe('BeadsPage supervisor reads', () => {
     // there is disabled. There is no operator Claim action
     // (gascity-dashboard-2j8e.8) — the human is never a bead assignee.
     const closeButton = within(dialog)
-      .getAllByRole('button', { name: /^close$/i })
-      .find((button) => button.textContent?.trim() === 'Close') as HTMLButtonElement;
+      .getAllByRole('button', { name: /^close bead…$/i })
+      .find((button) => button.textContent?.trim() === 'Close bead…') as HTMLButtonElement;
     expect(closeButton).toBeTruthy();
     const actions = closeButton.parentElement;
     expect(actions).not.toBeNull();
