@@ -19,6 +19,7 @@ import { elapsedSince, formatElapsed } from './elapsed';
 import { runDetailHref } from '../supervisor/runHref';
 import { agentNeedsYouReasonLabel } from './agentNeedsYou';
 import { eventTitle } from './eventTitles';
+import { beadRowSummary } from './rowCopy';
 import { agentDisplayName } from '../lib/agentNames';
 import { t } from '../i18n';
 import type {
@@ -486,7 +487,10 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
         ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
         ref: row.beadId,
         title: row.title,
-        summary: withoutLeadingTitle(row.summary, row.title, row.reason),
+        summary:
+          row.parts === undefined
+            ? withoutLeadingTitle(row.summary, row.title, row.reason)
+            : beadRowSummary(row.parts),
         href: beadHref(row.beadId),
         updatedAt: row.updatedAt,
       }),

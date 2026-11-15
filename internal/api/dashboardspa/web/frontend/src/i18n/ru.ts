@@ -106,6 +106,22 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Live updates are degraded': 'Живые обновления работают с перебоями',
   'Task store maintenance is overdue': 'Обслуживание хранилища задач просрочено',
 
+  // Attention row summaries (attention/rowCopy).
+  'someone outside the city': 'кого-то вне города',
+  'nobody is on it': 'никто не взялся',
+  '{who} has no live session': 'у {who} нет живой сессии',
+  'the session ended': 'сессия закончилась',
+  'the session is {state}': 'сессия в состоянии {state}',
+  'no activity for {age}': 'нет активности {age}',
+  'Asks for help': 'Просит помощи',
+  'Nobody has taken it for {age}': 'Никто не берёт уже {age}',
+  'On hold': 'На паузе',
+  'On hold for {age}': 'На паузе уже {age}',
+  'Waiting on {who}': 'Ждёт: {who}',
+  'Waiting on {who} for {age}': 'Ждёт: {who}, уже {age}',
+  'Stalled: {cause}': 'Застряла: {cause}',
+  'Stalled for {age}: {cause}': 'Застряла {age}: {cause}',
+
   // Attention rows (attention/registry).
   'A task outside this view': 'Задача вне окна',
   'awaiting input': 'ждёт ответа',
@@ -117,6 +133,8 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   unclaimed: 'никто не взял',
 
   // Plurals.
+  '{n} hours': { one: '{n} час', few: '{n} часа', many: '{n} часов' },
+  '{n} days': { one: '{n} день', few: '{n} дня', many: '{n} дней' },
   '{n} agents quarantined': {
     one: '{n} агент на карантине',
     few: '{n} агента на карантине',

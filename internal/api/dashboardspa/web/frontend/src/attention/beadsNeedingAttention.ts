@@ -122,7 +122,26 @@ export interface BeadAttentionRow {
   waitingOn?: string;
   /** False when `waitingOn` is the board's "human" fallback, not a named actor. */
   waitingOnNamed?: boolean;
+  /**
+   * The facts behind `summary`, so the attention layer can phrase them in the
+   * viewer's language (review I5). `summary` stays the board's English note.
+   */
+  parts?: BeadRowParts;
 }
+
+/** Why an in-progress bead counts as stalled. */
+export type StallCause =
+  | { kind: 'no-assignee' }
+  | { kind: 'no-session'; assignee: string }
+  | { kind: 'session-ended' }
+  | { kind: 'session-state'; state: string }
+  | { kind: 'inactive'; ms: number };
+
+export type BeadRowParts =
+  | { reason: 'escalated' }
+  | { reason: 'ready-unclaimed'; ageMs: number }
+  | { reason: 'waiting-human'; who: string | null; waitMs: number | null }
+  | { reason: 'stalled'; ageMs: number | null; cause: StallCause; step?: string };
 
 /**
  * The slice of a supervisor session the stall check reads. Structural so the
@@ -228,6 +247,9 @@ function stalledRouteRows(inputs: BeadAttentionInputs, nowMs: number): BeadAtten
       beadId: taskId,
       title: inputs.taskTitles?.get(taskId) ?? t(TASK_OUTSIDE_VIEW),
       summary: `${step.title}: ${stalled.summary}`,
+      ...(stalled.parts?.reason === 'stalled'
+        ? { parts: { ...stalled.parts, step: step.title } }
+        : {}),
     });
   }
   return [...byTask.values()];
@@ -266,6 +288,7 @@ function escalatedRow(bead: Bead): BeadAttentionRow | null {
     reason: 'escalated',
     severity: 'attention',
     summary: `${bead.title} — escalation raised`,
+    parts: { reason: 'escalated' },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
@@ -288,6 +311,7 @@ function readyUnclaimedRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     reason: 'ready-unclaimed',
     severity: stale ? 'attention' : 'watch',
     summary: `${bead.title} opened ${formatElapsed(ageMs)} ago`,
+    parts: { reason: 'ready-unclaimed', ageMs },
     updatedAt: bead.created_at,
   };
 }
@@ -303,6 +327,7 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
   if (holdText === null) return null;
   const waitMs = elapsedSince(bead.updated_at ?? bead.created_at, nowMs);
   const who = waitingOn(bead, holdText);
+  const named = namedWaitingActor(bead, holdText);
   const phrase =
     waitMs === null ? `waiting on ${who}` : `waiting on ${who} for ${formatElapsed(waitMs)}`;
   // hold:external means the next actor or condition is outside this bd
@@ -317,7 +342,8 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     severity: escalates ? 'attention' : 'watch',
     summary: phrase,
     waitingOn: who,
-    waitingOnNamed: namedWaitingActor(bead, holdText) !== null,
+    waitingOnNamed: named !== null,
+    parts: { reason: 'waiting-human', who: named, waitMs },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
@@ -338,8 +364,9 @@ function stalledRow(
   // A workflow root is never claimed by anyone; its steps are (R11).
   if (isRouteRoot(bead)) return null;
   const assignee = bead.assignee?.trim() ?? '';
-  const detail = stalledDetail(bead, assignee, sessions, nowMs);
-  if (detail === null) return null;
+  const cause = stalledCause(bead, assignee, sessions, nowMs);
+  if (cause === null) return null;
+  const detail = causeText(cause);
   const ageMs = elapsedSince(bead.updated_at ?? bead.created_at, nowMs);
   const phrase =
     ageMs === null ? `stalled — ${detail}` : `stalled ${formatElapsed(ageMs)} — ${detail}`;
@@ -349,34 +376,49 @@ function stalledRow(
     reason: 'stalled',
     severity: 'attention',
     summary: phrase,
+    parts: { reason: 'stalled', ageMs, cause },
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
 
-function stalledDetail(
+function stalledCause(
   bead: Bead,
   assignee: string,
   sessions: readonly BeadAttentionSession[] | undefined,
   nowMs: number,
-): string | null {
-  if (assignee.length === 0) return 'no assignee';
+): StallCause | null {
+  if (assignee.length === 0) return { kind: 'no-assignee' };
   if (sessions === undefined) return null;
   const session = resolveSession(bead, sessions);
-  if (session === undefined) {
-    return `no live session for ${assignee}`;
-  }
+  if (session === undefined) return { kind: 'no-session', assignee };
   const state = session.state.trim();
   if (!isLiveSession(state)) {
     // A closed session decodes to the empty state — "closed beads have no
     // runtime state" (internal/session/info_codec.go) — so name that case
     // instead of rendering the dangling "stalled 3h — session ".
-    return state.length === 0 ? 'session ended' : `session ${state}`;
+    return state.length === 0 ? { kind: 'session-ended' } : { kind: 'session-state', state };
   }
   const activityMs = lastActivityElapsedMs(bead, session, nowMs);
   if (activityMs !== null && activityMs >= STALLED_INACTIVITY_MS) {
-    return `no activity for ${formatElapsed(activityMs)}`;
+    return { kind: 'inactive', ms: activityMs };
   }
   return null;
+}
+
+/** The board's English phrase for a stall cause (card notes stay unchanged). */
+function causeText(cause: StallCause): string {
+  switch (cause.kind) {
+    case 'no-assignee':
+      return 'no assignee';
+    case 'no-session':
+      return `no live session for ${cause.assignee}`;
+    case 'session-ended':
+      return 'session ended';
+    case 'session-state':
+      return `session ${cause.state}`;
+    case 'inactive':
+      return `no activity for ${formatElapsed(cause.ms)}`;
+  }
 }
 
 // The assignee names a concrete session (session_name), sometimes an alias or
