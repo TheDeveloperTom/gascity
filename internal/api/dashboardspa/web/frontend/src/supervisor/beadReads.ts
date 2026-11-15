@@ -4,7 +4,9 @@ import type {
   ListBodyBead,
 } from 'gas-city-dashboard-shared/gc-supervisor';
 import { activeCityOrThrow } from '../api/cityBase';
+import { isRouteBead } from '../lib/stageBoard';
 import { SupervisorApiError, supervisorApi } from './client';
+import { listSupervisorRigs } from './rigReads';
 
 export type SupervisorBead = Bead;
 
@@ -14,6 +16,10 @@ export interface SupervisorBeadList extends Omit<ListBodyBead, 'items' | 'total'
   upstream_total?: number;
   upstream_fetched: number;
   fetch_limit: number;
+  /** With `withRoutes`: workflow roots and their members (any type), split off `items`. */
+  route_items?: SupervisorBead[];
+  /** With `recentClosed`: beads the rig-scoped closed legs returned. */
+  recent_closed_fetched?: number;
 }
 
 export interface ListSupervisorBeadsOptions {
@@ -23,6 +29,20 @@ export interface ListSupervisorBeadsOptions {
   limit?: number;
   city?: string;
   signal?: AbortSignal;
+  /**
+   * Stage board: move route beads (gc.kind=workflow roots and gc.root_bead_id
+   * members, of every type, gates included) out of `items` into `route_items`,
+   * so they fold into their task instead of flooding the board.
+   */
+  withRoutes?: boolean;
+  /**
+   * Stage board: when closed beads are not already included, add one
+   * best-effort `status=closed&rig=<rig>` leg per rig (the rig filter, else
+   * every supervisor rig). Rig stores hold the product tasks; the unscoped
+   * closed window is all route-step churn from the city store, so it cannot
+   * surface recent merges.
+   */
+  recentClosed?: { limit: number };
 }
 
 // Pre-exposure load bounds (gascity-dashboard-q89b): board and detail-fallback
@@ -74,18 +94,39 @@ export async function listSupervisorBeads(
     options.signal === undefined
       ? supervisorApi().listBeads(cityName, query)
       : supervisorApi().listBeads(cityName, query, options.signal);
-  const [list, inProgress] = await Promise.all([
+  const recentClosedLegs =
+    options.recentClosed !== undefined && !includeClosed
+      ? recentClosedRigs(rigFilter).then((rigs) =>
+          Promise.all(
+            rigs.map((rig) =>
+              listWith({ limit: options.recentClosed?.limit ?? 0, status: 'closed', rig })
+                .then((leg) => leg.items ?? [])
+                .catch(() => [] as SupervisorBead[]),
+            ),
+          ),
+        )
+      : Promise.resolve(null);
+  const [list, inProgress, closedLegs] = await Promise.all([
     listWith(baseQuery),
     listWith(inProgressQuery).catch(() => null),
+    recentClosedLegs.catch(() => null),
   ]);
   const windowItems = uniqueById(list.items ?? []);
   const items = uniqueById([...windowItems, ...(inProgress?.items ?? [])]);
   const statusFiltered = includeClosed ? items : items.filter((bead) => bead.status !== 'closed');
-  const filtered = includeBookkeeping ? statusFiltered : statusFiltered.filter(defaultBeadFilter);
+  const recentClosed = uniqueById((closedLegs ?? []).flat()).filter(
+    (bead) => bead.status === 'closed' && !items.some((item) => item.id === bead.id),
+  );
+  const scoped = [...statusFiltered, ...recentClosed];
+  const routeItems = options.withRoutes ? scoped.filter(isRouteBead) : undefined;
+  const boardScoped = options.withRoutes ? scoped.filter((bead) => !isRouteBead(bead)) : scoped;
+  const filtered = includeBookkeeping ? boardScoped : boardScoped.filter(defaultBeadFilter);
   const upstreamTotal = countAsNumber(list.total);
   return {
     items: filtered,
     total: filtered.length,
+    ...(routeItems === undefined ? {} : { route_items: routeItems }),
+    ...(closedLegs === null ? {} : { recent_closed_fetched: recentClosed.length }),
     ...(upstreamTotal === undefined ? {} : { upstream_total: upstreamTotal }),
     // Counted from the WINDOW leg alone, against which `upstream_total` is
     // reported. Counting the merged array would let beads recovered by the
@@ -146,6 +187,12 @@ export async function fetchSupervisorBead(id: string): Promise<SupervisorBead> {
     if (hit !== undefined) return hit;
     throw err;
   }
+}
+
+async function recentClosedRigs(rigFilter: string): Promise<string[]> {
+  if (rigFilter.length > 0) return [rigFilter];
+  const rigs = await listSupervisorRigs();
+  return uniqueNonEmpty(rigs.items.map((rig) => rig.name));
 }
 
 function defaultBeadFilter(bead: SupervisorBead): boolean {
