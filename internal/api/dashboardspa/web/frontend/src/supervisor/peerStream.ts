@@ -1,13 +1,12 @@
-import { authHeaders, withApiBase } from '../lib/apiBase';
+import { withApiBase } from '../lib/apiBase';
 
 // BOARD-LIVE L7 (contract C5, L12): our own peer-boards service streams
 // `GET /v1/stream` — `event: changed` with `{v, at}` whenever any of its
 // inputs change, and a `: hb` comment every 15 s (invisible here). The
 // dashboard debounces a burst of `changed` by 200 ms and then reads
 // `/v1/boards` once. Reconnects back off 1 s → 30 s. After 3 failed opens in
-// a row, or when the stream is switched off (PEER_STREAM; also inside the
-// Activity, where EventSource cannot carry the session header), it polls
-// every 3 s instead; a later successful open stops the poll.
+// a row, or when the stream is switched off (PEER_STREAM, the P12 fallback),
+// it polls every 3 s instead; a later successful open stops the poll.
 
 export const PEER_STREAM_DEBOUNCE_MS = 200;
 export const PEER_POLL_MS = 3_000;
@@ -30,7 +29,7 @@ export function peerStreamUrl(city: string): string {
 }
 
 export interface PeerStreamOptions {
-  /** Defaults to PEER_STREAM, and off when requests carry session headers (Activity). */
+  /** Defaults to PEER_STREAM. */
   enabled?: boolean;
 }
 
@@ -102,7 +101,7 @@ export function subscribePeerStream(
     };
   };
 
-  const enabled = opts.enabled ?? (PEER_STREAM && Object.keys(authHeaders()).length === 0);
+  const enabled = opts.enabled ?? PEER_STREAM;
   if (enabled) connect();
   else startPoll();
 

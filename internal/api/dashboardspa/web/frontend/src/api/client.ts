@@ -13,8 +13,7 @@ import type {
   FormulaRunDetail,
 } from 'gas-city-dashboard-shared';
 import { cityPath } from './cityBase';
-import { authHeaders, withApiBase } from '../lib/apiBase';
-import { fetchWithSessionRetry } from '../embed/activitySession';
+import { withApiBase } from '../lib/apiBase';
 
 // Typed fetch client for the admin backend's API. Shares types with the
 // backend via the workspace 'gas-city-dashboard-shared' import so wire-shape
@@ -51,12 +50,7 @@ async function performRequest<T>(
     credentials: 'same-origin',
   };
   if (body !== undefined) init.body = JSON.stringify(body);
-  // vk lane 6: the Activity session headers (`{}` outside the Activity), read
-  // per attempt: on the gateway's 401 session_invalid the request re-runs the
-  // silent sign-in once and retries once with the new session (Task 6).
-  const res = await fetchWithSessionRetry(() =>
-    fetch(withApiBase(url), { ...init, headers: { ...authHeaders(), ...headers } }),
-  );
+  const res = await fetch(withApiBase(url), { ...init, headers });
   if (!res.ok) {
     const bodyText = await res.text();
     const payload = parseApiErrorBody(bodyText);

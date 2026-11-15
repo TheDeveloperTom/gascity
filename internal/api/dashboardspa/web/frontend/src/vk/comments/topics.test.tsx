@@ -5,11 +5,9 @@ import { collectMissing, resetMissing, setLocale } from '../../i18n';
 import { asOfClock, peerSourcesOf } from '../../lib/boardOwner';
 import { parsePeerBoards } from '../../supervisor/peerBoardReads';
 import { ownerQuestion, peerBody, peerTopics, QUESTION_JUMP } from '../../test/fixtures/peerBoards';
-import { setActivityRole } from '../../embed/activitySession';
-import { resetActivityPlumbingForTests } from '../../lib/apiBase';
+import { ReadOnlyProvider } from '../../contexts/ReadOnlyContext';
 import { TopicsPanel } from './TopicsPanel';
 import type * as PeerCommentWrites from '../../supervisor/peerCommentWrites';
-import type * as ActivitySession from '../../embed/activitySession';
 
 // vk-final part 4: «Обсуждения Мэров» with the peer city (frames
 // General-Thread, Phone-Topics; the city's final contract in
@@ -21,11 +19,7 @@ vi.mock('../../supervisor/peerCommentWrites', async (orig) => ({
   postTopicAction: writes.action,
   markTopicRead: writes.read,
 }));
-const role = vi.hoisted(() => ({ write: true }));
-vi.mock('../../embed/activitySession', async (orig) => ({
-  ...(await orig<typeof ActivitySession>()),
-  canWrite: () => role.write,
-}));
+const role = { write: true };
 
 const NOW = Date.parse('2026-11-15T19:00:00Z');
 const OPEN = { city: 'rich', topicId: 'tp-aaaaaaaaaaaaaaaaaaaa' };
@@ -33,19 +27,22 @@ const OPEN = { city: 'rich', topicId: 'tp-aaaaaaaaaaaaaaaaaaaa' };
 function setup(selected: string | null = null, onSelect = vi.fn(), ownLogin: string | null = 'me') {
   const result = parsePeerBoards(peerBody({ topics: peerTopics() }));
   const peer = peerSourcesOf(result, NOW)[0]!;
+  // the dashboard's read-only posture (the only write gate since owner 16.11)
   render(
-    <MemoryRouter>
-      <TopicsPanel
-        open
-        onClose={vi.fn()}
-        peer={peer}
-        topics={result.peers[0]!.topics}
-        selectedTopicId={selected}
-        onSelectTopic={onSelect}
-        nowMs={NOW}
-        ownLogin={ownLogin}
-      />
-    </MemoryRouter>,
+    <ReadOnlyProvider readOnly={!role.write}>
+      <MemoryRouter>
+        <TopicsPanel
+          open
+          onClose={vi.fn()}
+          peer={peer}
+          topics={result.peers[0]!.topics}
+          selectedTopicId={selected}
+          onSelectTopic={onSelect}
+          nowMs={NOW}
+          ownLogin={ownLogin}
+        />
+      </MemoryRouter>
+    </ReadOnlyProvider>,
   );
   return { onSelect };
 }
@@ -135,15 +132,15 @@ describe('TopicsPanel thread', () => {
   });
 
   // Review I-2 / N-2: a ticket from a topic starts only from the owner's
-  // button (BOARD-LIVE L11); the dashboard never hands the peer's title or
-  // text to our Mayor. No discuss-style «Сделать задачей» here; inside the
-  // Activity, the topic's owner question carries the four answer buttons,
-  // and a click on any of them goes to the answer route, never to discuss.
-  it('no discuss «Сделать задачей»; inside the Activity every click answers and nothing goes to the discuss route', async () => {
+  // button on the Mayor's Discord message (BOARD-LIVE L11); the dashboard
+  // never hands the peer's title or text to our Mayor. Owner 16.11: no
+  // answer buttons here either; the question links to Discord, and every
+  // click in the thread posts nothing to Discord or the Mayor.
+  it('no «Сделать задачей» here; the question only links to Discord and clicks post nothing', async () => {
     const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
-    vi.stubEnv('VITE_EMBED', '1');
-    setActivityRole('owner');
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
     // without a question: no «Сделать задачей» at all
     setup('tp-aaaaaaaaaaaaaaaaaaaa');
     expect(within(pane()).queryByRole('button', { name: /Сделать задачей/ })).toBeNull();
@@ -168,19 +165,13 @@ describe('TopicsPanel thread', () => {
       </MemoryRouter>,
     );
     const question = within(pane()).getByTestId('topic-question');
-    for (const label of ['Сделать задачей', 'Обсудить']) {
-      await act(async () => {
-        fireEvent.click(within(question).getByRole('button', { name: label }));
-      });
-    }
-    const urls = fetchSpy.mock.calls.map(([u]) => String(u));
-    expect(urls.filter((u) => u.endsWith('/api/activity/answer')).length).toBeGreaterThan(0);
-    expect(urls.some((u) => u.includes('/api/activity/discuss'))).toBe(false);
-    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))).toEqual({ qid: 'q-7f3a9c', choice: 3 });
+    expect(within(question).queryAllByRole('button')).toHaveLength(0);
+    await act(async () => {
+      fireEvent.click(within(question).getByRole('link', { name: 'Ответить в Discord' }));
+    });
+    expect(open).toHaveBeenCalledWith(QUESTION_JUMP, '_blank', 'noopener,noreferrer');
+    expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-    setActivityRole(null);
-    resetActivityPlumbingForTests();
   });
 
   it('needs_human resolve 202 shows owner-question line with jump link and no optimistic state', async () => {

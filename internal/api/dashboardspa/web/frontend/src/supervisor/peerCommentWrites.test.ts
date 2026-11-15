@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
-import { setReauth } from '../embed/activitySession';
 import {
   CommentWriteError,
   commentErrorText,
@@ -145,16 +144,12 @@ describe('peer topic writes', () => {
     expect(commentErrorText(new CommentWriteError('topic_cap'))).toBe('Too many messages — try again in a minute.');
   });
 
-  it('inside the Activity, a 401 session_invalid re-signs in once and retries (review M-11)', async () => {
-    const reauth = vi.fn(async () => undefined);
-    setReauth(reauth);
-    fetchMock
-      .mockResolvedValueOnce(json({ error: 'session_invalid' }, 401))
-      .mockResolvedValueOnce(json({ message: {} }, 201));
+  it('a write is one plain POST with no session headers (owner 16.11: no Activity)', async () => {
+    fetchMock.mockResolvedValueOnce(json({ message: {} }, 201));
     await postTopicAction({ city: 'rich', topicId: 'tp-1' }, { action: 'message', text: 'x' });
-    expect(reauth).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    setReauth(null);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const headers = (fetchMock.mock.calls[0]![1] as RequestInit).headers as Record<string, string>;
+    expect(Object.keys(headers).sort()).toEqual(['Accept', 'Content-Type', 'X-GC-Request']);
   });
 
   it('an empty text never reaches the network', async () => {

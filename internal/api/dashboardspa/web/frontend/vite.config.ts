@@ -1,5 +1,7 @@
-import { defineConfig } from 'vite';
+import { createHash } from 'node:crypto';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { serviceWorkerSource } from './src/pwa/swSource';
 
 // Single-port deploy: the gc supervisor serves the SPA, the typed `/v0/*`
 // API, `/health`, and the host-side `/api/*` plane on one loopback listener
@@ -54,8 +56,23 @@ export function configureBackendDevProxy(proxy: BackendDevProxy): void {
   });
 }
 
+// Owner 16.11 (PWA): emit /sw.js at build time with the build's id in its
+// cache name (src/pwa/swSource.ts), so each build is a new worker and old
+// shells are dropped. The id hashes the emitted file names, which already
+// carry content hashes.
+export function serviceWorkerPlugin(): Plugin {
+  return {
+    name: 'gascity-service-worker',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const id = createHash('sha256').update(Object.keys(bundle).sort().join('\n')).digest('hex').slice(0, 12);
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: serviceWorkerSource(id) });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), serviceWorkerPlugin()],
   server: {
     port: 5174,
     strictPort: true,

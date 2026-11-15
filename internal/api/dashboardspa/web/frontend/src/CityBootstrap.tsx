@@ -105,10 +105,9 @@ export function CityBootstrap() {
           setState({ phase: 'empty' });
           return;
         }
-        // No hard redirect (vk lane 6): a reload inside the Discord Activity
-        // frame loses the SDK handshake. Rewrite the URL in place and mount
-        // under the chosen city's basename. The view path, query (the
-        // Activity's frame_id/instance_id) and hash survive (RB13).
+        // No hard redirect: rewrite the URL in place and mount under the
+        // chosen city's basename. The view path, query and hash survive
+        // (RB13), and the installed app does not flash a reload.
         const target = bareRedirectTarget(first.name, window.location);
         const next = parseCityFromPath(new URL(target, 'http://bootstrap.invalid').pathname);
         if (next === null) {

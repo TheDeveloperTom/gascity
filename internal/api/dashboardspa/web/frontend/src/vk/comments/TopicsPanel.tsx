@@ -1,7 +1,6 @@
 import { CaretLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useReadOnly } from '../../contexts/ReadOnlyContext';
-import { canWrite } from '../../embed/activitySession';
 import { refreshPeerBoards } from '../../hooks/usePeerBoards';
 import { t, tn } from '../../i18n';
 import { asOfClock, type PeerBoardSource } from '../../lib/boardOwner';
@@ -409,7 +408,7 @@ export function TopicsPanel({
 }: TopicsPanelProps) {
   // review M-5: the dashboard's read-only posture hides writes like any other control
   const readOnly = useReadOnly();
-  const writable = canWrite() && !readOnly;
+  const writable = !readOnly;
   const [showResolved, setShowResolved] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sections = useMemo(() => topicSections(topics, nowMs), [topics, nowMs]);

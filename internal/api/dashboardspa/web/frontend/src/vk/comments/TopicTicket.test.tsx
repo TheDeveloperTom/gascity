@@ -1,17 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setActivityRole } from '../../embed/activitySession';
 import { collectMissing, resetMissing, setLocale } from '../../i18n';
-import { resetActivityPlumbingForTests } from '../../lib/apiBase';
 import { peerSourcesOf } from '../../lib/boardOwner';
 import { parsePeerBoards } from '../../supervisor/peerBoardReads';
 import { ownerQuestion, peerBody, peerTopics } from '../../test/fixtures/peerBoards';
 import { TopicsPanel } from './TopicsPanel';
 
 // BOARD-LIVE L7 + ruling 6: «Сделать задачей» starts only from the owner's
-// button (Discord, or the same question's button inside the Activity); the
-// dashboard never creates a task and never posts to peer-boards for it. The
+// button on the Mayor's Discord message; the dashboard never creates a task and never posts to peer-boards for it. The
 // Mayor links the ticket; the topic then shows «→ задача <id>».
 // Review N-1: the ticket is a link only on OUR own topics, and only when it
 // is a valid bead id; his ticket names a card on HIS board.
@@ -50,8 +47,6 @@ afterEach(() => {
   setLocale('en');
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  setActivityRole(null);
-  resetActivityPlumbingForTests();
 });
 
 describe('TopicTicket', () => {
@@ -80,22 +75,20 @@ describe('TopicTicket', () => {
   });
 
   it('linked ticket renders «→ задача <id>»; Сделать задачей sends no request to peer-boards', async () => {
-    vi.stubEnv('VITE_EMBED', '1');
-    setActivityRole('owner');
     const fetchSpy = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
+    vi.stubGlobal('open', vi.fn());
     const pane = renderTopic(OURS, (tp) => {
       tp[1]!.ticket = 'dw-x1';
       tp[1]!.owner_question = ownerQuestion({ question_id: 'q-ours', topic: `me/${OURS}` });
     });
     expect(within(pane).getByRole('link', { name: '→ задача dw-x1' })).toBeTruthy();
+    // «Сделать задачей» is the owner's button on the Mayor's Discord message:
+    // here the question only links there, and nothing is posted anywhere.
+    expect(within(pane).queryByRole('button', { name: 'Сделать задачей' })).toBeNull();
     await act(async () => {
-      fireEvent.click(within(pane).getByRole('button', { name: 'Сделать задачей' }));
+      fireEvent.click(within(pane).getByRole('link', { name: 'Ответить в Discord' }));
     });
-    const urls = fetchSpy.mock.calls.map(([u]) => String(u));
-    const posts = fetchSpy.mock.calls.filter(([, init]) => (init?.method ?? 'GET') !== 'GET').map(([u]) => String(u));
-    expect(posts.some((u) => u.includes('/svc/peer-boards/'))).toBe(false);
-    expect(urls.some((u) => u.includes('/api/activity/discuss'))).toBe(false);
-    expect(urls.filter((u) => u.endsWith('/api/activity/answer'))).toHaveLength(1);
+    expect(fetchSpy.mock.calls.filter(([, init]) => (init?.method ?? 'GET') !== 'GET')).toEqual([]);
   });
 });

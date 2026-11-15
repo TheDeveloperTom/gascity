@@ -14,8 +14,7 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './styles/index.css';
 
-import { isEmbedded } from './lib/apiBase';
-import { runActivityBoot } from './embed/activitySdk';
+import { registerServiceWorker } from './lib/pwa';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
@@ -38,25 +37,11 @@ function mount(el: HTMLElement): void {
   );
 }
 
-// ACTIVITY-PLAN Task 6: inside the Discord Activity, sign in through the
-// Embedded App SDK before the board's first request; on 403 «Нет доступа»
-// (or a sign-in error) is rendered instead and the board never mounts.
-// Dev server only (stripped from production builds by Vite): `?embed_preview`
-// renders the embedded shell as the owner against the dev proxy, with no
-// Discord sign-in, so the Activity layout can be screenshotted.
-const embedPreview =
-  (import.meta.env as unknown as Record<string, unknown>).DEV === true &&
-  new URLSearchParams(globalThis.location?.search ?? '').has('embed_preview');
+mount(root);
 
-if (isEmbedded() && embedPreview) {
-  void import('./embed/activitySession').then(({ setActivityRole }) => {
-    setActivityRole('owner');
-    mount(root);
-  });
-} else if (isEmbedded()) {
-  void runActivityBoot(import.meta.env.VITE_DISCORD_CLIENT_ID, root).then((ok) => {
-    if (ok) mount(root);
-  });
-} else {
-  mount(root);
-}
+// Owner 16.11: an installable web app (PWA). The service worker caches the
+// app shell only and is registered in production builds only.
+void registerServiceWorker({
+  prod: (import.meta.env as unknown as Record<string, unknown>).PROD === true,
+  nav: globalThis.navigator,
+});

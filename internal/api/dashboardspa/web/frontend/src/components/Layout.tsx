@@ -23,7 +23,7 @@ function measureOf(pathname: string): string {
 // capped at the page's measure. Below md a fixed bottom tab bar carries the
 // sections; main is padded by its height plus the bottom safe area so the bar
 // never covers content. The side insets follow the safe area too (390×844
-// portrait, Discord Activity insets first).
+// portrait; the installed PWA runs edge to edge).
 export function Layout({ children }: LayoutProps) {
   const { pathname } = useLocation();
   const measure = measureOf(pathname);

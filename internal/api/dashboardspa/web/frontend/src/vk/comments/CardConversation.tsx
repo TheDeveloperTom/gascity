@@ -1,6 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useReadOnly } from '../../contexts/ReadOnlyContext';
-import { canWrite } from '../../embed/activitySession';
 import { refreshPeerBoards } from '../../hooks/usePeerBoards';
 import { t } from '../../i18n';
 import type { PeerBoardSource } from '../../lib/boardOwner';
@@ -190,7 +189,7 @@ export function CardConversation({
   );
 
   // review M-5: the dashboard's read-only posture hides the box like any other write
-  const showBox = canWrite() && !readOnly && cardCity !== null && peers.length > 0;
+  const showBox = !readOnly &&cardCity !== null && peers.length > 0;
   const composer = !showBox ? null : (
     <div className="flex flex-col gap-2">
       {needsPick && (

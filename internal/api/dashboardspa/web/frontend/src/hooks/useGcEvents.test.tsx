@@ -120,6 +120,23 @@ describe('useGcEventRefresh', () => {
     expect(result.current).toBe('open');
   });
 
+  // Owner 16.11: the Discord Activity (whose EventSource could not carry its
+  // session header) is gone, so the stream is the only refresh path: failed
+  // opens reconnect with backoff, and nothing polls the refresh behind them.
+  it('repeated stream errors reconnect and never fall back to polling', () => {
+    vi.useFakeTimers();
+    const onMatch = vi.fn();
+    renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], onMatch));
+    for (let i = 0; i < 4; i += 1) {
+      act(() => eventSources.at(-1)?.error());
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+    }
+    expect(eventSources.length).toBeGreaterThan(4);
+    expect(onMatch).not.toHaveBeenCalled();
+  });
+
   it('does not open a city event stream when no prefixes are requested', () => {
     const { result } = renderHook(() => useGcEventRefresh([], vi.fn()));
 

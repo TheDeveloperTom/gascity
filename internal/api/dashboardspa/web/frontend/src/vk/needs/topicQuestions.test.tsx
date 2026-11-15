@@ -1,11 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setActivityRole } from '../../embed/activitySession';
 import type { TaskStages } from '../../hooks/useTaskStages';
 import { collectMissing, resetMissing, setLocale } from '../../i18n';
-import { resetActivityPlumbingForTests } from '../../lib/apiBase';
 import { peerSourcesOf } from '../../lib/boardOwner';
+import { resetMayorLinkForTests, setCityMayorUrl } from '../../lib/mayorLink';
 import type { NeedsModel } from '../../lib/needsFromMe';
 import { topicsForCard } from '../../lib/peerTopics';
 import { peerNeedsCount, pendingTopicQuestions, questionsForCard } from '../../lib/topicQuestions';
@@ -23,9 +22,9 @@ import { NeedsShelves } from './Shelf';
 
 // BOARD-LIVE L10/L7, owner Q-B: one plain owner question shows in three
 // views — counted in «Нужно от меня», on the card drawer (ours and the
-// peer's), and as a link to its Discord message. Inside the Activity the
-// four buttons answer that same question; outside it only «Ответить в
-// Discord». Answering anywhere clears all three on the next boards read.
+// peer's), and as a link to its Discord message. Owner 16.11 (no Activity):
+// the owner answers in Discord, so every view has only «Ответить в
+// Discord». Answering there clears all three on the next boards read.
 
 const STAGES: TaskStages = { state: 'ready', inFlight: [], queued: 0, outsideWindow: 0 };
 const EMPTY: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0 };
@@ -60,8 +59,7 @@ afterEach(() => {
   setLocale('en');
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  setActivityRole(null);
-  resetActivityPlumbingForTests();
+  resetMayorLinkForTests();
 });
 
 function renderShelves(result: PeerBoardsResult, model: NeedsModel = EMPTY) {
@@ -131,41 +129,29 @@ describe('one owner question, three views', () => {
     expect(pendingTopicQuestions(result, new Set(['q-ours']))).toHaveLength(1);
   });
 
-  it('inside Activity the four buttons answer the same question; outside Activity only «Ответить в Discord»', async () => {
-    // outside: no answer buttons, only the Discord link
-    renderShelves(boards());
-    const outside = screen.getAllByTestId('topic-question')[0]!;
-    expect(within(outside).queryByRole('button', { name: 'Да' })).toBeNull();
-    expect(within(outside).getByRole('link', { name: 'Ответить в Discord' })).toBeTruthy();
-    cleanup();
-
-    // inside, as the owner
-    vi.stubEnv('VITE_EMBED', '1');
-    setActivityRole('owner');
-    const fetchSpy = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{}', { status: 200 }));
+  it('the owner answers in Discord: only «Ответить в Discord», no answer buttons, nothing posted', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     renderShelves(boards());
-    const inside = screen.getAllByTestId('topic-question')[0]!;
-    expect(within(inside).queryByRole('link', { name: 'Ответить в Discord' })).toBeNull();
-    const buttons = within(inside).getAllByRole('button').map((b) => b.textContent);
-    expect(buttons).toEqual(['Да', 'Нет', 'Обсудить', 'Сделать задачей']);
-    await act(async () => {
-      fireEvent.click(within(inside).getByRole('button', { name: 'Обсудить' }));
-    });
-    const answer = fetchSpy.mock.calls.find(([u]) => String(u).endsWith('/api/activity/answer'));
-    expect(answer).toBeTruthy();
-    expect(JSON.parse(String(answer![1]!.body))).toEqual({ qid: 'q-7f3a9c', choice: 2 });
-    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('/api/activity/discuss'))).toBe(false);
-    expect(within(inside).getByRole('status').textContent).toContain('Ответ записан: Обсудить');
-    cleanup();
-
-    // a reader inside the Activity gets neither
-    setActivityRole('reader');
-    renderShelves(boards());
-    const reader = screen.getAllByTestId('topic-question')[0]!;
-    expect(within(reader).queryAllByRole('button')).toHaveLength(0);
-    expect(within(reader).queryByRole('link')).toBeNull();
+    const item = screen.getAllByTestId('topic-question')[0]!;
+    expect(within(item).queryAllByRole('button')).toHaveLength(0);
+    const link = within(item).getByRole('link', { name: 'Ответить в Discord' });
+    fireEvent.click(link);
+    expect(open).toHaveBeenCalledWith(QUESTION_JUMP, '_blank', 'noopener,noreferrer');
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(collectMissing()).toEqual([]);
+  });
+
+  it('with no message link, «Ответить в Discord» goes to the owner’s Mayor channel', () => {
+    setCityMayorUrl('https://discord.com/channels/111/999');
+    const result = parsePeerBoards(
+      peerBody({ top: { own_login: 'me', owner_questions: [ownerQuestion({ jump_url: null })] } }),
+    );
+    renderShelves(result);
+    const link = within(screen.getByTestId('topic-question')).getByRole('link', { name: 'Ответить в Discord' });
+    expect(link.getAttribute('href')).toBe('https://discord.com/channels/111/999');
   });
 
   it('after answered all three views clear on the next boards refresh', () => {

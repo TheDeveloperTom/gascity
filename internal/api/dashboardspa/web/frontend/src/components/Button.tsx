@@ -23,7 +23,8 @@ const TONE: Record<ButtonTone, string> = {
 };
 
 const SIZE: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-label',
+  // 44 px tap target on phones (owner 16.11, PWA), the VK 32 px from md
+  sm: 'h-11 px-3 text-label md:h-8',
   md: 'h-9 px-4 text-body',
 };
 

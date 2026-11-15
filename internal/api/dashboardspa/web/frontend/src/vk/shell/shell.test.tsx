@@ -236,9 +236,8 @@ describe('safe area', () => {
   it('index.css defines the four safe-area insets', () => {
     const css = readFileSync(join(here, '../../styles/index.css'), 'utf8');
     for (const v of ['--sait', '--saib', '--sail', '--sair']) expect(css).toContain(`${v}:`);
-    expect(css).toContain(
-      '--saib: var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));',
-    );
+    // owner 16.11: no Activity insets; the notch and home indicator only
+    expect(css).toContain('--saib: env(safe-area-inset-bottom, 0px);');
   });
   it('index.html opts into viewport-fit=cover', () => {
     const html = readFileSync(join(here, '../../../index.html'), 'utf8');

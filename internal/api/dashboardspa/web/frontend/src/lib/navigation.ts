@@ -1,8 +1,6 @@
-// Seam (vk lane 0b). Owner: lane 6. Other lanes import, never edit.
-
 /**
- * The only full reload in src/. It keeps location.search (the Activity's
- * frame_id/instance_id) when `path` has no query of its own.
+ * The only full reload in src/. It keeps location.search when `path` has no
+ * query of its own.
  */
 export function hardNavigate(path: string): void {
   const search = window.location.search;

@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
-import { isLaunchState } from '../embed/LaunchCardOpener';
-import { SupervisorApiError } from '../supervisor/client';
-import { Toast } from '../vk/Toast';
+import { Link, useSearchParams } from 'react-router';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { formatApiError } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
@@ -50,7 +47,7 @@ import {
 } from '../hooks/useBoardData';
 import { useCachedData } from '../hooks/useCachedData';
 import { useGcEventRefresh } from '../hooks/useGcEvents';
-import { fetchSupervisorBead, listSupervisorBeads, type SupervisorBead } from '../supervisor/beadReads';
+import { listSupervisorBeads, type SupervisorBead } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { closeSupervisorBead } from '../supervisor/beadWrites';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
@@ -325,49 +322,7 @@ export function BeadsPage() {
     },
     [setTopicsParams],
   );
-  // Part 5: the Activity was launched for a card (LaunchCardOpener). Until
-  // the id is found on the board or read directly, the bead panel stays
-  // closed; an unknown id clears `bead` and shows one toast instead.
-  const location = useLocation();
-  const launchBead = isLaunchState(location.state) ? location.state.launchBead : null;
-  const [launchCheck, setLaunchCheck] = useState<'idle' | 'checking' | 'done'>('idle');
-  const [toast, setToast] = useState<string | null>(null);
-  const checkedLaunch = useRef<string | null>(null);
-  const launchOnBoard =
-    launchBead !== null &&
-    (rows.some((b) => b.id === launchBead) ||
-      routeBeads.some((b) => b.id === launchBead) ||
-      serviceItems.some((b) => b.id === launchBead));
-  useEffect(() => {
-    if (launchBead === null || checkedLaunch.current === launchBead || !hasLoadedBoard) return;
-    checkedLaunch.current = launchBead;
-    if (launchOnBoard) {
-      setLaunchCheck('done');
-      return;
-    }
-    setLaunchCheck('checking');
-    fetchSupervisorBead(launchBead).then(
-      () => setLaunchCheck('done'),
-      (err: unknown) => {
-        setLaunchCheck('done');
-        if (!(err instanceof SupervisorApiError) || err.status !== 404) return;
-        setSelectedId(null);
-        setSearchParams(
-          (prev) => {
-            const next = new URLSearchParams(prev);
-            next.delete('bead');
-            return next;
-          },
-          { replace: true, state: null },
-        );
-        setToast(t('Task {id} not found — maybe closed or from another city', { id: launchBead }));
-      },
-    );
-  }, [launchBead, launchOnBoard, hasLoadedBoard, setSearchParams]);
-  const clearToast = useCallback(() => setToast(null), []);
-  const launchPending = launchBead !== null && selectedId === launchBead && launchCheck !== 'done';
-  const ownSelectedId =
-    selectedId !== null && (isPeerKey(selectedId) || launchPending) ? null : selectedId;
+  const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
   const epics = useMemo(
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
     [rows, showAllHistory],
@@ -620,7 +575,6 @@ export function BeadsPage() {
         </p>
       )}
 
-      {toast !== null && <Toast text={toast} onDone={clearToast} />}
 
       {topicsPeer !== null && (
         <TopicsPanel

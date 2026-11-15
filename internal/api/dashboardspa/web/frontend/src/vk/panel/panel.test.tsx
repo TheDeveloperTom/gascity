@@ -1,14 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { BeadDetailModal } from '../../components/BeadDetailModal';
 import { useAgentNow } from '../../hooks/useAgentNow';
 import { useBeadDetail } from '../../hooks/useBeadDetail';
 import { useBoardData } from '../../hooks/useBoardData';
 import { setLocale } from '../../i18n';
-import { setActivityRole } from '../../embed/activitySession';
-import { resetActivityPlumbingForTests } from '../../lib/apiBase';
-import { AnswerRefusedError, answerQuestion } from '../../lib/discussWithMayor';
-import type * as DiscussModule from '../../lib/discussWithMayor';
 import { transitiveWaiters } from '../../lib/holds';
 import { openExternal } from '../../lib/openExternal';
 import type { SupervisorBead } from '../../supervisor/beadReads';
@@ -21,24 +17,15 @@ vi.mock('../../hooks/useBoardData', () => ({ useBoardData: vi.fn() }));
 vi.mock('../../hooks/useAgentNow', () => ({ useAgentNow: vi.fn(() => new Map()) }));
 vi.mock('../../lib/holds', () => ({ transitiveWaiters: vi.fn(() => []) }));
 vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }));
-// vk integration: the drawer's options call act6's wired answer seam
-// (lib/discussWithMayor answerQuestion(qid, choice)) when embedded.
-vi.mock('../../lib/discussWithMayor', async (importOriginal) => {
-  const real = await importOriginal<typeof DiscussModule>();
-  return {
-    AnswerRefusedError: real.AnswerRefusedError,
-    answerErrorText: real.answerErrorText,
-    answerQuestion: vi.fn(() => Promise.resolve()),
-    mayorChannelUrl: vi.fn(() => 'https://discord.com/channels/1/2'),
-    discussWithMayor: vi.fn(() => new Promise<string>(() => {})),
-  };
-});
+// owner 16.11: «Обсудить» opens the owner's Mayor channel (lib/mayorLink)
+vi.mock('../../lib/mayorLink', () => ({
+  mayorChannelUrl: vi.fn(() => 'https://discord.com/channels/1/2'),
+}));
 
 const mockDetail = useBeadDetail as unknown as Mock;
 const mockBoard = useBoardData as unknown as Mock;
 const mockAgentNow = useAgentNow as unknown as Mock;
 const mockHolds = transitiveWaiters as unknown as Mock;
-const mockAnswer = answerQuestion as unknown as Mock;
 const mockOpen = openExternal as unknown as Mock;
 
 const CHAT = 'https://discord.com/channels/1/2/3';
@@ -97,9 +84,6 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllEnvs();
-  // isEmbedded() latches; forget it (and the Activity role) between tests.
-  resetActivityPlumbingForTests();
-  mockAnswer.mockImplementation(() => Promise.resolve());
   mockAgentNow.mockReturnValue(new Map());
   mockHolds.mockReturnValue([]);
 });
@@ -175,69 +159,21 @@ describe('question card', () => {
     expect(screen.getByRole('button', { name: 'Обсудить с Мэром' })).toBeTruthy();
   });
 
-  it('browser (not embedded): a choice opens the Mayor’s Discord message and sends nothing', () => {
+  it('a choice opens the Mayor’s Discord message and sends nothing (owner 16.11: answers live in Discord)', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
     show(question);
     const choices = within(screen.getByTestId('question-choices')).getAllByRole('button');
     expect(choices).toHaveLength(3);
     fireEvent.click(choices[1]!);
     expect(mockOpen).toHaveBeenCalledWith(CHAT);
-    expect(mockAnswer).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
     // Nothing was sent from here: the question stays open, no «отвечено» claim.
     expect(screen.getByTestId('question-card')).toBeTruthy();
     expect(screen.queryByText(/отвечено/)).toBeNull();
   });
 
-  it('embedded owner: choice 2 calls the wired answerQuestion("q-1", 1); the top goes normal and «История» holds one row', async () => {
-    vi.stubEnv('VITE_EMBED', '1');
-    setActivityRole('owner');
-    show(question);
-    const choices = within(screen.getByTestId('question-choices')).getAllByRole('button');
-    await act(async () => {
-      fireEvent.click(choices[1]!);
-    });
-    expect(mockAnswer).toHaveBeenCalledTimes(1);
-    expect(mockAnswer).toHaveBeenCalledWith('q-1', 1);
-    expect(mockOpen).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('question-card')).toBeNull();
-    const history = screen.getByTestId('task-history');
-    expect(within(history).getByText('История')).toBeTruthy();
-    const row = within(history).getByRole('button', {
-      name: /Вопрос Мэра · отвечено: Завтра в 10:00 · только что/,
-    });
-    expect(row.getAttribute('aria-expanded')).toBe('false');
-    expect(within(history).queryByText('Когда окно для переноса ящика на основной аккаунт?')).toBeNull();
-    fireEvent.click(row);
-    expect(row.getAttribute('aria-expanded')).toBe('true');
-    expect(within(history).getByText('Когда окно для переноса ящика на основной аккаунт?')).toBeTruthy();
-    for (const c of within(history).getAllByRole('button').filter((b) => b !== row)) {
-      expect((c as HTMLButtonElement).disabled).toBe(true);
-    }
-  });
-
-  it('embedded owner: a refused answer (409) keeps the question open and says «Уже отвечено»', async () => {
-    vi.stubEnv('VITE_EMBED', '1');
-    setActivityRole('owner');
-    mockAnswer.mockImplementation(() => Promise.reject(new AnswerRefusedError(409)));
-    show(question);
-    const choices = within(screen.getByTestId('question-choices')).getAllByRole('button');
-    await act(async () => {
-      fireEvent.click(choices[0]!);
-    });
-    expect(mockAnswer).toHaveBeenCalledWith('q-1', 0);
-    expect(screen.getByTestId('question-card')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toBe('Уже отвечено');
-    expect(screen.queryByTestId('task-history')).toBeNull();
-  });
-
-  it('embedded reader (Richard): the question shows, but no choices and no discuss', () => {
-    vi.stubEnv('VITE_EMBED', '1');
-    setActivityRole('reader');
-    show(question);
-    expect(screen.getByTestId('question-card')).toBeTruthy();
-    expect(screen.queryByTestId('question-choices')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Другое — обсудить в Discord' })).toBeNull();
-    expect(mockAnswer).not.toHaveBeenCalled();
-  });
 
   it('a legacy question with no choices offers «Ответить в Discord», which opens the message', () => {
     const legacy = bead({

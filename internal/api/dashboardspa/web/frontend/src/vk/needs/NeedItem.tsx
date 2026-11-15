@@ -4,7 +4,6 @@ import { t, tn } from '../../i18n';
 import type { DiscussContext } from '../../lib/discussWithMayor';
 import type { MilestoneCount, NeedItem as Need, StallItem } from '../../lib/needsFromMe';
 import { DiscussButton } from '../DiscussButton';
-import { canWrite } from '../../embed/activitySession';
 import { ExternalLink } from '../ExternalLink';
 
 // One «Нужно от меня» card (vk lane 3, Attention / Phone-Needs frames). The
@@ -68,8 +67,7 @@ function CardLink({
       </Link>
     );
   }
-  // Task 6: an Activity reader (Richard) gets no chat (answer) link.
-  if (need.externalHref !== undefined && canWrite()) {
+  if (need.externalHref !== undefined) {
     return (
       <ExternalLink href={need.externalHref} aria-labelledby={labelledBy} className={CARD}>
         {children}
@@ -141,15 +139,13 @@ export function NeedItem({ need }: { need: Need }) {
           )}
         </div>
       </CardLink>
-      {canWrite() && (
-        <div className="-mt-2 flex shrink-0 justify-end px-1 pb-0.5 sm:mt-0 sm:pb-0 sm:pr-2">
-          {/* quiet until the row is hovered or focused: the row is the action */}
-          <DiscussButton
-            ctx={ctx}
-            className="sm:opacity-70 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-          />
-        </div>
-      )}
+      <div className="-mt-2 flex shrink-0 justify-end px-1 pb-0.5 sm:mt-0 sm:pb-0 sm:pr-2">
+        {/* quiet until the row is hovered or focused: the row is the action */}
+        <DiscussButton
+          ctx={ctx}
+          className="sm:opacity-70 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+        />
+      </div>
     </li>
   );
 }

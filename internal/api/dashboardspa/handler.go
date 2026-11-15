@@ -70,6 +70,11 @@ func NewStaticHandler() (http.Handler, error) {
 			} else {
 				w.Header().Set("Cache-Control", "no-cache")
 			}
+			// The PWA manifest (owner 16.11): Go's mime table has no
+			// .webmanifest entry, and nosniff would leave it untyped.
+			if strings.HasSuffix(path, ".webmanifest") {
+				w.Header().Set("Content-Type", "application/manifest+json")
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}

@@ -13,7 +13,6 @@ import { displayLabel } from '../hooks/aliasPriority';
 import { useCachedData } from '../hooks/useCachedData';
 import { t } from '../i18n';
 import { useLocale } from '../i18n/LocaleProvider';
-import { isEmbedded } from '../lib/apiBase';
 import { hardNavigate } from '../lib/navigation';
 import { supervisorApi } from '../supervisor/client';
 import { MoreGlyph } from '../vk/shell/BottomTabs';
@@ -161,15 +160,9 @@ export function Header() {
 
   const groups = navGroups(ROUTES);
   const ownerAttention = attention.owner.total;
-  // Design pass 15.11: inside the Discord Activity the bar is one tight row —
-  // the mark, the two sections, search and «Ещё». Discord already names the
-  // place and the person and sets the theme, so the city name, «обновлено»,
-  // the theme and language toggles and the «А» mark are dropped there.
-  const embedded = isEmbedded();
-
   return (
     <header className="border-b border-vk-border bg-vk-bg-secondary pl-[var(--sail)] pr-[var(--sair)] pt-[var(--sait)] font-vk-sans md:sticky md:top-0 md:z-30">
-      <div className={`flex items-center gap-2 px-3 md:gap-3 ${embedded ? 'min-h-10' : 'min-h-11'}`}>
+      <div className="flex min-h-11 items-center gap-2 px-3 md:gap-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <span
             title={t('devwork product')}
@@ -177,20 +170,18 @@ export function Header() {
           >
             DW
           </span>
-          {!embedded && (
-            <span
-              title={t('The city itself')}
-              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[4.5px] text-[13px] font-medium text-vk-text-normal sm:inline-flex"
-            >
-              ГО
-            </span>
-          )}
-          {showSwitcher && !(embedded && cityItems.length <= 1) ? (
+          <span
+            title={t('The city itself')}
+            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[4.5px] text-[13px] font-medium text-vk-text-normal sm:inline-flex"
+          >
+            ГО
+          </span>
+          {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
               {t('Switch city')}
             </label>
           ) : null}
-          {embedded && cityItems.length <= 1 ? null : showSwitcher ? (
+          {showSwitcher ? (
             <select
               id="city-switcher"
               value={selectedCity}
@@ -232,7 +223,7 @@ export function Header() {
               />
             </span>
           )}
-          {updated !== null && !embedded && (
+          {updated !== null && (
             <span className="hidden whitespace-nowrap px-1 text-[13px] text-vk-text-low lg:inline">
               {t('updated {time}', { time: updated })}
             </span>
@@ -309,8 +300,6 @@ export function Header() {
             </nav>
           </details>
 
-          {!embedded && (
-          <>
           <button
             type="button"
             onClick={toggle}
@@ -346,8 +335,6 @@ export function Header() {
           >
             А
           </span>
-          </>
-          )}
         </div>
       </div>
     </header>

@@ -2,19 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { reportClientError } from '../lib/clientErrorReporting';
 import { getActiveCity } from '../api/cityBase';
 import { supervisorApi } from '../supervisor/client';
-import { useVisibleInterval } from './useVisibleInterval';
 
-// vk lane 6 — stream fallback (Discord Activity). EventSource cannot carry the
-// Activity's auth header, so the stream may never open inside the frame.
-// After STREAM_FAILURES_BEFORE_POLL consecutive errors the hook also polls
-// `onMatch` (the consumer's own refresh path, e.g. useBoardData's refresh)
-// every POLL_FALLBACK_MS while the tab is visible; the first successful open
-// stops the poll. Reconnects keep their capped backoff (the existing
-// reconnect contract in useGcEvents.test.tsx), which costs one request per
-// 30 s at most. The session, structured-transcript and run-detail streams
-// have no fallback: they are out of the embed scope (note only).
-const STREAM_FAILURES_BEFORE_POLL = 2;
-export const POLL_FALLBACK_MS = 15_000;
+// Owner 16.11: the Discord Activity is gone, so the stream is the one live
+// path everywhere; failed opens reconnect with capped backoff and nothing
+// polls behind them.
 
 // gascity-dashboard-iew: EventSource against the supervisor's `/v0/...` event
 // stream on the current origin. The gc supervisor serves the SPA and the typed
@@ -100,8 +91,6 @@ export function useGcEventRefresh(
   // expensive refresh widen the window via options.coalesceMs.
   const lastFireRef = useRef(0);
   const coalesceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [polling, setPolling] = useState(false);
-  useVisibleInterval(() => onMatchRef.current(), POLL_FALLBACK_MS, polling);
 
   useEffect(() => {
     if (prefixes.length === 0) {
@@ -114,7 +103,6 @@ export function useGcEventRefresh(
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let connectGraceTimer: ReturnType<typeof setTimeout> | null = null;
     let retryDelayMs = 1_000;
-    let failures = 0;
     let malformedEventReported = false;
 
     const clearConnectGraceTimer = () => {
@@ -177,8 +165,6 @@ export function useGcEventRefresh(
         clearConnectGraceTimer();
         setState('open');
         retryDelayMs = 1_000;
-        failures = 0;
-        setPolling(false);
       };
       // gc supervisor sends events with `event: event` (the event NAME
       // is literally "event"), not the default "message". EventSource
@@ -224,8 +210,6 @@ export function useGcEventRefresh(
         setState('closed');
         es?.close();
         es = null;
-        failures += 1;
-        if (failures >= STREAM_FAILURES_BEFORE_POLL) setPolling(true);
         // Exponential backoff capped at 30s.
         retryTimer = setTimeout(() => {
           retryDelayMs = Math.min(retryDelayMs * 2, 30_000);

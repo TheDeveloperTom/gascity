@@ -1,14 +1,12 @@
 import { getActiveCity } from '../api/cityBase';
-import { fetchWithSessionRetry } from '../embed/activitySession';
 import { t } from '../i18n';
-import { authHeaders, withApiBase } from '../lib/apiBase';
+import { withApiBase } from '../lib/apiBase';
 
 // vk-final part 4: a person's writes to the other city. They go through our
 // own city service `peer-boards` with `X-GC-Request: 1` (the engine refuses a
 // /svc mutation without it); the service also checks a loopback Origin and
 // `Sec-Fetch-Site: same-origin`, which the browser sends itself. The
-// dashboard always writes as our person. Inside the Activity the same routes
-// are used with the session headers (the gateway must pass them).
+// dashboard always writes as our person.
 //
 // The ONLY person routes (sync/topics c664ac8f, topics-report.md «Final
 // dashboard contract»; all POST, body ≤ 16 KiB, `{"error": code}` on refusal):
@@ -98,22 +96,16 @@ function serviceUrl(route: string): string {
 
 async function post(route: string, body: unknown): Promise<unknown> {
   const url = serviceUrl(route);
-  const requestBody = JSON.stringify(body);
-  // review M-11: inside the Activity a 401 session_invalid re-signs in once and
-  // retries; the headers are read afresh on each try.
-  const res = await fetchWithSessionRetry(() =>
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        ...authHeaders(),
-        'X-GC-Request': '1',
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      credentials: 'same-origin',
-      body: requestBody,
-    }),
-  );
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-GC-Request': '1',
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify(body),
+  });
   let payload: unknown = null;
   try {
     payload = await res.json();

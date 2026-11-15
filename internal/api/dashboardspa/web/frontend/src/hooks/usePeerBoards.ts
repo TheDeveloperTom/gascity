@@ -2,6 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { getActiveCity } from '../api/cityBase';
 import { useNowOrNull } from '../contexts/NowContext';
 import { peerSourcesOf, type PeerBoardSource } from '../lib/boardOwner';
+import { setCityMayorUrl } from '../lib/mayorLink';
 import { listPeerBoards, type PeerBoardsResult } from '../supervisor/peerBoardReads';
 import { subscribePeerStream } from '../supervisor/peerStream';
 
@@ -47,7 +48,10 @@ function read(): Promise<void> {
   inflight = listPeerBoards(signal)
     .then(
       (result) => {
-        if (!signal.aborted) emit({ city, result, error: null });
+        if (signal.aborted) return;
+        // owner 16.11: the city's Mayor channel for every «Обсудить» button
+        setCityMayorUrl(result.mayorUrl);
+        emit({ city, result, error: null });
       },
       (err: unknown) => {
         if (signal.aborted) return;

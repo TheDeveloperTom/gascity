@@ -1,44 +1,21 @@
-import { useState } from 'react';
-import { canWrite } from '../../embed/activitySession';
 import { t } from '../../i18n';
-import { isEmbedded } from '../../lib/apiBase';
-import { answerErrorText, answerQuestion } from '../../lib/discussWithMayor';
+import { mayorChannelUrl } from '../../lib/mayorLink';
 import type { TopicQuestion } from '../../supervisor/peerBoardReads';
 import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
 
 // BOARD-LIVE L7, owner Q-B: the owner's plain question about a topic, in any
 // of its three views. The text is the one or two plain lines, nothing else
-// (no ids, no links in the text). Inside the Activity the owner gets the four
-// buttons; a click answers THIS question through the Activity's answer route
-// (token-verified), never the discuss route. Outside the Activity there is
-// only «Ответить в Discord» (the question's message). An Activity reader
-// gets neither.
+// (no ids, no links in the text). Owner 16.11 (no Discord Activity): the owner
+// answers in Discord on the Mayor's own message, whose buttons prove it is the
+// owner; here there is only «Ответить в Discord», never an answer button.
 
 const BUTTON =
-  'focus-mark inline-flex min-h-11 items-center rounded-sm border border-vk-border bg-vk-bg-primary px-3 text-sm text-vk-text-high hover:bg-vk-bg-secondary disabled:opacity-50 md:min-h-8';
+  'focus-mark inline-flex min-h-11 items-center rounded-sm border border-vk-border bg-vk-bg-primary px-3 text-sm text-vk-text-high hover:bg-vk-bg-secondary md:min-h-8';
 
 export function TopicQuestionCard({ question, className }: { question: TopicQuestion; className?: string }) {
-  const [sending, setSending] = useState(false);
-  const [answered, setAnswered] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const embedded = isEmbedded();
-  const owner = canWrite();
-
-  const answer = async (index: number) => {
-    if (sending || answered !== null) return;
-    setSending(true);
-    setError(null);
-    try {
-      await answerQuestion(question.questionId, index);
-      setAnswered(question.options[index] ?? '');
-    } catch (err) {
-      setError(answerErrorText(err));
-    } finally {
-      setSending(false);
-    }
-  };
-
+  // the Mayor's message, else the Mayor's channel
+  const href = question.jumpUrl ?? mayorChannelUrl();
   return (
     <section
       data-testid="topic-question"
@@ -53,35 +30,10 @@ export function TopicQuestionCard({ question, className }: { question: TopicQues
           </p>
         ))}
       </div>
-      {embedded && owner && (
-        <div className="flex flex-wrap gap-1.5">
-          {question.options.map((label, i) => (
-            <button
-              key={label}
-              type="button"
-              disabled={sending || answered !== null}
-              onClick={() => void answer(i)}
-              className={BUTTON}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-      {!embedded && question.jumpUrl !== null && (
-        <ExternalLink href={question.jumpUrl} className={cn(BUTTON, 'self-start')}>
+      {href !== null && (
+        <ExternalLink href={href} className={cn(BUTTON, 'self-start')}>
           {t('Answer in Discord')}
         </ExternalLink>
-      )}
-      {answered !== null && (
-        <p role="status" className="m-0 text-sm text-vk-success">
-          {t('Answer recorded: {choice}', { choice: answered })}
-        </p>
-      )}
-      {error !== null && (
-        <p role="alert" className="m-0 text-sm text-vk-error">
-          {error}
-        </p>
       )}
     </section>
   );

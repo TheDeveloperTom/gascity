@@ -40,6 +40,36 @@ func TestServesIndexAtRoot(t *testing.T) {
 	}
 }
 
+// Owner 16.11: the dashboard is an installable PWA. The manifest is served
+// as a web app manifest (Go has no MIME type for .webmanifest), and the
+// service worker revalidates on every check so a new build is picked up.
+func TestServesPWAManifestAndServiceWorker(t *testing.T) {
+	h := newHandler(t)
+	rec := get(t, h, "/manifest.webmanifest")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /manifest.webmanifest: status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/manifest+json" {
+		t.Errorf("GET /manifest.webmanifest: Content-Type = %q, want application/manifest+json", ct)
+	}
+	if !strings.Contains(rec.Body.String(), `"display": "standalone"`) {
+		t.Errorf("GET /manifest.webmanifest: body is not the manifest: %q", rec.Body.String())
+	}
+	rec = get(t, h, "/sw.js")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /sw.js: status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/javascript") {
+		t.Errorf("GET /sw.js: Content-Type = %q, want text/javascript", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("GET /sw.js: Cache-Control = %q, want no-cache", cc)
+	}
+	if !strings.Contains(rec.Body.String(), "gascity-shell-") {
+		t.Errorf("GET /sw.js: body is not the shell worker")
+	}
+}
+
 func TestUnknownClientRouteFallsBackToIndex(t *testing.T) {
 	rec := get(t, newHandler(t), "/city/example/agents")
 	if rec.Code != http.StatusOK {

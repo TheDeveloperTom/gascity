@@ -1,13 +1,3 @@
-// Seam (vk lane 0b). Owner: lane 6. Other lanes import, never edit.
-import { onPlumbingReset } from './apiBase';
-
-type ExternalOpener = (url: string) => Promise<void>;
-
-let opener: ExternalOpener | null = null;
-onPlumbingReset(() => {
-  opener = null;
-});
-
 /**
  * Only http(s) URLs without credentials may leave the app. (stageBoard's
  * safeExternalUrl is GitHub-pull-request only, so it cannot gate Discord or
@@ -26,24 +16,13 @@ function safeOutboundUrl(raw: string): string | null {
 }
 
 /**
- * Activity SDK bootstrap (Task 6) installs
- * `url => sdk.commands.openExternalLink({url}).then(() => undefined)`.
- */
-export function setExternalOpener(fn: ExternalOpener): void {
-  opener = fn;
-}
-
-/**
- * One exit for external URLs. Synchronous, so it can be called straight from
- * a click handler (Safari/iOS popup rules, ruling 3): it starts the open and
- * never awaits. A rejected URL does nothing.
+ * One exit for external URLs (Discord messages and channels). Synchronous, so
+ * it can be called straight from a click handler (Safari/iOS popup rules). A
+ * rejected URL does nothing. In the installed PWA a new window hands the link
+ * to Discord or the browser.
  */
 export function openExternal(url: string): void {
   const safe = safeOutboundUrl(url);
   if (safe === null) return;
-  if (opener !== null) {
-    void opener(safe).catch(() => undefined);
-    return;
-  }
   window.open(safe, '_blank', 'noopener,noreferrer');
 }

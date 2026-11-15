@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getActiveCity } from '../api/cityBase';
-import { authHeaders, withApiBase } from '../lib/apiBase';
+import { withApiBase } from '../lib/apiBase';
+import { discordChannelOrNull } from '../lib/mayorLink';
 import type { SupervisorBead } from './beadReads';
 
 // vk-final part 3 (SYNC-PLAN Task 5): the peers' boards, read-only, from the
@@ -261,8 +262,7 @@ const AuthorObject = z.looseObject({
 // Only a root-relative path into our own peer-boards service's avatar cache:
 // `/v0/city/<city>/svc/peer-boards/v1/avatars/<id>.<png|webp|jpg|gif>`. Any
 // other origin (Discord's own image host included) or a climbing path is dropped,
-// so the board never loads a third-party image (and works in the Activity
-// with no extra CSP).
+// so the board never loads a third-party image (and needs no extra CSP).
 // Review M-2: the city segment is pinned to the ACTIVE city, so neither `..`
 // nor another city's service passes.
 const AVATAR_FILE_RE = /^[A-Za-z0-9_-]{1,80}\.(?:png|webp|jpg|jpeg|gif)$/;
@@ -569,6 +569,8 @@ const ResponseSchema = z.looseObject({
   // our own people.json login, from OUR city service (trusted; never taken
   // from peer-supplied topics) — security scan 15.11
   own_login: optString,
+  // owner 16.11: our owner's Mayor channel (#мэр), from OUR city service
+  mayor_url: optString,
   // BOARD-LIVE L10/L12: every owner topic question (owner_q.question_views)
   owner_questions: z.array(z.unknown()).nullish(),
   peers: z.array(PeerSchema),
@@ -604,6 +606,8 @@ export interface PeerBoardsResult {
   peers: readonly PeerBoard[];
   /** The owner's topic questions, one per question id (top-level and per topic). */
   ownerQuestions: readonly TopicQuestion[];
+  /** Our owner's Mayor channel in Discord (a channel URL), when the city sends it. */
+  mayorUrl: string | null;
   /** Our own login as our city service states it (`own_login`); null until it does. */
   ownLogin: string | null;
   heartbeatSeconds: number | null;
@@ -620,6 +624,7 @@ export class PeerBoardsError extends Error {
 const EMPTY: PeerBoardsResult = {
   peers: [],
   ownerQuestions: [],
+  mayorUrl: null,
   ownLogin: null,
   heartbeatSeconds: null,
   staleAfterSeconds: DEFAULT_STALE_AFTER_SECONDS,
@@ -671,6 +676,7 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
   });
   return {
     ownerQuestions: mergeQuestions(res.owner_questions, peers),
+    mayorUrl: discordChannelOrNull(res.mayor_url),
     ownLogin: ownLoginFrom(res.own_login, peers),
     heartbeatSeconds: res.heartbeat_seconds ?? null,
     staleAfterSeconds: res.stale_after_seconds ?? DEFAULT_STALE_AFTER_SECONDS,
@@ -720,7 +726,7 @@ export async function listPeerBoards(signal?: AbortSignal): Promise<PeerBoardsRe
   if (city === null) return EMPTY;
   const res = await fetch(withApiBase(peerBoardsUrl(city)), {
     method: 'GET',
-    headers: { ...authHeaders(), Accept: 'application/json' },
+    headers: { Accept: 'application/json' },
     ...(signal ? { signal } : {}),
   });
   if (res.status === 404 || res.status === 503) return EMPTY;
