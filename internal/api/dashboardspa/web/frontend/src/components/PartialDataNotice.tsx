@@ -15,7 +15,7 @@ export function PartialDataNotice({ label, title, show = true, glyph }: PartialD
   if (!show) return null;
 
   return (
-    <span className="normal-case text-body text-warn" role="status" title={title}>
+    <span className="text-label font-medium text-warn" role="status" title={title}>
       {glyph !== undefined && <span aria-hidden="true">{glyph} </span>}
       {label}
     </span>

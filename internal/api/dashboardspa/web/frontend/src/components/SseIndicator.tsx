@@ -25,5 +25,16 @@ export function SseIndicator({ state }: { state: GcEventConnState }) {
         : state === 'degraded'
           ? 'degraded'
           : 'offline';
-  return <StatusBadge tone={tone} label={label} title={`SSE stream: ${state}`} className="w-28" />;
+  // Inline (no pill fill): w-28 reserves a fixed width so the meta row does
+  // not jump between "live" and "connecting", and a 7 rem pill would read
+  // as a button.
+  return (
+    <StatusBadge
+      tone={tone}
+      label={label}
+      title={`SSE stream: ${state}`}
+      variant="inline"
+      className="w-28"
+    />
+  );
 }

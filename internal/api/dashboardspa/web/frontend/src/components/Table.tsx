@@ -1,9 +1,9 @@
 import { useMemo, useState, type HTMLAttributes, type ReactNode } from 'react';
 
-// Tables are typeset lists, not bordered grids. Column headers in
-// Label scale (uppercase, tracked), rows separated by a hairline
-// divider, no bordered cells. Tabular figures on (apply at the cell
-// level for numeric columns).
+// A table sits in a white panel on the pavement: sentence-case column
+// heads, rows split by hairlines, no bordered cells. The panel scrolls
+// sideways on its own so a wide table never widens the page. Tabular
+// figures on (apply at the cell level for numeric columns).
 
 export interface TableColumn<T> {
   key: string;
@@ -68,10 +68,10 @@ export function Table<T>({
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-lg border border-rule bg-surface-raised">
       <table className="w-full text-body tnum">
         <thead>
-          <tr className="border-b border-rule text-label uppercase tracking-wider text-fg-muted">
+          <tr className="border-b border-rule text-label font-medium text-fg-muted">
             {columns.map((col) => {
               const isSorted = sort?.key === col.key;
               const align = col.align === 'right' ? 'text-right' : 'text-left';
@@ -79,13 +79,13 @@ export function Table<T>({
                 <th
                   key={col.key}
                   scope="col"
-                  className={`pb-3 pr-6 font-medium select-none ${align} ${col.className ?? ''}`}
+                  className={`px-4 py-2.5 font-medium select-none ${align} ${col.className ?? ''}`}
                 >
                   {col.sortable ? (
                     <button
                       type="button"
                       onClick={() => toggleSort(col.key)}
-                      className="inline-flex items-center gap-1 hover:text-fg transition-colors duration-150 ease-out-quart focus-mark rounded-sm"
+                      className="inline-flex items-center gap-1 rounded-sm transition-colors duration-150 ease-out-quart hover:text-fg focus-mark"
                     >
                       {col.label}
                       {isSorted && (
@@ -105,7 +105,7 @@ export function Table<T>({
         <tbody>
           {sortedRows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="py-10 text-center text-fg-muted italic">
+              <td colSpan={columns.length} className="px-4 py-10 text-center text-fg-muted">
                 {empty ?? 'No data'}
               </td>
             </tr>
@@ -117,7 +117,7 @@ export function Table<T>({
                   {...extraRowProps}
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-rule transition-colors duration-150 ease-out-quart ${
+                  className={`border-b border-rule transition-colors duration-150 ease-out-quart last:border-0 ${
                     onRowClick ? 'cursor-pointer hover:bg-surface-tint' : ''
                   } ${rowClassName}`}
                 >
@@ -126,7 +126,7 @@ export function Table<T>({
                     return (
                       <td
                         key={col.key}
-                        className={`py-3 pr-6 align-baseline ${align} ${col.className ?? ''}`}
+                        className={`px-4 py-3 align-top ${align} ${col.className ?? ''}`}
                       >
                         {col.render(row)}
                       </td>

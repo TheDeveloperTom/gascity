@@ -1,13 +1,14 @@
 import type { ChangeEvent } from 'react';
+import { Icon } from './icons';
 
-// A bare typeset search input. Border-b hairline, no box, no card
-// (Flat Page Rule). Placeholder reads as instruction, not decoration.
+// A boxed search field with a magnifier and, while typing, the match count
+// at the right edge. The placeholder reads as an instruction.
 
 interface ListSearchBarProps {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  /** Visible row count after filtering, for the typeset count to the right. */
+  /** Visible row count after filtering, for the count at the right. */
   matchCount?: number;
   /** Total row count before filtering, for context. */
   totalCount?: number;
@@ -26,17 +27,21 @@ export function ListSearchBar({
     value.length > 0 && typeof matchCount === 'number' && typeof totalCount === 'number';
 
   return (
-    <div className="flex items-baseline gap-3 border-b border-rule pb-1">
+    <div className="relative">
+      <Icon
+        name="search"
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint"
+      />
       <input
         type="search"
         value={value}
         onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        className="flex-1 bg-transparent border-0 text-body text-fg placeholder:text-fg-faint focus:outline-none focus:ring-0 px-0 py-0.5"
+        className="h-10 w-full rounded border border-rule bg-surface-raised pl-9 pr-16 text-body text-fg placeholder:text-fg-faint focus-mark"
       />
       {showCount && (
-        <span className="text-label uppercase tracking-wider text-fg-faint tnum">
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-label text-fg-faint tnum">
           {matchCount} / {totalCount}
         </span>
       )}

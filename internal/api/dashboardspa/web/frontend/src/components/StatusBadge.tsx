@@ -1,19 +1,23 @@
 import type { ReactNode } from 'react';
+import { StatusShape } from './icons';
 
-// Status is always carried by glyph + word + color, in that order of
-// importance. Strip color (the greyscale test) and the badge still
-// reads. Per DESIGN.md §Status, never the primary signal — always
-// paired.
+// Status is a street signal: shape + word + colour, in that order of
+// importance. Strip colour (the greyscale test) and the badge still reads.
+// The pill is the default; `inline` drops the fill and padding so the badge
+// can sit inside a sentence. The tone colour lives on the root only, so the
+// One Mark Rule counts (`.text-accent`) do not change.
 
 export type StatusTone = 'ok' | 'warn' | 'stuck' | 'neutral';
 
 interface StatusBadgeProps {
   tone: StatusTone;
   label: ReactNode;
-  /** Override the default glyph for this tone. */
+  /** Override the default shape with a text glyph (e.g. `◐`). */
   glyph?: ReactNode;
-  /** Extra trailing meta (e.g. " · att" for attached sessions). */
+  /** Extra trailing meta (e.g. "attached"). */
   trailing?: ReactNode;
+  /** `pill` (default) or `inline` for use inside a sentence. */
+  variant?: 'pill' | 'inline';
   className?: string;
   title?: string;
 }
@@ -25,11 +29,11 @@ const TONE_COLOR: Record<StatusTone, string> = {
   neutral: 'text-fg-muted',
 };
 
-const TONE_GLYPH: Record<StatusTone, string> = {
-  ok: '●', // ●
-  warn: '▲', // ▲
-  stuck: '■', // ■
-  neutral: '·', // ·
+const TONE_FILL: Record<StatusTone, string> = {
+  ok: 'bg-ok/10',
+  warn: 'bg-warn/10',
+  stuck: 'bg-accent/10',
+  neutral: 'bg-fg/[0.06]',
 };
 
 export function StatusBadge({
@@ -37,21 +41,25 @@ export function StatusBadge({
   label,
   glyph,
   trailing,
+  variant = 'pill',
   className = '',
   title,
 }: StatusBadgeProps) {
+  const shape = variant === 'pill' ? `rounded-full px-2 py-0.5 ${TONE_FILL[tone]}` : '';
   return (
     <span
-      className={`inline-flex items-baseline gap-1.5 text-body ${TONE_COLOR[tone]} ${className}`}
+      className={`inline-flex max-w-full items-center gap-1.5 align-middle text-label font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
       title={title}
     >
-      <span aria-hidden className="text-[0.85em] leading-none translate-y-[1px]">
-        {glyph ?? TONE_GLYPH[tone]}
-      </span>
-      <span>{label}</span>
-      {trailing && (
-        <span className="text-fg-faint text-label uppercase tracking-wider">{trailing}</span>
+      {glyph !== undefined ? (
+        <span aria-hidden="true" className="leading-none">
+          {glyph}
+        </span>
+      ) : (
+        <StatusShape tone={tone} />
       )}
+      <span className="min-w-0 truncate">{label}</span>
+      {trailing && <span className="shrink-0 text-fg-muted">{trailing}</span>}
     </span>
   );
 }

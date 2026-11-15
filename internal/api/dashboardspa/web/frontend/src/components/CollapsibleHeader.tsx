@@ -16,7 +16,7 @@ export function CollapsibleHeader({
   collapsed,
   onToggle,
   children,
-  className = 'w-full flex items-baseline justify-between gap-4 focus-mark',
+  className = 'flex w-full items-center justify-between gap-4 rounded focus-mark',
   glyphClassName,
 }: CollapsibleHeaderProps) {
   return (

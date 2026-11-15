@@ -96,7 +96,7 @@ export function TranscriptBox({ children, caption }: TranscriptBoxProps) {
       <>
         {/* Backdrop — sits above parent-modal z-50 (z-[60]) */}
         <div
-          className="fixed inset-0 z-[60] bg-fg/30"
+          className="fixed inset-0 z-[60] bg-scrim/50"
           aria-hidden="true"
           onClick={handleCollapse}
         />
@@ -107,31 +107,27 @@ export function TranscriptBox({ children, caption }: TranscriptBoxProps) {
           aria-labelledby={headingId}
           className={[
             'fixed inset-[5%] z-[61] flex flex-col',
-            'bg-surface border border-rule rounded-md',
+            'bg-surface-raised text-fg border border-rule rounded-lg shadow-overlay',
             'transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none',
             visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95',
           ].join(' ')}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-5 pt-4 pb-3 border-b border-rule shrink-0 space-y-1">
-            <h2 id={headingId} className="text-label uppercase tracking-wider text-fg-faint">
+          <div className="flex shrink-0 items-center gap-3 border-b border-rule px-5 py-3">
+            <h2 id={headingId} className="text-title font-semibold text-fg">
               Chat Transcript
             </h2>
-            <div className="flex items-baseline gap-3">
-              {caption && (
-                <span className="text-label uppercase tracking-wider text-fg-faint tnum">
-                  {caption}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={handleCollapse}
-                aria-label="Collapse transcript"
-                className="text-label uppercase tracking-wider text-fg-muted hover:text-fg transition-colors duration-150 ease-out focus-mark rounded-sm px-1 ml-auto"
-              >
-                collapse ×
-              </button>
-            </div>
+            {caption && (
+              <span className="min-w-0 truncate text-label text-fg-muted tnum">{caption}</span>
+            )}
+            <button
+              type="button"
+              onClick={handleCollapse}
+              aria-label="Collapse transcript"
+              className="ml-auto inline-flex h-8 shrink-0 items-center rounded px-2.5 text-label font-semibold text-primary transition-colors duration-150 ease-out hover:bg-primary/10 focus-mark"
+            >
+              collapse ×
+            </button>
           </div>
           <div ref={expandedRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-5">
             {children}
@@ -148,24 +144,26 @@ export function TranscriptBox({ children, caption }: TranscriptBoxProps) {
           second "Chat Transcript" h2 was a duplicate label and a heading
           inversion. The label lives only in the expanded dialog, which needs
           it for its accessible name. */}
-      <header className="flex items-baseline justify-end mb-4 gap-3">
-        <div className="flex items-baseline gap-3 min-w-0">
+      <header className="mb-2 flex items-center justify-end gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {caption && (
-            <span className="text-label uppercase tracking-wider text-fg-faint tnum shrink-0">
-              {caption}
-            </span>
+            <span className="min-w-0 truncate text-label text-fg-muted tnum">{caption}</span>
           )}
           <button
             type="button"
             onClick={handleExpand}
             aria-label="Expand transcript"
-            className="text-label uppercase tracking-wider text-fg-muted hover:text-fg transition-colors duration-150 ease-out focus-mark rounded-sm shrink-0"
+            className="inline-flex h-8 shrink-0 items-center rounded px-2.5 text-label font-semibold text-primary transition-colors duration-150 ease-out hover:bg-primary/10 focus-mark"
           >
             expand ⤢
           </button>
         </div>
       </header>
-      <div ref={collapsedRef} onScroll={handleScroll} className="h-96 overflow-y-auto p-4">
+      <div
+        ref={collapsedRef}
+        onScroll={handleScroll}
+        className="h-96 overflow-y-auto rounded-md border border-rule bg-surface-raised p-4"
+      >
         {children}
       </div>
     </div>
