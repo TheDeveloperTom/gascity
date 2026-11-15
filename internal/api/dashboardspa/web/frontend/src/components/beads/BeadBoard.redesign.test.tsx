@@ -1,8 +1,10 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BeadStatus } from 'gas-city-dashboard-shared';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { buildBeadGraph } from '../../lib/beadGraph';
+import { buildRouteIndex, buildStageColumns } from '../../lib/stageBoard';
 import { assertAtMostOneMark } from '../../test/assertions/oneMarkRule';
 import { BeadBoard } from './BeadBoard';
 
@@ -32,18 +34,23 @@ function bead(id: string, status: BeadStatus, extra: Partial<SupervisorBead> = {
 
 function renderBoard(beads: SupervisorBead[]) {
   const graph = buildBeadGraph(beads);
-  return render(<BeadBoard columns={graph.columns} selectedId={null} onSelect={vi.fn()} />);
+  const columns = buildStageColumns(graph.nodes.values(), buildRouteIndex([]), new Map());
+  return render(
+    <MemoryRouter>
+      <BeadBoard columns={columns} selectedId={null} onSelect={vi.fn()} />
+    </MemoryRouter>,
+  );
 }
 
 describe('BeadBoard redesign', () => {
   it('empty columns say None', () => {
-    // Open beads with an unmet need sit in "open", so "ready" is empty.
+    // Open beads with no route wait, so "Review" is empty.
     const { container } = renderBoard([
       bead('A', 'open', { needs: ['GHOST'] }),
       bead('B', 'open', { needs: ['GHOST'] }),
     ]);
-    const ready = screen.getByRole('region', { name: 'ready' });
-    expect(within(ready).getByText('None')).toBeTruthy();
+    const review = screen.getByRole('region', { name: 'Review' });
+    expect(within(review).getByText('None')).toBeTruthy();
     const loneDots = Array.from(container.querySelectorAll('*')).filter(
       (el) => el.children.length === 0 && el.textContent?.trim() === '·',
     );
@@ -54,11 +61,11 @@ describe('BeadBoard redesign', () => {
   // column is its header strip at every width; screen readers still hear None.
   it('an empty column collapses to its header at every width', () => {
     renderBoard([bead('A', 'open')]);
-    const done = screen.getByRole('region', { name: 'done' });
-    const none = within(done).getByText('None');
+    const merged = screen.getByRole('region', { name: 'Merged' });
+    const none = within(merged).getByText('None');
     expect(none.classList.contains('sr-only')).toBe(true);
     expect(none.className).not.toMatch(/\bsm:block\b/);
-    expect(done.querySelector('header')?.className).not.toMatch(/border-b/);
+    expect(merged.querySelector('header')?.className).not.toMatch(/border-b/);
   });
 
   it('columns scroll inside', () => {
@@ -69,19 +76,24 @@ describe('BeadBoard redesign', () => {
       bead('D', 'closed'),
       bead('E', 'open'),
     ]);
+    // Stage board: A, C, E wait; B works; D merged → three non-empty columns.
     const lists = container.querySelectorAll('section ul');
-    expect(lists.length).toBe(5);
+    expect(lists.length).toBe(3);
     for (const list of lists) {
       expect(list.classList.contains('max-h-[28rem]')).toBe(true);
       expect(list.classList.contains('overflow-y-auto')).toBe(true);
     }
   });
 
-  it('one red mark', () => {
+  // Stage board (2026-11-15) supersedes the red blocked count: there is no
+  // blocked column any more. Blocked is an amber word on the card; the board
+  // paints no red text at all, so it stays within the One Mark Rule.
+  it('one red mark at most; blocked is an amber word', () => {
     const { container } = renderBoard([bead('A', 'blocked'), bead('B', 'open')]);
     assertAtMostOneMark(container);
-    const blocked = screen.getByRole('region', { name: 'blocked' });
-    expect(blocked.querySelectorAll('.text-accent')).toHaveLength(1);
+    const waiting = screen.getByRole('region', { name: 'Waiting' });
+    expect(waiting.querySelectorAll('.text-accent')).toHaveLength(0);
+    expect(within(waiting).getByText('blocked').closest('.text-warn')).not.toBeNull();
   });
 
   it('shows the bead id as a copyable id tag', () => {

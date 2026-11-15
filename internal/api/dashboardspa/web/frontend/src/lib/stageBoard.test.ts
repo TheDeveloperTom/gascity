@@ -36,7 +36,10 @@ function task(extra: Partial<SupervisorBead> = {}): SupervisorBead {
   return bead(TASK, { title: 'Ship the stage board', ...extra });
 }
 
-function root(extra: Partial<SupervisorBead> = {}, meta: Record<string, string> = {}): SupervisorBead {
+function root(
+  extra: Partial<SupervisorBead> = {},
+  meta: Record<string, string> = {},
+): SupervisorBead {
   return bead(ROOT, {
     title: 'devwork-development',
     status: 'open',
@@ -127,9 +130,9 @@ describe('route recognition', () => {
         bead('gcg-1', { metadata: { 'gc.kind': 'workflow', 'gc.source_anchor_id': 'dw-anchor' } }),
       ),
     ).toBe('dw-anchor');
-    expect(routeTaskId(bead('gcg-2', { metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-v' } }))).toBe(
-      'dw-v',
-    );
+    expect(
+      routeTaskId(bead('gcg-2', { metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-v' } })),
+    ).toBe('dw-v');
     // A `tracks` edge points at the root's own finalize step, never the task.
     expect(
       routeTaskId(
@@ -151,7 +154,10 @@ describe('every devwork-development step maps to its stage', () => {
     });
 
     it(`${stepId} ready (not yet claimed) → ${expected}`, () => {
-      const result = stageOf(task({ status: 'in_progress' }), [root(), ...routeFrom(index, 'open')]);
+      const result = stageOf(task({ status: 'in_progress' }), [
+        root(),
+        ...routeFrom(index, 'open'),
+      ]);
       expect(result.stage).toBe(expected);
     });
   });
@@ -178,7 +184,10 @@ describe('fallbacks', () => {
   });
 
   it('a queued route (root open and blocked by earlier runs) waits', () => {
-    const result = stageOf(task(), [root({ is_blocked: true }), ...routeFrom(0, 'open').map(blocked)]);
+    const result = stageOf(task(), [
+      root({ is_blocked: true }),
+      ...routeFrom(0, 'open').map(blocked),
+    ]);
     expect(result.stage).toBe('waiting');
     expect(result.stepLabel).toBe('Queued');
     expect(result.root?.id).toBe(ROOT);
@@ -188,7 +197,10 @@ describe('fallbacks', () => {
     const steps = DEVWORK_STEPS.slice(3).map(([id], i) =>
       step(id, null, i === 0 ? { status: 'in_progress', is_blocked: false } : {}),
     );
-    const result = stageOf(task({ status: 'in_progress' }), [root({ status: 'in_progress' }), ...steps]);
+    const result = stageOf(task({ status: 'in_progress' }), [
+      root({ status: 'in_progress' }),
+      ...steps,
+    ]);
     expect(result.stage).toBe('working');
     expect(result.step?.id).toBe(steps[0]?.id);
   });
@@ -204,8 +216,17 @@ describe('fallbacks', () => {
   });
 
   it('spec members are ignored even when labelled and ready', () => {
-    const spec = step('implement.spec', 'working', { issue_type: 'spec', is_blocked: false }, { 'gc.kind': 'spec' });
-    const result = stageOf(task({ status: 'in_progress' }), [root(), spec, ...routeFrom(7, 'open')]);
+    const spec = step(
+      'implement.spec',
+      'working',
+      { issue_type: 'spec', is_blocked: false },
+      { 'gc.kind': 'spec' },
+    );
+    const result = stageOf(task({ status: 'in_progress' }), [
+      root(),
+      spec,
+      ...routeFrom(7, 'open'),
+    ]);
     expect(result.stage).toBe('pr');
   });
 
@@ -219,11 +240,18 @@ describe('fallbacks', () => {
   });
 
   it('a live route beats an older closed route for the same task', () => {
-    const old = root({ status: 'closed', created_at: '2026-11-14T08:00:00Z' }, { 'gc.outcome': 'fail' });
+    const old = root(
+      { status: 'closed', created_at: '2026-11-14T08:00:00Z' },
+      { 'gc.outcome': 'fail' },
+    );
     const live = bead('gcg-900', {
       status: 'in_progress',
       created_at: '2026-11-15T09:00:00Z',
-      metadata: { 'gc.kind': 'workflow', 'gc.var.issue': TASK, 'gc.formula_name': 'devwork-review-again' },
+      metadata: {
+        'gc.kind': 'workflow',
+        'gc.var.issue': TASK,
+        'gc.formula_name': 'devwork-review-again',
+      },
     });
     const liveStep = bead('gcg-901', {
       status: 'in_progress',
@@ -268,7 +296,10 @@ describe('marks', () => {
 
   it('marks a recorded TDD refusal', () => {
     const result = stageOf(
-      task({ status: 'in_progress', metadata: { 'devwork.tdd_refusal': 'round 2: exit 0 is not a RED' } }),
+      task({
+        status: 'in_progress',
+        metadata: { 'devwork.tdd_refusal': 'round 2: exit 0 is not a RED' },
+      }),
       [root(), ...routeFrom(3)],
     );
     expect(result.marks.find((m) => m.kind === 'tdd-refused')?.tone).toBe('attention');
@@ -281,11 +312,16 @@ describe('marks', () => {
   });
 
   it('reads the PR number and url from the route gate', () => {
-    const gate = step('await-merge', null, { issue_type: 'gate' }, {
-      'gc.gate_type': 'gh:pr',
-      'devwork.pr_number': '512',
-      'devwork.pr_url': 'https://github.com/o/r/pull/512',
-    });
+    const gate = step(
+      'await-merge',
+      null,
+      { issue_type: 'gate' },
+      {
+        'gc.gate_type': 'gh:pr',
+        'devwork.pr_number': '512',
+        'devwork.pr_url': 'https://github.com/o/r/pull/512',
+      },
+    );
     const result = stageOf(task({ status: 'in_progress' }), [root(), gate, ...routeFrom(8)]);
     expect(result.pr).toEqual({ number: '512', url: 'https://github.com/o/r/pull/512' });
   });
@@ -312,7 +348,9 @@ describe('folding', () => {
   });
 
   it('lists roots whose task is not on the board as orphans', () => {
-    const orphan = bead('gcg-777', { metadata: { 'gc.kind': 'workflow', 'gc.formula_name': 'devwork-implementation' } });
+    const orphan = bead('gcg-777', {
+      metadata: { 'gc.kind': 'workflow', 'gc.formula_name': 'devwork-implementation' },
+    });
     const index = buildRouteIndex([orphan, root()]);
     expect(index.orphanRoots(new Set([TASK])).map((r) => r.id)).toEqual(['gcg-777']);
   });
@@ -329,7 +367,9 @@ describe('folding', () => {
 describe('step link', () => {
   it('links to the run detail with the root scope and the step node', () => {
     const s = step('open-pr', 'pr');
-    expect(routeRunHref(root(), s)).toBe(`/runs/${ROOT}?scope_kind=rig&scope_ref=devwork&node=${s.id}`);
+    expect(routeRunHref(root(), s)).toBe(
+      `/runs/${ROOT}?scope_kind=rig&scope_ref=devwork&node=${s.id}`,
+    );
   });
 
   it('prefers explicit gc.scope_kind/gc.scope_ref and omits a missing step', () => {

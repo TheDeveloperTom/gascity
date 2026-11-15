@@ -93,8 +93,10 @@ export function attentionSectionProps(
 }
 
 // Light signal tint on a row; it deepens one step on hover. This is the row's
-// state (DESIGN-PLAN §3.4), not a pressable affordance.
-function attentionHighlightClass(severity: BadgeSeverity): string {
+// state (DESIGN-PLAN §3.4), not a pressable affordance. Exported for the stage
+// board, whose route attention marks (stopped, failed route) tint a card the
+// same way without claiming an attention-model item.
+export function attentionHighlightClass(severity: BadgeSeverity): string {
   return severity === 'attention'
     ? 'bg-accent/[0.07] hover:bg-accent/10'
     : 'bg-warn/[0.08] hover:bg-warn/[0.12]';

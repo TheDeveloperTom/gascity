@@ -164,7 +164,8 @@ export function buildRouteIndex(routeBeads: readonly SupervisorBead[]): RouteInd
 
 /** Live before closed, running before queued, newest first. */
 function byRoutePreference(a: Route, b: Route): number {
-  const rank = (r: Route) => (r.root.status === 'closed' ? 2 : r.root.status === 'in_progress' ? 0 : 1);
+  const rank = (r: Route) =>
+    r.root.status === 'closed' ? 2 : r.root.status === 'in_progress' ? 0 : 1;
   const diff = rank(a) - rank(b);
   if (diff !== 0) return diff;
   return a.root.created_at < b.root.created_at ? 1 : a.root.created_at > b.root.created_at ? -1 : 0;
@@ -210,11 +211,16 @@ function pick(
   return best;
 }
 
-function routePosition(route: Route): { stage: StageId; step: SupervisorBead | null; label: string | null } {
+function routePosition(route: Route): {
+  stage: StageId;
+  step: SupervisorBead | null;
+  label: string | null;
+} {
   const open = route.members.filter((m) => m.status !== 'closed' && isCountedMember(m));
   const running = open.filter((m) => m.status === 'in_progress');
   const runningLabelled = pick(running, 'highest');
-  if (runningLabelled) return { stage: runningLabelled.stage, step: runningLabelled.bead, label: null };
+  if (runningLabelled)
+    return { stage: runningLabelled.stage, step: runningLabelled.bead, label: null };
 
   const { root } = route;
   if (running.length === 0 && root.status === 'open' && root.is_blocked === true) {
@@ -231,7 +237,8 @@ function lastClosedMember(route: Route): SupervisorBead | null {
   let last: SupervisorBead | null = null;
   for (const m of route.members) {
     if (m.status !== 'closed' || !isCountedMember(m)) continue;
-    if (last === null || (m.updated_at ?? m.created_at) > (last.updated_at ?? last.created_at)) last = m;
+    if (last === null || (m.updated_at ?? m.created_at) > (last.updated_at ?? last.created_at))
+      last = m;
   }
   return last;
 }
@@ -282,12 +289,18 @@ export function deriveTaskStage(
   }
 
   if (task.status === 'blocked') marks.push({ kind: 'blocked', tone: 'warn', label: 'blocked' });
-  if (stage === 'waiting' && node.ready) marks.push({ kind: 'ready', tone: 'quiet', label: 'ready' });
+  if (stage === 'waiting' && node.ready)
+    marks.push({ kind: 'ready', tone: 'quiet', label: 'ready' });
 
   const stopCard = stopCards.get(task.id);
-  const cancelled = route !== null && route.root.status !== 'closed' && meta(route.root, 'gc.cancel_requested') === 'true';
+  const cancelled =
+    route !== null &&
+    route.root.status !== 'closed' &&
+    meta(route.root, 'gc.cancel_requested') === 'true';
   if (task.status !== 'closed' && (stopCard || cancelled)) {
-    const reason = stopCard ? meta(stopCard, STOP_REASON_KEY) || stopCard.title : 'cancel requested';
+    const reason = stopCard
+      ? meta(stopCard, STOP_REASON_KEY) || stopCard.title
+      : 'cancel requested';
     marks.push({
       kind: 'stopped',
       tone: 'attention',
@@ -335,7 +348,8 @@ export function buildStageColumns(
     const stage = deriveTaskStage(node, index, stopCards);
     columns[stage.stage].push({ node, stage });
   }
-  for (const col of STAGES) columns[col.id].sort(col.id === 'merged' ? byRecentClose : byPriorityThenId);
+  for (const col of STAGES)
+    columns[col.id].sort(col.id === 'merged' ? byRecentClose : byPriorityThenId);
   return columns;
 }
 

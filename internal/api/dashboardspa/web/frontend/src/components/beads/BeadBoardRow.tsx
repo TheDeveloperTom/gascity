@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router';
 import type { BeadNode } from '../../lib/beadGraph';
+import { routeRunHref, type StageMark, type TaskStage } from '../../lib/stageBoard';
 import type { BadgeSeverity } from '../../attention/compose';
-import { attentionListItemProps } from '../../attention/routeHighlight';
+import { attentionHighlightClass, attentionListItemProps } from '../../attention/routeHighlight';
+import { StatusShape } from '../icons';
 
 // One bead on the board: a two-line title, then the bead id as a copyable id
 // tag with its priority and a compact `needs N · blocks M` annotation. No
@@ -21,7 +24,77 @@ interface BeadBoardRowProps {
    * opening the modal.
    */
   note?: string | null;
+  /**
+   * The task's place on the route (stage board): the current step line with a
+   * link into the run, the PR link, and its marks. Absent for a plain row.
+   */
+  stage?: TaskStage | null;
   onSelect: (beadId: string) => void;
+}
+
+// A route attention mark (stopped, failed route, TDD refused) is the stop
+// shape plus a word, in ink: the card's tint carries the colour, so the board
+// keeps the One Mark Rule (no `.text-accent` per card) and passes greyscale.
+function StageMarkView({ mark }: { mark: StageMark }) {
+  if (mark.tone === 'attention') {
+    return (
+      <span title={mark.title} className="inline-flex items-center gap-1 font-semibold text-fg">
+        <StatusShape tone="stuck" />
+        {mark.label}
+      </span>
+    );
+  }
+  if (mark.tone === 'warn') {
+    return (
+      <span title={mark.title} className="inline-flex items-center gap-1 font-medium text-warn">
+        <StatusShape tone="warn" />
+        {mark.label}
+      </span>
+    );
+  }
+  return (
+    <span title={mark.title} className="text-fg-muted">
+      {mark.label}
+    </span>
+  );
+}
+
+const STEP_LINK =
+  'min-w-0 rounded-sm text-primary underline-offset-2 hover:underline focus-mark [overflow-wrap:anywhere]';
+
+function StageLine({ stage }: { stage: TaskStage }) {
+  const { root, step, stepLabel, pr, marks } = stage;
+  const hasStep = stepLabel !== null && stepLabel.length > 0;
+  if (!hasStep && pr === null && marks.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-2.5 pb-2 text-label">
+      {marks.map((mark) => (
+        <StageMarkView key={mark.kind} mark={mark} />
+      ))}
+      {hasStep &&
+        (root !== null ? (
+          <Link
+            to={routeRunHref(root, step)}
+            title={step !== null ? `Open step ${step.id} in its run` : `Open run ${root.id}`}
+            className={`line-clamp-1 ${STEP_LINK}`}
+          >
+            {stepLabel}
+          </Link>
+        ) : (
+          <span className="line-clamp-1 min-w-0 text-fg-muted [overflow-wrap:anywhere]">
+            {stepLabel}
+          </span>
+        ))}
+      {pr !== null &&
+        (pr.url !== null ? (
+          <a href={pr.url} target="_blank" rel="noreferrer" className={`tnum ${STEP_LINK}`}>
+            {pr.number !== null ? `PR #${pr.number}` : 'PR'}
+          </a>
+        ) : (
+          <span className="tnum text-fg-muted">{`PR #${pr.number}`}</span>
+        ))}
+    </div>
+  );
 }
 
 // The note inherits the row's attention tone: red for attention (stalled),
@@ -38,8 +111,10 @@ export function BeadBoardRow({
   selected,
   attentionSeverity = null,
   note = null,
+  stage = null,
   onSelect,
 }: BeadBoardRowProps) {
+  const routeAttention = stage?.marks.find((mark) => mark.tone === 'attention') ?? null;
   const { bead, deps, blocks, hasUnresolvedDeps } = node;
   const rowRef = useRef<HTMLLIElement | null>(null);
   const depCount = deps.length;
@@ -57,13 +132,21 @@ export function BeadBoardRow({
     });
   }, [selected]);
 
+  // The attention model's tint wins; a route attention mark tints the card the
+  // same way when the model has nothing to say about this bead.
+  const routeTint =
+    routeAttention !== null && attentionSeverity === null && !selected
+      ? attentionHighlightClass('attention')
+      : '';
+
   return (
     <li
       ref={rowRef}
       {...attentionProps}
+      {...(routeAttention === null ? {} : { 'data-route-attention': routeAttention.kind })}
       className={`rounded-md transition-colors duration-150 ease-out-quart ${
         selected ? 'bg-primary/[0.08] ring-1 ring-inset ring-primary/40' : 'hover:bg-surface-tint'
-      } ${attentionClassName}`}
+      } ${attentionClassName} ${routeTint}`}
     >
       <button
         type="button"
@@ -97,6 +180,7 @@ export function BeadBoardRow({
           <span className={`mt-0.5 block text-label ${noteTone(attentionSeverity)}`}>{note}</span>
         )}
       </button>
+      {stage !== null && <StageLine stage={stage} />}
     </li>
   );
 }

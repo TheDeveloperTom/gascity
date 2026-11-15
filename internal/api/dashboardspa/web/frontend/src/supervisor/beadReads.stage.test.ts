@@ -14,12 +14,21 @@ import { listSupervisorBeads } from './beadReads';
 // a rig-scoped closed leg brings recent merges onto the default board.
 
 function bead(id: string, extra: Partial<Bead> = {}): Bead {
-  return { id, title: id, status: 'open', issue_type: 'task', created_at: '2026-11-15T08:00:00Z', ...extra };
+  return {
+    id,
+    title: id,
+    status: 'open',
+    issue_type: 'task',
+    created_at: '2026-11-15T08:00:00Z',
+    ...extra,
+  };
 }
 
 const TASK = bead('dw-1');
 const ROOT = bead('gcg-1', { metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-1' } });
-const STEP = bead('gcg-2', { metadata: { 'gc.root_bead_id': 'gcg-1', 'dashboard.stage': 'working' } });
+const STEP = bead('gcg-2', {
+  metadata: { 'gc.root_bead_id': 'gcg-1', 'dashboard.stage': 'working' },
+});
 const GATE = bead('gcg-3', {
   issue_type: 'gate',
   metadata: { 'gc.root_bead_id': 'gcg-1', 'devwork.pr_number': '7' },
@@ -32,11 +41,17 @@ function install(listBeads: (city: string, query: Query) => Promise<unknown>, ri
   const api = {
     baseUrl: '/gc-supervisor',
     listBeads: vi.fn(listBeads),
-    listRigs: vi.fn(async () => ({ items: rigs.map((name) => ({ name, path: `/r/${name}` })), total: rigs.length })),
+    listRigs: vi.fn(async () => ({
+      items: rigs.map((name) => ({ name, path: `/r/${name}` })),
+      total: rigs.length,
+    })),
     mutationHeaders: () => ({ ...GC_MUTATION_HEADERS }),
   } as unknown as SupervisorApi;
   setSupervisorApiForTests(api);
-  return api as unknown as { listBeads: ReturnType<typeof vi.fn>; listRigs: ReturnType<typeof vi.fn> };
+  return api as unknown as {
+    listBeads: ReturnType<typeof vi.fn>;
+    listRigs: ReturnType<typeof vi.fn>;
+  };
 }
 
 function openWindow(query: Query) {
@@ -85,7 +100,9 @@ describe('listSupervisorBeads stage-board options', () => {
     const api = install(async (_city, query) => openWindow(query));
     await listSupervisorBeads({ rigFilter: 'east', recentClosed: { limit: 100 } });
     expect(api.listRigs).not.toHaveBeenCalled();
-    const closed = api.listBeads.mock.calls.map((c) => c[1] as Query).filter((q) => q['status'] === 'closed');
+    const closed = api.listBeads.mock.calls
+      .map((c) => c[1] as Query)
+      .filter((q) => q['status'] === 'closed');
     expect(closed).toEqual([{ limit: 100, status: 'closed', rig: 'east' }]);
   });
 

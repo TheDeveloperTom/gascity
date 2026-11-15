@@ -144,9 +144,17 @@ describe('BeadsPage', () => {
     await screen.findByText('Sample bead');
 
     // One windowed read plus the dedicated in-progress leg (gp-6xd F1) —
-    // never a per-type fan-out or a closed-history scan.
-    expect(beadQueries.length).toBe(2);
-    const [query, inProgressLeg] = beadQueries;
+    // never a per-type fan-out or a closed-history (all=true) scan. The stage
+    // board (2026-11-15) adds one small rig-scoped `status=closed` leg per rig
+    // so Merged shows recent merges by default.
+    expect(beadQueries.length).toBe(4);
+    const [query, inProgressLeg, ...closedLegs] = beadQueries;
+    expect(
+      closedLegs.map((q) => [q.get('status'), q.get('rig'), q.get('limit'), q.has('all')]),
+    ).toEqual([
+      ['closed', 'east', '100', false],
+      ['closed', 'west', '100', false],
+    ]);
     expect(query?.get('limit')).toBe('1000');
     expect(query?.has('all')).toBe(false);
     expect(query?.has('type')).toBe(false);
@@ -160,7 +168,8 @@ describe('BeadsPage', () => {
     renderPage();
 
     await screen.findByText('Sample bead');
-    expect(beadQueries.length).toBe(2);
+    // Window, in-progress leg, and one recent-closed leg per rig (stage board).
+    expect(beadQueries.length).toBe(4);
     for (const query of beadQueries) {
       expect(query.has('all')).toBe(false);
     }
@@ -171,7 +180,8 @@ describe('BeadsPage', () => {
     // read (window + in-progress leg) whose window now carries all=true
     // (closed beads included). The leg never carries all — in-progress work is
     // never closed.
-    await waitFor(() => expect(beadQueries.length).toBe(4));
+    // With all=true the recent-closed legs are skipped (closed is already in).
+    await waitFor(() => expect(beadQueries.length).toBe(6));
     const closedQuery = beadQueries.at(-2);
     expect(closedQuery?.get('all')).toBe('true');
     expect(closedQuery?.has('type')).toBe(false);
@@ -181,8 +191,9 @@ describe('BeadsPage', () => {
     // chip would read inactive while the board silently keeps scanning closed
     // history (the showClosed/chip desync this dual-state wiring must avoid).
     fireEvent.click(screen.getByRole('button', { name: /^closed$/i }));
-    await waitFor(() => expect(beadQueries.length).toBe(6));
-    const reopenedQuery = beadQueries.at(-2);
+    await waitFor(() => expect(beadQueries.length).toBe(10));
+    const reopenedQuery = beadQueries.at(-4);
+    expect(reopenedQuery?.has('status')).toBe(false);
     expect(reopenedQuery?.has('all')).toBe(false);
     expect(reopenedQuery?.has('type')).toBe(false);
   });
@@ -195,8 +206,9 @@ describe('BeadsPage', () => {
       target: { value: 'east' },
     });
 
-    await waitFor(() => expect(beadQueries.length).toBe(4));
-    // Both legs of the fresh read carry the rig filter.
+    // 4 initial reads, then window + in-progress + the one rig's closed leg.
+    await waitFor(() => expect(beadQueries.length).toBe(7));
+    // Every leg of the fresh read carries the rig filter.
     const latestQuery = beadQueries.at(-1);
     expect(latestQuery?.get('rig')).toBe('east');
     expect(latestQuery?.has('all')).toBe(false);
