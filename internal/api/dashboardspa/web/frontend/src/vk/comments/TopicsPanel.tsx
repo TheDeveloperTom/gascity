@@ -277,7 +277,6 @@ function TopicView({
                 onClick={() => act({ event: 'topic_resolve', reason: 'resolved' })}
                 className="inline-flex h-11 items-center gap-1.5 rounded-sm border border-vk-border bg-vk-bg-secondary px-2.5 text-sm text-vk-text-high focus-mark md:h-8"
               >
-                <CheckGlyph />
                 {t('Resolved ✓')}
               </button>
             </div>

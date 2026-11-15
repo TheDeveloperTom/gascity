@@ -27,7 +27,7 @@ export function LaunchCardOpener() {
     const search = new URLSearchParams(location.search);
     search.set('bead', bead);
     const state: LaunchState = { launchBead: bead };
-    navigate({ pathname: '/beads', search: `?${search.toString()}` }, { state });
+    void navigate({ pathname: '/beads', search: `?${search.toString()}` }, { state });
     // once per mount: the launch card is consumed by takeLaunchBead()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

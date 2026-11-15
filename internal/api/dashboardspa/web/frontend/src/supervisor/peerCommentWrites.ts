@@ -155,7 +155,10 @@ export function commentErrorText(err: unknown): string {
       return t('The card is no longer on the other board.');
     case 'disabled':
       return t('Comments are switched off on this city.');
-    default:
+    case 'bad_request':
+    case 'own_card':
+    case 'unknown_peer':
+    case 'failed':
       return t('Not sent — try again.');
   }
 }

@@ -4,7 +4,12 @@
 import { cleanup, render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetActivityPlumbingForTests } from '../lib/apiBase';
+import { bootActivity } from './activitySdk';
+import { captureLaunch, parseLaunchCustomId, takeLaunchBead } from './activitySession';
+import { LaunchCardOpener } from './LaunchCardOpener';
 
+// vi.mock is hoisted above these imports, so the SDK they load is the fake.
 const m = vi.hoisted(() => ({ customId: null as string | null, instanceId: 'inst-1' }));
 
 vi.mock('@discord/embedded-app-sdk', () => ({
@@ -22,11 +27,6 @@ vi.mock('@discord/embedded-app-sdk', () => ({
     }
   },
 }));
-
-import { resetActivityPlumbingForTests } from '../lib/apiBase';
-import { bootActivity } from './activitySdk';
-import { captureLaunch, parseLaunchCustomId, takeLaunchBead } from './activitySession';
-import { LaunchCardOpener } from './LaunchCardOpener';
 
 function tokenFetch(): typeof fetch {
   return vi.fn(async () =>

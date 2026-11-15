@@ -6,6 +6,8 @@ import { asOfClock, peerSourcesOf } from '../../lib/boardOwner';
 import { parsePeerBoards } from '../../supervisor/peerBoardReads';
 import { peerBody, peerTopics } from '../../test/fixtures/peerBoards';
 import { TopicsPanel } from './TopicsPanel';
+import type * as PeerCommentWrites from '../../supervisor/peerCommentWrites';
+import type * as ActivitySession from '../../embed/activitySession';
 
 // vk-final part 4: «Обсуждения Мэров» with the peer city (frames
 // General-Thread, Phone-Topics; COMMENTS-PLAN Revision 2). The Mayors talk;
@@ -13,13 +15,13 @@ import { TopicsPanel } from './TopicsPanel';
 
 const writes = vi.hoisted(() => ({ topic: vi.fn(), read: vi.fn() }));
 vi.mock('../../supervisor/peerCommentWrites', async (orig) => ({
-  ...(await orig<typeof import('../../supervisor/peerCommentWrites')>()),
+  ...(await orig<typeof PeerCommentWrites>()),
   postTopicEvent: writes.topic,
   markTopicRead: writes.read,
 }));
 const role = vi.hoisted(() => ({ write: true }));
 vi.mock('../../embed/activitySession', async (orig) => ({
-  ...(await orig<typeof import('../../embed/activitySession')>()),
+  ...(await orig<typeof ActivitySession>()),
   canWrite: () => role.write,
 }));
 

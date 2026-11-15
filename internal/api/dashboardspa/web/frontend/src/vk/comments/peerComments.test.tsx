@@ -5,13 +5,14 @@ import { peerSourcesOf } from '../../lib/boardOwner';
 import { parsePeerBoards } from '../../supervisor/peerBoardReads';
 import { peerBody, peerThread } from '../../test/fixtures/peerBoards';
 import { PeerComments } from './PeerComments';
+import type * as ActivitySession from '../../embed/activitySession';
 
 // vk-final part 4: a reader in the Activity (Richard) sees the thread but
 // gets no composer (canWrite() is the one gate).
 
 const role = vi.hoisted(() => ({ write: true }));
 vi.mock('../../embed/activitySession', async (orig) => ({
-  ...(await orig<typeof import('../../embed/activitySession')>()),
+  ...(await orig<typeof ActivitySession>()),
   canWrite: () => role.write,
 }));
 
