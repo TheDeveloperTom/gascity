@@ -48,6 +48,11 @@ export function beadRowSummary(parts: BeadRowParts): string {
     case 'ready-unclaimed':
       return t('Nobody has taken it for {age}', { age: elapsedWords(parts.ageMs) });
     case 'waiting-human': {
+      if (parts.toOwner === true) {
+        return parts.waitMs === null
+          ? t('Waiting on you')
+          : t('Waiting on you for {age}', { age: elapsedWords(parts.waitMs) });
+      }
       if (parts.who === null) {
         return parts.waitMs === null
           ? t('On hold')
