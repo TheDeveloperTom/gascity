@@ -26,12 +26,7 @@ export function ThreadMessage({
       <p className="text-body font-semibold text-fg [overflow-wrap:anywhere]">{message.subject}</p>
       {/* Inline, so the notice reads as a sentence. It wraps on phones
           rather than truncating: a cut-off warning is not a warning. */}
-      <StatusBadge
-        tone="warn"
-        variant="inline"
-        label={PROMPT_INJECTION_NOTICE}
-        className="items-start [&>span]:whitespace-normal [&>svg]:mt-1"
-      />
+      <StatusBadge tone="warn" variant="inline" wrap label={PROMPT_INJECTION_NOTICE} />
 
       <pre className="max-w-[70ch] pt-1 font-sans text-reading whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">
         {message.body}

@@ -62,21 +62,22 @@ export function NeedsYouBoard({
   const baseId = useId();
   const counted = items.filter(isCounted);
   const degraded = items.filter((item) => !isCounted(item));
-  const overflowCounted = overflow.reduce((sum, group) => sum + group.attention + group.watch, 0);
-  const total = counted.length + overflowCounted;
-  const signal: Signal =
-    counted.some((item) => item.severity === 'attention') ||
-    overflow.some((group) => group.attention > 0)
-      ? 'attention'
-      : total > 0
-        ? 'watch'
-        : 'clear';
+  // Ruling C1: the headline counts only what needs the owner (attention).
+  // Watch items are things to keep an eye on; they get their own quiet count
+  // so a busy city does not shout "145 things need you".
+  const needsYou =
+    counted.filter((item) => item.severity === 'attention').length +
+    overflow.reduce((sum, group) => sum + group.attention, 0);
+  const toWatch =
+    counted.filter((item) => item.severity === 'watch').length +
+    overflow.reduce((sum, group) => sum + group.watch, 0);
+  const signal: Signal = needsYou > 0 ? 'attention' : toWatch > 0 ? 'watch' : 'clear';
   const headline =
-    total === 0
+    needsYou === 0
       ? 'Nothing needs you right now.'
-      : total === 1
+      : needsYou === 1
         ? '1 thing needs you'
-        : `${total} things need you`;
+        : `${needsYou} things need you`;
   const rows = [...counted, ...degraded];
 
   return (
@@ -100,6 +101,11 @@ export function NeedsYouBoard({
         >
           {headline}
         </h2>
+        {toWatch > 0 && (
+          <p className="ml-auto shrink-0 self-end pb-1 text-body text-fg-muted tnum">
+            {toWatch} to watch
+          </p>
+        )}
       </div>
 
       {rows.length > 0 && (

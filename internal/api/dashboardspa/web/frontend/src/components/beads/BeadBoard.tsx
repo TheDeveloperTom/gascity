@@ -53,8 +53,10 @@ export function BeadBoard({
                 nodes.length === 0 ? 'sm:border-b sm:border-rule' : 'border-b border-rule'
               }`}
             >
-              <h3 className="text-label font-semibold text-fg first-letter:uppercase">
-                {col.label}
+              {/* Sentence case in the text itself (R5: no case transforms);
+                  the region name stays the lowercase `aria-label`. */}
+              <h3 className="text-label font-semibold text-fg">
+                {`${col.label.charAt(0).toUpperCase()}${col.label.slice(1)}`}
               </h3>
               <span className={countClass}>{nodes.length}</span>
             </header>

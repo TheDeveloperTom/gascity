@@ -401,7 +401,7 @@ export function BeadsPage() {
               <StatusBadge
                 tone="warn"
                 variant="inline"
-                className="whitespace-normal [&>span]:whitespace-normal"
+                wrap
                 label={`Fetch window covered ${upstreamFetched} of ${upstreamTotal} store beads. Raise the fetch limit (currently ${fetchLimit ?? '?'}) if engineering work sits past the window.`}
               />
             </p>

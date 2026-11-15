@@ -331,7 +331,7 @@ export function CockpitHomePage() {
       />
 
       {unavailableReadings.length > 0 && (
-        <p className="-mt-5 mb-6 flex items-center gap-2 text-label text-warn">
+        <p role="status" className="-mt-5 mb-6 flex items-center gap-2 text-label text-warn">
           <StatusShape tone="warn" />
           <span>Some readings are unavailable: {unavailableReadings.join(', ')}.</span>
         </p>

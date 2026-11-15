@@ -46,7 +46,7 @@ describe('AgentPanel — degraded-state footnote', () => {
       sessionsUnavailable: false,
     });
     // Expand the panel to see the footnote region.
-    fireEvent.click(screen.getByRole('button', { name: /agents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /choose inbox/i }));
     expect(screen.queryByText(/agent list.*unavailable/i)).toBeNull();
   });
 
@@ -56,7 +56,7 @@ describe('AgentPanel — degraded-state footnote', () => {
       { tier: 'active', aliases: ['mechanic', 'scix-worker'] },
     ];
     renderPanel({ buckets, sessionsUnavailable: true });
-    fireEvent.click(screen.getByRole('button', { name: /agents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /choose inbox/i }));
     expect(
       screen.getByText(/agent list unavailable; showing mail-derived aliases only/i),
     ).toBeTruthy();
@@ -69,7 +69,7 @@ describe('AgentPanel — degraded-state footnote', () => {
     // bucket is the operator-only 'you' tier.
     const buckets: AliasBucket[] = [{ tier: 'you', aliases: ['stephanie'] }];
     renderPanel({ buckets, sessionsUnavailable: true });
-    fireEvent.click(screen.getByRole('button', { name: /agents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /choose inbox/i }));
     expect(screen.getByText(/agent list and mail history both unavailable/i)).toBeTruthy();
     // The narrower copy must NOT appear simultaneously — that's the
     // misleading-copy regression the bead flagged.
@@ -81,7 +81,7 @@ describe('AgentPanel — degraded-state footnote', () => {
     // aliases" / "Loading more agents" instead of the terminal copy.
     const buckets: AliasBucket[] = [{ tier: 'you', aliases: ['stephanie'] }];
     renderPanel({ buckets, sessionsUnavailable: true, loading: true });
-    fireEvent.click(screen.getByRole('button', { name: /agents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /choose inbox/i }));
     expect(screen.queryByText(/agent list unavailable/i)).toBeNull();
     expect(screen.queryByText(/agent list and mail history both unavailable/i)).toBeNull();
   });

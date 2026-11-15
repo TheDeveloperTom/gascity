@@ -41,9 +41,10 @@ describe('NeedsYouBoard', () => {
     expect(screen.queryAllByRole('alert')).toHaveLength(0);
   });
 
-  it('counts attention and watch', () => {
+  it('headline counts only attention; watch gets its own quiet count', () => {
     const { container } = renderBoard([itemA, itemB]);
-    expect(screen.getByRole('heading', { name: '2 things need you' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '1 thing needs you' })).toBeTruthy();
+    expect(screen.getByText('1 to watch')).toBeTruthy();
     expect(container.querySelector('section')?.getAttribute('data-signal')).toBe('attention');
     const links = screen.getAllByRole('link', { name: 'Open' });
     expect(links).toHaveLength(1);
@@ -60,9 +61,24 @@ describe('NeedsYouBoard', () => {
   });
 
   it('singular', () => {
-    const { container } = renderBoard([itemB]);
+    renderBoard([itemA]);
     expect(screen.getByRole('heading', { name: '1 thing needs you' })).toBeTruthy();
+    expect(screen.queryByText(/to watch$/)).toBeNull();
+  });
+
+  it('watch only: nothing needs you, amber band, quiet watch count', () => {
+    const { container } = renderBoard(
+      [itemB],
+      [{ domain: 'mail', total: 2, attention: 0, watch: 2, unavailable: 0 }],
+    );
+    expect(screen.getByRole('heading', { name: 'Nothing needs you right now.' })).toBeTruthy();
     expect(container.querySelector('section')?.getAttribute('data-signal')).toBe('watch');
+    expect(screen.getByText('3 to watch')).toBeTruthy();
+  });
+
+  it('overflow attention counts in the headline', () => {
+    renderBoard([itemA], [{ domain: 'beads', total: 52, attention: 52, watch: 0, unavailable: 0 }]);
+    expect(screen.getByRole('heading', { name: '53 things need you' })).toBeTruthy();
   });
 
   it('unavailable never counts', () => {

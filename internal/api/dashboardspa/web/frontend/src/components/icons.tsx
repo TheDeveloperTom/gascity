@@ -131,7 +131,7 @@ const SHAPES: Record<StatusTone, ReactNode> = {
   neutral: <circle cx="4" cy="4" r="2.75" fill="none" stroke="currentColor" strokeWidth="1.5" />,
 };
 
-export function StatusShape({ tone }: { tone: StatusTone }) {
+export function StatusShape({ tone, className = '' }: { tone: StatusTone; className?: string }) {
   return (
     <svg
       viewBox="0 0 8 8"
@@ -139,7 +139,7 @@ export function StatusShape({ tone }: { tone: StatusTone }) {
       height="8"
       aria-hidden="true"
       focusable="false"
-      className="shrink-0"
+      className={`shrink-0 ${className}`.trim()}
     >
       {SHAPES[tone]}
     </svg>

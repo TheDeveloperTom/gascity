@@ -19,9 +19,6 @@ import { StatusBadge } from '../StatusBadge';
 const INPUT_CLASS =
   'h-9 w-full rounded border border-rule px-3 text-body placeholder:text-fg-faint focus-mark';
 
-// Sentences in a status line wrap instead of truncating.
-const WRAP_LABEL = 'items-start [&>span]:whitespace-normal [&>svg]:mt-1';
-
 interface ComposeModalProps {
   open: boolean;
   onClose: () => void;
@@ -141,13 +138,11 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
           <StatusBadge
             tone="warn"
             variant="inline"
-            className={WRAP_LABEL}
+            wrap
             label={`Reading as ${displayLabel(viewingAs.alias, OPERATOR_ALIAS)}. Sends from this modal are structurally locked to the operator regardless.`}
           />
         )}
-        {error && (
-          <StatusBadge tone="stuck" variant="inline" className={WRAP_LABEL} label={error} />
-        )}
+        {error && <StatusBadge tone="stuck" variant="inline" wrap label={error} />}
       </div>
     </Modal>
   );

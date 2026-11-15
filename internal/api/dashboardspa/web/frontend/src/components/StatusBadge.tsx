@@ -18,6 +18,8 @@ interface StatusBadgeProps {
   trailing?: ReactNode;
   /** `pill` (default) or `inline` for use inside a sentence. */
   variant?: 'pill' | 'inline';
+  /** Let a sentence-length label wrap instead of truncating (notices, warnings). */
+  wrap?: boolean;
   className?: string;
   title?: string;
 }
@@ -42,25 +44,33 @@ export function StatusBadge({
   glyph,
   trailing,
   variant = 'pill',
+  wrap = false,
   className = '',
   title,
 }: StatusBadgeProps) {
   const shape = variant === 'pill' ? `rounded-full px-2 py-0.5 ${TONE_FILL[tone]}` : '';
+  // Wrapping labels top-align the 8 px shape with the first line (18 px line box).
+  const align = wrap ? 'items-start' : 'items-center';
+  const markOffset = wrap ? 'mt-[5px]' : '';
   return (
     <span
-      className={`inline-flex max-w-full items-center gap-1.5 align-middle text-label font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
+      className={`inline-flex max-w-full ${align} gap-1.5 align-middle text-label font-medium ${TONE_COLOR[tone]} ${shape} ${className}`}
       // A text label can be cut by `truncate` in a narrow cell; the title
       // keeps the full word one hover away. An explicit title wins.
       title={title ?? (typeof label === 'string' ? label : undefined)}
     >
       {glyph !== undefined ? (
-        <span aria-hidden="true" className="leading-none">
+        <span aria-hidden="true" className={`leading-none ${markOffset}`}>
           {glyph}
         </span>
       ) : (
-        <StatusShape tone={tone} />
+        <StatusShape tone={tone} className={markOffset} />
       )}
-      <span className="min-w-0 truncate">{label}</span>
+      <span
+        className={wrap ? 'min-w-0 whitespace-normal [overflow-wrap:anywhere]' : 'min-w-0 truncate'}
+      >
+        {label}
+      </span>
       {trailing && <span className="shrink-0 text-fg-muted">{trailing}</span>}
     </span>
   );

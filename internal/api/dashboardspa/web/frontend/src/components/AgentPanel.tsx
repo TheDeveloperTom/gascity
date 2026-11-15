@@ -83,7 +83,6 @@ export function AgentPanel({
             className={`${TOGGLE_CLASS} shrink-0 sm:mt-3 sm:w-full`}
           >
             Choose inbox
-            <span className="sr-only"> from all agents</span>
           </button>
         </div>
         {!isOperator && <OperatorReturn onReset={onReset} note="Sends go from the operator." />}
