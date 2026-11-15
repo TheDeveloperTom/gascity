@@ -7,13 +7,15 @@ import { useAttentionModel } from '../attention/context';
 import type { AttentionDomain } from '../attention/compose';
 import { useTheme } from '../contexts/ThemeContext';
 import { useOperatorConfig } from '../contexts/OperatorConfigContext';
-import { READ_ONLY_CONTROL_TITLE, useReadOnly } from '../contexts/ReadOnlyContext';
+import { ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { useViewingAs } from '../contexts/ViewingAsContext';
 import { displayLabel } from '../hooks/aliasPriority';
 import { useCachedData } from '../hooks/useCachedData';
 import { supervisorApi } from '../supervisor/client';
 import { ALL_VIEWS } from '../views/registry';
 import { filterEnabledViews } from '../views/resolve';
+import { Icon, type IconName } from './icons';
+import { StatusBadge } from './StatusBadge';
 
 interface NavRoute {
   to: string;
@@ -32,11 +34,34 @@ const EXPLICIT_ROUTES: ReadonlyArray<NavRoute> = [
   // `end: true` so the NavLink active-state matches `/` exactly
   // (otherwise every nested route would also be 'active').
   { to: '/', label: 'Home', end: true, order: 10 },
-  { to: '/agents', label: 'Agents', order: 20 },
-  { to: '/beads', label: 'Beads', order: 30 },
-  { to: '/runs', label: 'Runs', order: 40 },
+  // Signpost order (DESIGN-PLAN R6): Runs first among the work views,
+  // because stuck runs are what most often needs the owner.
+  { to: '/runs', label: 'Runs', order: 20 },
+  { to: '/agents', label: 'Agents', order: 30 },
+  { to: '/beads', label: 'Beads', order: 40 },
   { to: '/mail', label: 'Mail', order: 50 },
 ];
+
+// Three signpost groups, split by order: Home | the work (Runs, Agents,
+// Beads, Mail) | the record (Activity 55, Health 60). Rules between the
+// groups, no captions.
+function navGroups(routes: ReadonlyArray<NavRoute>): ReadonlyArray<ReadonlyArray<NavRoute>> {
+  return [
+    routes.filter((r) => r.order < 20),
+    routes.filter((r) => r.order >= 20 && r.order < 55),
+    routes.filter((r) => r.order >= 55),
+  ].filter((group) => group.length > 0);
+}
+
+const NAV_ICONS: Readonly<Record<string, IconName>> = {
+  '/': 'home',
+  '/runs': 'runs',
+  '/agents': 'agents',
+  '/beads': 'beads',
+  '/mail': 'mail',
+  '/activity': 'activity',
+  '/health': 'health',
+};
 
 const NAV_ATTENTION_DOMAINS: Readonly<Record<string, AttentionDomain>> = {
   '/agents': 'agents',
@@ -47,10 +72,11 @@ const NAV_ATTENTION_DOMAINS: Readonly<Record<string, AttentionDomain>> = {
   '/health': 'health',
 };
 
-// The header is page furniture, not chrome. A small wordmark, the
-// five route names typeset as a row, a textual theme toggle. The
-// route weight contrast IS the active-state affordance; no underline,
-// no background pill.
+// The header is the left rail (DESIGN-PLAN §6.1): wordmark and city, the
+// app's only <nav> as three signpost groups with signal count pills, then
+// the reading-as line, the read-only badge and the theme toggle. Below
+// `lg` it folds into a top bar whose nav is one horizontally scrolling
+// row, so it never wraps and never widens the page. No hamburger, no state.
 export function Header() {
   const { resolved, toggle } = useTheme();
   const { viewingAs } = useViewingAs();
@@ -73,8 +99,7 @@ export function Header() {
   // True once the list has loaded and the selected city is a member. While the
   // list is empty (pre-load or a transient fetch blip) we do NOT flag the city
   // as unknown — only a loaded list that omits it is a real miss.
-  const activeCityKnown =
-    selectedCity === '' || cityItems.some((c) => c.name === selectedCity);
+  const activeCityKnown = selectedCity === '' || cityItems.some((c) => c.name === selectedCity);
   // Show the switcher whenever there's a choice to make, or when the selected
   // city is unknown — in the latter case the disabled "(unknown)" option keeps
   // the stale city visible instead of an empty select.
@@ -105,13 +130,15 @@ export function Header() {
   // sense inside the mail surface.
   const showReadingAs = !viewingAs.isOperator && pathname.startsWith('/mail');
 
+  const groups = navGroups(ROUTES);
+
   return (
-    <header className="border-b border-rule">
-      <div className="max-w-dashboard mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-baseline gap-x-6 lg:gap-x-8 gap-y-2 flex-wrap">
-        <div className="flex items-baseline gap-3 min-w-0">
-          <span className="text-title font-semibold tracking-tight text-fg">gas city</span>
-          <span className="text-fg-muted" aria-hidden="true">
-            ·
+    <header className="border-b border-rule bg-surface-raised lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-b-0">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 pb-2 pt-3 sm:px-6 lg:flex lg:min-h-full lg:flex-col lg:items-stretch lg:gap-y-5 lg:px-3 lg:py-5">
+        <div className="flex min-w-0 items-center gap-x-3 lg:flex-col lg:items-start lg:gap-y-1 lg:px-2.5">
+          <span className="flex shrink-0 items-center gap-2 text-title font-semibold text-fg">
+            <Icon name="flame" className="h-5 w-5" />
+            gas city
           </span>
           {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
@@ -123,7 +150,7 @@ export function Header() {
               id="city-switcher"
               value={selectedCity}
               onChange={(e) => onSwitchCity(e.target.value)}
-              className="text-label uppercase tracking-wider text-fg-muted bg-transparent border-0 focus-mark cursor-pointer hover:text-fg transition-colors duration-150 ease-out-quart"
+              className="-ml-1 min-w-0 max-w-full cursor-pointer truncate rounded border-0 bg-transparent px-1 py-0.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:text-fg focus-mark"
             >
               {/* A grammar-valid but unregistered/renamed city in the URL is not
                   a list member; without this the select would render blank and
@@ -143,62 +170,94 @@ export function Header() {
               ))}
             </select>
           ) : (
-            <span className="text-label uppercase tracking-wider text-fg-muted">
+            <span className="min-w-0 truncate text-label font-medium text-fg-muted">
               {selectedCity || 'city'}
-            </span>
-          )}
-          {showReadingAs && (
-            <span className="text-label uppercase tracking-wider text-warn ml-3">
-              · reading as {displayLabel(viewingAs.alias, operatorAlias)}
-            </span>
-          )}
-          {readOnly && (
-            <span
-              title={READ_ONLY_CONTROL_TITLE}
-              className="text-label uppercase tracking-wider text-warn ml-3"
-            >
-              · read-only
             </span>
           )}
         </div>
 
-        <nav className="flex-1">
-          <ul className="flex items-baseline gap-x-5 lg:gap-x-7 gap-y-1 flex-wrap">
-            {ROUTES.map((r) => {
-              const domain = NAV_ATTENTION_DOMAINS[r.to];
-              return (
-                <li key={r.to}>
-                  <NavLink
-                    to={r.to}
-                    end={r.end ?? false}
-                    className={({ isActive }) =>
-                      [
-                        'text-title transition-colors duration-150 ease-out-quart focus-mark',
-                        isActive
-                          ? 'text-fg font-semibold'
-                          : 'text-fg-muted font-medium hover:text-fg',
-                      ].join(' ')
-                    }
-                  >
-                    {r.label}
-                    {domain !== undefined && (
-                      <NavAttentionIndicator label={r.label} summary={attention.byDomain[domain]} />
-                    )}
-                  </NavLink>
-                </li>
-              );
-            })}
-          </ul>
+        <nav className="col-span-2 -mx-4 flex min-w-0 items-center overflow-x-auto whitespace-nowrap px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:overflow-visible lg:px-0">
+          {groups.map((group, index) => (
+            <ul
+              key={group[0]?.to ?? index}
+              className={`flex shrink-0 items-center gap-0.5 lg:flex-col lg:items-stretch ${
+                index > 0
+                  ? 'ml-1.5 border-l border-rule pl-1.5 lg:ml-0 lg:mt-2 lg:border-l-0 lg:border-t lg:pl-0 lg:pt-2'
+                  : ''
+              }`}
+            >
+              {group.map((r) => {
+                const domain = NAV_ATTENTION_DOMAINS[r.to];
+                const icon = NAV_ICONS[r.to];
+                return (
+                  <li key={r.to}>
+                    <NavLink
+                      to={r.to}
+                      end={r.end ?? false}
+                      className={({ isActive }) =>
+                        [
+                          'group flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body transition-colors duration-150 ease-out-quart focus-mark',
+                          isActive
+                            ? 'bg-surface-tint font-semibold text-fg'
+                            : 'font-medium text-fg-muted hover:bg-surface-tint/60 hover:text-fg',
+                        ].join(' ')
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          {icon !== undefined && (
+                            <Icon
+                              name={icon}
+                              className={
+                                isActive
+                                  ? 'text-primary'
+                                  : 'text-fg-faint group-hover:text-fg-muted'
+                              }
+                            />
+                          )}
+                          {r.label}
+                          {domain !== undefined && (
+                            <NavAttentionIndicator
+                              label={r.label}
+                              summary={attention.byDomain[domain]}
+                            />
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  </li>
+                );
+              })}
+            </ul>
+          ))}
         </nav>
 
-        <button
-          type="button"
-          onClick={toggle}
-          aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} theme`}
-          className="text-label uppercase tracking-wider text-fg-muted hover:text-fg transition-colors duration-150 ease-out-quart focus-mark"
-        >
-          {resolved === 'dark' ? 'Light' : 'Dark'}
-        </button>
+        {showReadingAs && (
+          <p className="col-span-2 text-label lg:px-2.5">
+            <StatusBadge
+              tone="warn"
+              variant="inline"
+              label={`Reading as ${displayLabel(viewingAs.alias, operatorAlias)}`}
+            />
+          </p>
+        )}
+
+        <div className="col-start-2 row-start-1 flex items-center gap-2 lg:mt-auto lg:flex-col lg:items-start lg:gap-3 lg:px-1">
+          {readOnly && (
+            <span className="lg:px-1.5">
+              <ReadOnlyBadge />
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} theme`}
+            className="inline-flex h-8 items-center gap-2 rounded px-1.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
+          >
+            <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[18px] w-[18px]" />
+            {resolved === 'dark' ? 'Light' : 'Dark'}
+          </button>
+        </div>
       </div>
     </header>
   );

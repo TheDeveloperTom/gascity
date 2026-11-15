@@ -185,21 +185,24 @@ function ConfigErrorBanner({ message }: { message: string }) {
   return (
     <section
       role="alert"
-      className="mb-8 border border-warn/40 rounded-sm px-4 py-3 text-body text-fg-muted"
+      className="mb-6 rounded-md border border-warn/40 bg-warn/[0.08] px-3 py-2 text-body text-fg"
     >
-      <span className="text-warn">config unavailable:</span> {message} · some controls may be
-      disabled until it loads.
+      <span className="font-semibold text-warn">config unavailable:</span> {message} · some controls
+      may be disabled until it loads.
     </section>
   );
 }
 
 function NotFoundPage() {
   return (
-    <section aria-labelledby="not-found-title" className="space-y-3">
-      <h1 id="not-found-title" className="text-5xl font-semibold tracking-tight text-fg">
+    <section
+      aria-labelledby="not-found-title"
+      className="mx-auto mt-6 max-w-[40rem] space-y-2 rounded-lg border border-rule bg-surface-raised p-6"
+    >
+      <h1 id="not-found-title" className="text-headline font-semibold text-fg">
         Page not found
       </h1>
-      <p className="text-title text-fg-muted">No dashboard route matches this path.</p>
+      <p className="text-body text-fg-muted">No dashboard route matches this path.</p>
     </section>
   );
 }

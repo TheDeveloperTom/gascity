@@ -147,15 +147,17 @@ export function CityBootstrap() {
   // Loading (the parsed-city verify, or the bare-`/` first-city resolve).
   return (
     <BootstrapShell>
-      <div className="text-label uppercase tracking-wider text-fg-muted">Resolving city…</div>
+      <div className="text-body text-fg-muted">Resolving city…</div>
     </BootstrapShell>
   );
 }
 
 function BootstrapShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-surface text-fg antialiased flex items-center justify-center px-6">
-      <div className="max-w-prose w-full space-y-4">{children}</div>
+    <div className="flex min-h-screen items-center justify-center bg-surface px-4 py-10 text-fg antialiased sm:px-6">
+      <div className="w-full max-w-[40rem] space-y-4 rounded-lg border border-rule bg-surface-raised p-6 sm:p-8">
+        {children}
+      </div>
     </div>
   );
 }
@@ -170,7 +172,7 @@ function UnknownCityScreen({
   return (
     <BootstrapShell>
       <section role="alert" className="space-y-4">
-        <h1 className="text-display font-semibold text-fg">
+        <h1 className="text-headline font-semibold text-fg">
           City &ldquo;{cityName}&rdquo; is not registered on this supervisor.
         </h1>
         {cities.length > 0 ? (
@@ -186,9 +188,7 @@ function UnknownCityScreen({
                     {c.name}
                   </a>
                   {c.running ? null : (
-                    <span className="text-label uppercase tracking-wider text-fg-muted ml-2">
-                      · stopped
-                    </span>
+                    <span className="ml-2 text-label text-fg-muted">· stopped</span>
                   )}
                 </li>
               ))}
@@ -206,7 +206,7 @@ function NoCitiesScreen() {
   return (
     <BootstrapShell>
       <section className="space-y-4">
-        <h1 className="text-display font-semibold text-fg">
+        <h1 className="text-headline font-semibold text-fg">
           No cities are registered on this supervisor.
         </h1>
         <NoCitiesBody />
@@ -223,7 +223,7 @@ function NoCitiesBody() {
   return (
     <div className="space-y-3">
       <p className="text-body text-fg-muted">Create one from a terminal:</p>
-      <pre className="text-body bg-surface-tint rounded-sm px-3 py-2 overflow-x-auto">
+      <pre className="overflow-x-auto rounded bg-surface-tint px-3 py-2 font-mono text-[0.8125rem]">
         <code>gc init ~/my-city</code>
       </pre>
       <p className="text-body text-fg-muted">
@@ -247,9 +247,11 @@ function CitiesErrorScreen({ message, onRetry }: { message: string; onRetry: () 
   return (
     <BootstrapShell>
       <section role="alert" className="space-y-4">
-        <h1 className="text-display font-semibold text-fg">Could not load cities.</h1>
+        <h1 className="text-headline font-semibold text-fg">Could not load cities.</h1>
         <p className="text-body text-fg-muted">{message}</p>
-        <Button onClick={onRetry}>Retry</Button>
+        <Button tone="accent" onClick={onRetry}>
+          Retry
+        </Button>
       </section>
     </BootstrapShell>
   );

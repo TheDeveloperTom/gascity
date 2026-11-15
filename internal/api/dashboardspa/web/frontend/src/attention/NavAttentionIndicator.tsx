@@ -1,5 +1,8 @@
 import type { AttentionDomainSummary, BadgeSeverity } from './compose';
 
+// Signal count pill on a nav item: Stop red when anything in the domain
+// needs the owner, Lamp amber when it only needs watching. The text is the
+// number alone; the aria-label carries the full sentence. Hidden at zero.
 export function NavAttentionIndicator({
   label,
   summary,
@@ -14,7 +17,7 @@ export function NavAttentionIndicator({
   return (
     <span
       aria-label={`${label}: ${total} ${summary.severity} ${itemWord}`}
-      className={`ml-1 align-super text-[0.65rem] leading-none tnum ${severityClass(summary.severity)}`}
+      className={`ml-auto inline-flex min-w-[1.375rem] justify-center rounded-full px-1.5 text-label font-semibold tnum ${severityClass(summary.severity)}`}
     >
       {total}
     </span>
@@ -22,5 +25,5 @@ export function NavAttentionIndicator({
 }
 
 function severityClass(severity: BadgeSeverity): string {
-  return severity === 'attention' ? 'text-accent' : 'text-warn';
+  return severity === 'attention' ? 'bg-accent text-on-primary' : 'bg-warn text-on-primary';
 }
