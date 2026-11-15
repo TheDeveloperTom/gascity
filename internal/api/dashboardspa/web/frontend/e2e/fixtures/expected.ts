@@ -63,6 +63,15 @@ export const COMPLETED_STEP_APPROVE = 'run-done.approve';
  */
 export const COMPLETED_PHASE_LABEL = 'complete';
 
+/**
+ * The completed run's source task (run-done carries gc.source_bead_id = this id).
+ * On the stage board the closed task is the card, in Merged, and its route's
+ * last step (approve) is its step line. Mirrors corpus.SourceBeadID; the title
+ * is the seeded bead's title in testdata/dashport/beads.json.
+ */
+export const COMPLETED_RUN_SOURCE_ID = 'src-review-1';
+export const COMPLETED_RUN_SOURCE_TITLE = 'Review PR #42 for the seeded corpus';
+
 /** The seeded standalone work bead the beads view lists. */
 export const WORK_BEAD_ID = 'work-1';
 export const WORK_BEAD_TITLE = 'Wire the seeded dashboard corpus';

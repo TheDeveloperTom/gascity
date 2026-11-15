@@ -13,6 +13,8 @@ import {
   COMPLETED_FORMULA,
   COMPLETED_PHASE_LABEL,
   COMPLETED_RUN_ID,
+  COMPLETED_RUN_SOURCE_ID,
+  COMPLETED_RUN_SOURCE_TITLE,
   COMPLETED_STEP_APPROVE,
   MAIL_SUBJECT,
   OPERATOR_MAIL_BODY,
@@ -254,13 +256,20 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
   test('beads reveals the completed run closed step', async ({ page }) => {
     await gotoCityRoute(page, CITY_BASE, '/beads');
     await expect(page.getByRole('heading', { name: 'Beads', level: 1 })).toBeVisible();
-    // Closed beads are hidden by default; the "closed" status chip widens the
-    // fetch (all=true) and narrows the board to closed rows. The completed run
-    // surfaces via its closed TASK step — its molecule root is filtered out of
-    // the engineering-types board (routes/Beads.tsx, supervisor/beadReads.ts).
-    // Exact id match so a longer id substring cannot satisfy it.
+    // The seeded closed beads live in the city store, which the stage board's
+    // rig-scoped recent-merges leg does not read, so the "closed" status chip
+    // widens the fetch (all=true). Stage board (2026-11-15): the completed run's
+    // step beads fold into its source task, so the card is the closed TASK in
+    // Merged, and its step line is the run's last step (approve), linked into
+    // the run. The step itself is never a card.
     await page.getByRole('button', { name: 'closed' }).click();
-    await expect(page.getByText(COMPLETED_STEP_APPROVE, { exact: true }).first()).toBeVisible();
+    const merged = page.getByRole('region', { name: 'Merged', exact: true });
+    await expect(merged.getByText(COMPLETED_RUN_SOURCE_TITLE, { exact: true })).toBeVisible();
+    await expect(merged.locator(`[title="Select ${COMPLETED_RUN_SOURCE_ID}"]`)).toBeVisible();
+    const step = merged.getByTitle(`Open step ${COMPLETED_STEP_APPROVE} in its run`);
+    await expect(step).toHaveText('approve');
+    await expect(step).toHaveAttribute('href', new RegExp(`/runs/${COMPLETED_RUN_ID}\\?`));
+    await expect(page.locator(`[title="Select ${COMPLETED_STEP_APPROVE}"]`)).toHaveCount(0);
   });
 
   test('activity renders the completed run close edges', async ({ page }) => {
@@ -374,11 +383,12 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
   });
 
   test('bead detail modal renders dependencies and closes cleanly', async ({ page }) => {
-    await gotoCityRoute(page, CITY_BASE, '/beads');
+    // Open the seeded review step, which "needs" the preflight step. Stage board
+    // (2026-11-15): route steps are never board cards, so the step opens through
+    // its deep link (?bead=, BE-16), the way a card's step line reaches it too.
+    await gotoCityRoute(page, CITY_BASE, `/beads?bead=${REVIEW_BEAD_ID}`);
     await expect(page.getByRole('heading', { name: 'Beads', level: 1 })).toBeVisible();
-    // Open the seeded review step, which "needs" the preflight step. Its row button
-    // is anchored by title so the click is unambiguous.
-    await page.locator(`[title="Select ${REVIEW_BEAD_ID}"]`).click();
+    await expect(page.locator(`[title="Select ${REVIEW_BEAD_ID}"]`)).toHaveCount(0);
     const modal = page.getByRole('dialog');
     await expect(modal.getByRole('heading', { name: REVIEW_BEAD_TITLE })).toBeVisible();
     // POPULATED BeadDependencies: the modal renders the single upstream dependency
