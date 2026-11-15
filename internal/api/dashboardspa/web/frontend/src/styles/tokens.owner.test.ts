@@ -144,6 +144,12 @@ describe('«Табличка» tokens', () => {
     expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'surface')), '#1B1C22')).toBe(true);
   });
 
+  it('in light the focus ring is the enamel itself (review m5: no drift)', () => {
+    expect(toHex(tokenLinear(BLOCKS.light, 'plate-ring'))).toBe(
+      toHex(tokenLinear(BLOCKS.light, 'plate')),
+    );
+  });
+
   it('system dark repeats the pinned dark values', () => {
     const decls = (block: string) =>
       [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)]
