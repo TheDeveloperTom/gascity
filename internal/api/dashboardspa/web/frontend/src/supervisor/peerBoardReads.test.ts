@@ -103,14 +103,42 @@ describe('listPeerBoards', () => {
     expect(res.peers[0]!.cards[0]!.bead.issue_type).toBe('task');
   });
 
-  it('our own login comes from the city service (`own_login`), checked; never from topics', async () => {
+  it('our own login comes from the city service (`own_login`), checked', async () => {
     fetchMock.mockResolvedValueOnce(json({ ...peerBody({ topics: peerTopics() }), own_login: 'TheDeveloperTom' }));
     expect((await listPeerBoards()).ownLogin).toBe('TheDeveloperTom');
     fetchMock.mockResolvedValueOnce(json({ ...peerBody(), own_login: '../x' }));
     expect((await listPeerBoards()).ownLogin).toBeNull();
-    // topics say «me» everywhere, but without the service's field we do not know
+  });
+
+  it('until the city sends own_login: the city of a topic OUR service marks mine:true; never peer data', async () => {
+    // tp-b is ours (mine: true, city «me»), set by our own service
     fetchMock.mockResolvedValueOnce(json(peerBody({ topics: peerTopics() })));
+    expect((await listPeerBoards()).ownLogin).toBe('me');
+    // no explicit mine:true: a peer topic whose `peer`, author or card says «me» proves nothing
+    const theirs = peerTopics()
+      .filter((tp) => tp.mine === false)
+      .map((tp) => ({ ...tp, card: { city: 'me', rig: 'devwork', id: 'dw-1' } }));
+    fetchMock.mockResolvedValueOnce(json(peerBody({ topics: theirs })));
     expect((await listPeerBoards()).ownLogin).toBeNull();
+    // `mine` absent is NOT mine (M-4: no fail-open fallback)
+    const noMine = peerTopics().map((tp) => {
+      const copy = { ...tp } as Record<string, unknown>;
+      delete copy.mine;
+      return copy;
+    });
+    fetchMock.mockResolvedValueOnce(json(peerBody({ topics: noMine })));
+    const res = await listPeerBoards();
+    expect(res.ownLogin).toBeNull();
+    expect(res.peers[0]!.topics.every((tp) => tp.mine === false)).toBe(true);
+  });
+
+  it('a message without `mine` is not ours, whatever its author city says (M-4)', async () => {
+    const topics = peerTopics();
+    const msgs = topics[0]!.messages as Record<string, unknown>[];
+    delete msgs[1]!.mine; // author city «me», but no service mark
+    fetchMock.mockResolvedValueOnce(json(peerBody({ topics })));
+    const [peer] = (await listPeerBoards()).peers;
+    expect(peer!.topics[0]!.messages[1]!.mine).toBe(false);
   });
 
   it('404 and 503 (service not running) resolve to no peers', async () => {
@@ -156,7 +184,19 @@ describe('listPeerBoards', () => {
     expect(thread.comments.map((c) => c.createdAt)).toEqual([...thread.comments.map((c) => c.createdAt)].sort());
   });
 
+  it('an avatar path must name the ACTIVE city (M-2): not `..`, not another city', async () => {
+    setActiveCity('test-city');
+    const topics = peerTopics();
+    const msgs = topics[0]!.messages as Record<string, unknown>[];
+    msgs[0]!.author = { ...RICH_MAYOR_DISCORD, avatar_url: '/v0/city/../svc/peer-boards/v1/avatars/1.png' };
+    msgs[1]!.author = { ...RICH_MAYOR_DISCORD, avatar_url: '/v0/city/other-city/svc/peer-boards/v1/avatars/1.png' };
+    fetchMock.mockResolvedValueOnce(json(peerBody({ topics })));
+    const [peer] = (await listPeerBoards()).peers;
+    expect(peer!.topics[0]!.messages.map((m) => m.author.avatarUrl)).toEqual([null, null]);
+  });
+
   it('authors carry their Discord identity; only a same-origin avatar path is kept', async () => {
+    setActiveCity('test-city');
     const topics = peerTopics();
     const msgs = topics[0]!.messages as Record<string, unknown>[];
     msgs[0]!.author = RICH_MAYOR_DISCORD;

@@ -80,12 +80,16 @@ const AuthorObject = z.looseObject({
 // other origin (Discord's own image host included) or a climbing path is dropped,
 // so the board never loads a third-party image (and works in the Activity
 // with no extra CSP).
-const AVATAR_PATH_RE =
-  /^\/v0\/city\/[A-Za-z0-9._-]+\/svc\/peer-boards\/v1\/avatars\/[A-Za-z0-9_-]{1,80}\.(?:png|webp|jpg|jpeg|gif)$/;
+// Review M-2: the city segment is pinned to the ACTIVE city, so neither `..`
+// nor another city's service passes.
+const AVATAR_FILE_RE = /^[A-Za-z0-9_-]{1,80}\.(?:png|webp|jpg|jpeg|gif)$/;
 
 function safeAvatarUrl(raw: string | null | undefined): string | null {
-  if (typeof raw !== 'string' || !AVATAR_PATH_RE.test(raw)) return null;
-  return raw;
+  const city = getActiveCity();
+  if (typeof raw !== 'string' || city === null) return null;
+  const prefix = `/v0/city/${encodeURIComponent(city)}/svc/peer-boards/v1/avatars/`;
+  if (!raw.startsWith(prefix)) return null;
+  return AVATAR_FILE_RE.test(raw.slice(prefix.length)) ? raw : null;
 }
 
 const CommentSchema = z.looseObject({
@@ -252,7 +256,8 @@ function toComments(raw: readonly unknown[], peerLogin: string): PeerComment[] {
     const author = toAuthor(c.author, mine ? null : peerLogin);
     out.push({
       id: c.id,
-      mine: c.mine ?? (author.city !== null && author.city !== peerLogin),
+      // our service always sends `mine`; absent is not ours (review M-4: no fail-open guess)
+      mine,
       author,
       text: c.text,
       summary: c.summary ?? null,
@@ -313,7 +318,7 @@ function toTopics(raw: readonly unknown[] | null | undefined, peerLogin: string)
     out.push({
       topicId: tp.topic_id,
       city: tp.city ?? peerLogin,
-      mine: tp.mine ?? (tp.city != null && tp.city !== peerLogin),
+      mine: tp.mine === true,
       peerCity: tp.peer ?? null,
       title: tp.title,
       status,
@@ -421,11 +426,7 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
   const parsed = ResponseSchema.safeParse(body);
   if (!parsed.success) throw new PeerBoardsError(`peer-boards: ${parsed.error.issues[0]?.message ?? 'bad body'}`);
   const res = parsed.data;
-  return {
-    ownLogin: res.own_login != null && LOGIN_RE.test(res.own_login) ? res.own_login : null,
-    heartbeatSeconds: res.heartbeat_seconds ?? null,
-    staleAfterSeconds: res.stale_after_seconds ?? DEFAULT_STALE_AFTER_SECONDS,
-    peers: res.peers.map((p) => {
+  const peers: PeerBoard[] = res.peers.map((p) => {
       const asOf = p.generated_at ?? p.snapshot_at;
       return {
         login: p.login,
@@ -438,8 +439,29 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
         threads: toThreads(p.threads, p.login),
         topics: toTopics(p.topics, p.login),
       };
-    }),
+  });
+  return {
+    ownLogin: ownLoginFrom(res.own_login, peers),
+    heartbeatSeconds: res.heartbeat_seconds ?? null,
+    staleAfterSeconds: res.stale_after_seconds ?? DEFAULT_STALE_AFTER_SECONDS,
+    peers,
   };
+}
+
+/**
+ * Our own login (review I-1). First `own_login`, which our city service sets.
+ * Until the city sends it: the city of a topic OUR service marks `mine: true`
+ * (it opened in our city, so its `city` is us). Never anything a peer wrote:
+ * not `peer`, not an author, not a card.
+ */
+function ownLoginFrom(raw: string | null | undefined, peers: readonly PeerBoard[]): string | null {
+  if (raw != null && LOGIN_RE.test(raw)) return raw;
+  for (const peer of peers) {
+    for (const topic of peer.topics) {
+      if (topic.mine && LOGIN_RE.test(topic.city) && topic.city !== peer.login) return topic.city;
+    }
+  }
+  return null;
 }
 
 /** The peers' boards. 404/503 (the service is not running) is no peers. */

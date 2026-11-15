@@ -113,6 +113,10 @@ export function PeerKanbanCard({
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <KanbanBadge name={peer.label} color={PEER_COLOR} />
           <KanbanBadge name={peer.rig} color={PROJECT_COLOR} />
+          {/* review M-12: «срочно», the one priority tag the owner kept, as on our cards */}
+          {bead.priority != null && bead.priority <= 1 && card.stage.stage !== 'merged' && (
+            <KanbanBadge name={t('urgent')} tone="error" />
+          )}
           {pr !== null &&
             (pr.url !== null ? (
               <ExternalLink

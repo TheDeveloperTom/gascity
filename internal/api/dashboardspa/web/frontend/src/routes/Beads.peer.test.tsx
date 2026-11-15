@@ -6,10 +6,11 @@ import { invalidate } from '../api/cache';
 import { setActiveCity } from '../api/cityBase';
 import { AttentionProvider } from '../attention/context';
 import { NowProvider } from '../contexts/NowContext';
+import { ReadOnlyProvider } from '../contexts/ReadOnlyContext';
 import { OperatorConfigProvider } from '../contexts/OperatorConfigContext';
 import { collectMissing, resetMissing, setLocale } from '../i18n';
 import { LocaleProvider } from '../i18n/LocaleProvider';
-import { resetPeerBoardsForTests } from '../hooks/usePeerBoards';
+import { refreshPeerBoards, resetPeerBoardsForTests } from '../hooks/usePeerBoards';
 import { useNeedsFromMeCount } from '../lib/needsFromMe';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { peerBody, peerTopics } from '../test/fixtures/peerBoards';
@@ -99,19 +100,21 @@ function NeedsCount() {
   return null;
 }
 
-function renderPage(entry = '/beads') {
+function renderPage(entry = '/beads', readOnly = false) {
   return render(
     <LocaleProvider>
       <MemoryRouter initialEntries={[entry]}>
         <NowProvider intervalMs={1_000_000}>
-          <OperatorConfigProvider
-            operator={{ operatorAlias: 'owner', operatorWireAlias: 'human', decisionLabel: 'x' }}
-          >
-            <AttentionProvider contributors={[]}>
-              <NeedsCount />
-              <BeadsPage />
-            </AttentionProvider>
-          </OperatorConfigProvider>
+          <ReadOnlyProvider readOnly={readOnly}>
+            <OperatorConfigProvider
+              operator={{ operatorAlias: 'owner', operatorWireAlias: 'human', decisionLabel: 'x' }}
+            >
+              <AttentionProvider contributors={[]}>
+                <NeedsCount />
+                <BeadsPage />
+              </AttentionProvider>
+            </OperatorConfigProvider>
+          </ReadOnlyProvider>
         </NowProvider>
       </MemoryRouter>
     </LocaleProvider>,
@@ -310,14 +313,74 @@ describe('BeadsPage with Richard’s board', () => {
     return screen.findByRole('dialog');
   }
 
-  it('OUR card, our login unknown to the city service: no thread lookup and no box', async () => {
+  it('OUR card with no own_login yet: our login from a topic OUR service marks mine — the box and thread appear (I-1)', async () => {
     peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }));
+    renderPage();
+    const dialog = await openMyCard();
+    expect(await within(dialog).findByRole('region', { name: 'Обсуждение карточки' })).toBeTruthy();
+    expect(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' })).toBeTruthy();
+  });
+
+  it('OUR card, our login truly unknown (no own_login, nothing marked mine): no thread lookup and no box', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
     renderPage();
     const dialog = await openMyCard();
     // the panel has settled on the bead (its body reads the card)
     await within(dialog).findByText('dw-ab12');
     expect(within(dialog).queryByRole('textbox', { name: 'Комментарий к карточке' })).toBeNull();
     expect(within(dialog).queryByRole('region', { name: 'Обсуждение карточки' })).toBeNull();
+  });
+
+  it('OUR card whose topic is on BOB’s board (two peers): the message goes to bob, no picker (M-10)', async () => {
+    const body = { ...peerBody({ snapshotAt: minutesAgo(1) }), own_login: 'me' };
+    const bob = structuredClone(body.peers[0]!) as Record<string, unknown>;
+    bob.login = 'bob';
+    bob.person = { name: 'Боб', genitive: 'Боба', initial: 'Б', dative: 'Бобу' };
+    bob.cards = [];
+    bob.topics = [{ ...peerTopics()[1], city: 'me', card: { city: 'me', rig: 'devwork', id: 'dw-ab12' } }];
+    body.peers.push(bob as (typeof body.peers)[number]);
+    peerResponse = () => json(body);
+    const posts = capturePosts();
+    renderPage();
+    const dialog = await openMyCard();
+    await within(dialog).findByRole('region', { name: 'Обсуждение карточки' });
+    expect(within(dialog).queryByRole('combobox', { name: 'Кому' })).toBeNull();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' }), {
+      target: { value: 'Обновлю сам' },
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+    });
+    expect(posts.at(-1)!.body).toEqual({ card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Обновлю сам', to: 'bob' });
+  });
+
+  it('read-only dashboard: no comment box (M-5)', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }));
+    renderPage('/beads', true);
+    const dialog = await openPeerCard();
+    expect(within(dialog).getByRole('region', { name: 'Обсуждение карточки' })).toBeTruthy();
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+  });
+
+  it('his urgent card shows «срочно» (M-12)', async () => {
+    const body = peerBody({ snapshotAt: minutesAgo(1) });
+    (body.peers[0]!.cards[0] as Record<string, unknown>).priority = 1;
+    peerResponse = () => json(body);
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    expect(within(peerCard()!).getByText('срочно')).toBeTruthy();
+  });
+
+  it('his board vanishing while «Ричарда» is chosen falls back to «Все», not an empty board (M-1)', async () => {
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Чьи задачи' })).getByRole('button', { name: 'Ричарда' }));
+    expect(myCard()).toBeNull();
+    peerResponse = () => json({ status: 503 }, 503);
+    await act(async () => {
+      await refreshPeerBoards();
+    });
+    await waitFor(() => expect(myCard()).not.toBeNull());
   });
 
   it('OUR card, one peer, no thread yet: the first message opens a topic with that peer about OUR card', async () => {

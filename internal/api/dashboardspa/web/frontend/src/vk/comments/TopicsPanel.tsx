@@ -1,11 +1,12 @@
 import { CaretLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useReadOnly } from '../../contexts/ReadOnlyContext';
 import { canWrite } from '../../embed/activitySession';
 import { refreshPeerBoards } from '../../hooks/usePeerBoards';
 import { t, tn } from '../../i18n';
 import { asOfClock, type PeerBoardSource } from '../../lib/boardOwner';
 import { previewOf, topicSections, topicTarget, unreadIdsOf, waitingOn } from '../../lib/peerTopics';
-import type { PeerComment, PeerTopic } from '../../supervisor/peerBoardReads';
+import type { PeerTopic } from '../../supervisor/peerBoardReads';
 import {
   commentErrorText,
   markTopicRead,
@@ -13,8 +14,8 @@ import {
   type TopicAction,
   type TopicTarget,
 } from '../../supervisor/peerCommentWrites';
+import { Link } from 'react-router';
 import { cn } from '../cn';
-import { DiscussButton } from '../DiscussButton';
 import { authorName, CommentComposer, CommentList } from './CommentThread';
 
 // vk-final part 4: «Обсуждения Мэров» with the peer city (frames
@@ -113,19 +114,25 @@ function SectionHead({ label, count }: { label: string; count: number }) {
   );
 }
 
-/** Reads a stamp only for a message that was actually on screen (not merely loaded). */
-function useReadStamps(topic: PeerTopic | null, target: TopicTarget | null) {
+/**
+ * Reads a stamp only for a message that was actually on screen (not merely
+ * loaded). Review M-7: the observer is created and pointed at the unread
+ * rows inside one effect (after the rows exist), not through callback refs
+ * that ran before it existed.
+ */
+function useReadStamps(topic: PeerTopic | null, target: TopicTarget | null, root: RefObject<HTMLElement>) {
   const sent = useRef(new Map<string, string>());
-  const observer = useRef<IntersectionObserver | null>(null);
   const unread = useMemo(() => (topic === null ? new Set<string>() : unreadIdsOf(topic)), [topic]);
   const byId = useMemo(() => new Map(topic?.messages.map((m) => [m.id, m]) ?? []), [topic]);
   const city = target?.city ?? null;
 
   useEffect(() => {
-    if (topic === null || city === null || unread.size === 0 || typeof IntersectionObserver === 'undefined') return;
+    const host = root.current;
+    if (topic === null || city === null || unread.size === 0 || host === null) return;
+    if (typeof IntersectionObserver === 'undefined') return;
     const topicId = topic.topicId;
     const stampTarget: TopicTarget = { city, topicId };
-    observer.current = new IntersectionObserver((entries) => {
+    const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         const id = (entry.target as HTMLElement).dataset.commentId ?? '';
@@ -137,22 +144,13 @@ function useReadStamps(topic: PeerTopic | null, target: TopicTarget | null) {
         void markTopicRead(stampTarget, msg.createdAt).catch(() => undefined);
       }
     }, { threshold: 0.6 });
-    return () => {
-      observer.current?.disconnect();
-      observer.current = null;
-    };
-  }, [topic, city, unread, byId]);
+    host.querySelectorAll<HTMLElement>('[data-comment-id]').forEach((node) => {
+      if (unread.has(node.dataset.commentId ?? '')) observer.observe(node);
+    });
+    return () => observer.disconnect();
+  }, [topic, city, unread, byId, root]);
 
-  const itemRef = useCallback(
-    (comment: PeerComment) =>
-      unread.has(comment.id)
-        ? (node: HTMLDivElement | null) => {
-            if (node !== null) observer.current?.observe(node);
-          }
-        : undefined,
-    [unread],
-  );
-  return { unread, itemRef };
+  return { unread };
 }
 
 function TopicView({
@@ -182,13 +180,15 @@ function TopicView({
   const [resolving, setResolving] = useState(false);
   const [outcome, setOutcome] = useState('');
   const outcomeId = useId();
-  const { unread, itemRef } = useReadStamps(topic, writable ? guarded : null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const { unread } = useReadStamps(topic, writable ? guarded : null, threadRef);
   const acks = useMemo(
     () => new Set(topic.reactions.filter((r) => r.kind === 'ack').map((r) => r.messageId)),
     [topic.reactions],
   );
   const opener = topic.openedBy;
-  const openerSide = opener !== null && opener.city === peer.login ? 'peer' : 'mine';
+  // our service's own mark, never the author's claimed city (review M-4)
+  const openerSide = topic.mine ? 'mine' : 'peer';
   const waiting = waitingOn(topic);
   const lastId = topic.messages.at(-1)?.id;
   const resolution = topic.resolution;
@@ -220,21 +220,20 @@ function TopicView({
             </span>
           </div>
         </div>
-        {writable && !closed && (
-          <DiscussButton
-            ctx={{
-              kind: 'need',
-              beadId: topic.topicId,
-              title: t('Make a task: {title}', { title: topic.title }),
-              summary: previewOf(topic),
-            }}
-            label={t('Make a task')}
-            className="md:w-auto"
-          />
+        {/* Review I-2: «Сделать задачей» starts only from the owner's button in
+            Discord (BOARD-LIVE L11), so no peer text ever leaves here. The
+            dashboard shows the ticket the Mayor linked, on OUR board. */}
+        {topic.ticket !== null && (
+          <Link
+            to={`/beads?${new URLSearchParams({ bead: topic.ticket }).toString()}`}
+            className="inline-flex h-11 items-center rounded-sm border border-vk-border bg-vk-bg-secondary px-2.5 text-sm text-vk-text-high focus-mark md:h-8"
+          >
+            {t('Task {id}', { id: topic.ticket })}
+          </Link>
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+      <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
         {topic.status === 'paused' && topic.pausedReason === 'needs_human' && (
           <NeedsHumanBanner
             writable={writable}
@@ -289,7 +288,6 @@ function TopicView({
             peerLabel={peer.label}
             acks={acks}
             unread={unread}
-            itemRef={itemRef}
             noteOf={(m) =>
               m.id === lastId && waiting !== null ? (
                 <span className="inline-flex items-center gap-1.5 self-start rounded-sm bg-warn/15 px-2 py-0.5 text-[13px] text-warn">
@@ -381,7 +379,9 @@ export function TopicsPanel({
   nowMs,
   ownLogin = null,
 }: TopicsPanelProps) {
-  const writable = canWrite();
+  // review M-5: the dashboard's read-only posture hides writes like any other control
+  const readOnly = useReadOnly();
+  const writable = canWrite() && !readOnly;
   const [showResolved, setShowResolved] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sections = useMemo(() => topicSections(topics, nowMs), [topics, nowMs]);
@@ -444,7 +444,8 @@ export function TopicsPanel({
           )}
         >
           <div className="flex min-h-11 items-center justify-between gap-2 border-b border-vk-border py-1 pl-3 pr-1">
-            <span className="flex min-w-0 flex-col md:flex-row md:items-baseline md:gap-2">
+            {/* review M-14: title over subtitle, so neither wraps in the 340 px column */}
+            <span className="flex min-w-0 flex-col">
               <span className="font-medium text-vk-text-high">{t('Mayor topics')}</span>
               <span className="text-[13px] text-vk-text-low">{t('with {owner} city', { owner: peer.label })}</span>
             </span>

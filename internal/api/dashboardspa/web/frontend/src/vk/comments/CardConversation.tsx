@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useReadOnly } from '../../contexts/ReadOnlyContext';
 import { canWrite } from '../../embed/activitySession';
 import { refreshPeerBoards } from '../../hooks/usePeerBoards';
 import { t } from '../../i18n';
@@ -39,6 +40,31 @@ export interface CardConversationProps {
 }
 
 const NONE: readonly PeerComment[] = [];
+/** A served copy may carry a server time a little before our click (clock skew). */
+const PENDING_SKEW_MS = 120_000;
+
+/**
+ * The thread with our just-sent messages (review M-8): each served message of
+ * ours with the same text, not older than the send, replaces ONE pending row,
+ * so two identical sends stay two rows until both are served.
+ */
+export function mergePending(served: readonly PeerComment[], pending: readonly PeerComment[]): PeerComment[] {
+  const used = new Set<string>();
+  const left = pending.filter((p) => {
+    const sentAt = Date.parse(p.createdAt);
+    const copy = served.find(
+      (s) =>
+        s.mine &&
+        !used.has(s.id) &&
+        s.text === p.text &&
+        (!Number.isFinite(sentAt) || Date.parse(s.createdAt) >= sentAt - PENDING_SKEW_MS),
+    );
+    if (copy === undefined) return true;
+    used.add(copy.id);
+    return false;
+  });
+  return [...served, ...left];
+}
 
 /** The card's current topic: the newest one still talking, else the newest closed one. */
 function currentOf(topics: readonly CardTopic[]): CardTopic | null {
@@ -57,16 +83,13 @@ function stateChip(topic: PeerTopic): string {
 
 export function CardConversation({ topics, peers, card, ours, nowMs, onOpenTopic, children }: CardConversationProps) {
   const pickId = useId();
+  const readOnly = useReadOnly();
   const [pending, setPending] = useState<readonly PeerComment[]>(NONE);
   const [picked, setPicked] = useState<string>('');
   const current = currentOf(topics);
   const others = topics.filter((ct) => ct !== current);
   const served = current?.topic.messages ?? NONE;
-  const messages = useMemo(() => {
-    const ids = new Set(served.map((m) => m.id));
-    const texts = new Set(served.filter((m) => m.mine).map((m) => m.text));
-    return [...served, ...pending.filter((m) => !ids.has(m.id) && !texts.has(m.text))];
-  }, [served, pending]);
+  const messages = useMemo(() => mergePending(served, pending), [served, pending]);
   const acks = useMemo(
     () => new Set((current?.topic.reactions ?? []).filter((r) => r.kind === 'ack').map((r) => r.messageId)),
     [current],
@@ -134,7 +157,8 @@ export function CardConversation({ topics, peers, card, ours, nowMs, onOpenTopic
     </section>
   );
 
-  const showBox = canWrite() && cardCity !== null && peers.length > 0;
+  // review M-5: the dashboard's read-only posture hides the box like any other write
+  const showBox = canWrite() && !readOnly && cardCity !== null && peers.length > 0;
   const composer = !showBox ? null : (
     <div className="flex flex-col gap-2">
       {needsPick && (

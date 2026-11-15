@@ -1,4 +1,5 @@
 import { getActiveCity } from '../api/cityBase';
+import { fetchWithSessionRetry } from '../embed/activitySession';
 import { t } from '../i18n';
 import { authHeaders, withApiBase } from '../lib/apiBase';
 
@@ -96,17 +97,23 @@ function serviceUrl(route: string): string {
 }
 
 async function post(route: string, body: unknown): Promise<unknown> {
-  const res = await fetch(serviceUrl(route), {
-    method: 'POST',
-    headers: {
-      ...authHeaders(),
-      'X-GC-Request': '1',
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    credentials: 'same-origin',
-    body: JSON.stringify(body),
-  });
+  const url = serviceUrl(route);
+  const requestBody = JSON.stringify(body);
+  // review M-11: inside the Activity a 401 session_invalid re-signs in once and
+  // retries; the headers are read afresh on each try.
+  const res = await fetchWithSessionRetry(() =>
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(),
+        'X-GC-Request': '1',
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      credentials: 'same-origin',
+      body: requestBody,
+    }),
+  );
   let payload: unknown = null;
   try {
     payload = await res.json();

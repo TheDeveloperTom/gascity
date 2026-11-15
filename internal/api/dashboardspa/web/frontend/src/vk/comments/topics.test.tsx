@@ -130,7 +130,71 @@ describe('TopicsPanel thread', () => {
       fireEvent.click(within(pane()).getByRole('button', { name: 'Отправить' }));
     });
     expect(writes.action).toHaveBeenCalledWith(OPEN, { action: 'message', text: 'Да, перезагружайте' });
-    expect(within(pane()).getByRole('button', { name: 'Сделать задачей' })).toBeTruthy();
+  });
+
+  // Review I-2: a ticket from a topic starts only from the owner's button in
+  // Discord (BOARD-LIVE L11); the dashboard never hands the peer's title or
+  // text to our Mayor. It shows the linked ticket when there is one.
+  it('no «Сделать задачей» here, and nothing goes to the discuss route', async () => {
+    const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    setup('tp-aaaaaaaaaaaaaaaaaaaa');
+    expect(within(pane()).queryByRole('button', { name: /Сделать задачей/ })).toBeNull();
+    expect(within(pane()).queryByRole('link', { name: /Сделать задачей/ })).toBeNull();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('/api/activity/discuss'))).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('a linked ticket shows as «Задача dw-x1», opening that card on our board', () => {
+    const topics = peerTopics();
+    (topics[0] as Record<string, unknown>).ticket = 'dw-x1';
+    const result = parsePeerBoards(peerBody({ topics }));
+    render(
+      <MemoryRouter>
+        <TopicsPanel
+          open
+          onClose={vi.fn()}
+          peer={peerSourcesOf(result, NOW)[0]!}
+          topics={result.peers[0]!.topics}
+          selectedTopicId="tp-aaaaaaaaaaaaaaaaaaaa"
+          onSelectTopic={vi.fn()}
+          nowMs={NOW}
+          ownLogin="me"
+        />
+      </MemoryRouter>,
+    );
+    const link = within(pane()).getByRole('link', { name: 'Задача dw-x1' });
+    expect(link.getAttribute('href')).toBe('/beads?bead=dw-x1');
+    expect(collectMissing()).toEqual([]);
+  });
+
+  // Review M-7: the read stamp must not depend on a re-render. A message
+  // the person actually sees is stamped once.
+  it('an unread message that comes into view is stamped read once', async () => {
+    const observed: Element[] = [];
+    let fire: (els: Element[]) => void = () => undefined;
+    class FakeIO {
+      constructor(cb: (entries: { isIntersecting: boolean; target: Element }[]) => void) {
+        fire = (els) => cb(els.map((target) => ({ isIntersecting: true, target })));
+      }
+      observe(el: Element) {
+        observed.push(el);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIO);
+    setup('tp-aaaaaaaaaaaaaaaaaaaa');
+    expect(observed.map((el) => (el as HTMLElement).dataset.commentId)).toEqual(['m-1']);
+    await act(async () => {
+      fire(observed);
+    });
+    expect(writes.read).toHaveBeenCalledTimes(1);
+    expect(writes.read).toHaveBeenCalledWith(OPEN, '2026-11-15T18:35:00Z');
+    vi.unstubAllGlobals();
   });
 
   it('«Решено» shows one check and asks for the outcome; people have no «Пауза» (contract c664ac8f)', async () => {

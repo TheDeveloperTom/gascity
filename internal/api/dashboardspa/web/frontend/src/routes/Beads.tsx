@@ -108,6 +108,13 @@ export function BeadsPage() {
   const peerBoards = usePeerBoards();
   const peerSources = peerBoards.sources;
   const boardSources = useMemo(() => boardSourcesOf(peerSources), [peerSources]);
+  // review M-1: a peer board that vanishes (service restart) must not leave
+  // its filter behind and empty the board under a «Все» chip.
+  useEffect(() => {
+    if (ownerFilter !== 'all' && ownerFilter !== 'me' && !peerSources.some((p) => p.owner === ownerFilter)) {
+      setOwnerFilter('all');
+    }
+  }, [ownerFilter, peerSources]);
   const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);

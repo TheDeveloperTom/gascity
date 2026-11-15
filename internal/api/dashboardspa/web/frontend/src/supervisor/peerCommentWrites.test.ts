@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
+import { setReauth } from '../embed/activitySession';
 import {
   CommentWriteError,
   commentErrorText,
@@ -123,6 +124,18 @@ describe('peer topic writes', () => {
     const gone = await postTopicAction(target, { action: 'continue' }).catch((e: unknown) => e);
     expect((gone as CommentWriteError).code).toBe('not_found');
     expect(commentErrorText(new CommentWriteError('topic_cap'))).toBe('Too many messages — try again in a minute.');
+  });
+
+  it('inside the Activity, a 401 session_invalid re-signs in once and retries (review M-11)', async () => {
+    const reauth = vi.fn(async () => undefined);
+    setReauth(reauth);
+    fetchMock
+      .mockResolvedValueOnce(json({ error: 'session_invalid' }, 401))
+      .mockResolvedValueOnce(json({ message: {} }, 201));
+    await postTopicAction({ city: 'rich', topicId: 'tp-1' }, { action: 'message', text: 'x' });
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    setReauth(null);
   });
 
   it('an empty text never reaches the network', async () => {

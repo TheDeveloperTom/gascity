@@ -62,8 +62,7 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   '{n} new messages': { one: '{n} новое', few: '{n} новых', many: '{n} новых' },
   'opened by {who} · {time} · people see it and can step in':
     'открыл {who} · {time} · люди видят и могут вмешаться',
-  'Make a task': 'Сделать задачей',
-  'Make a task: {title}': 'Сделать задачей: {title}',
+  'Task {id}': 'Задача {id}',
   'Resolved ✓': 'Решено ✓',
   'Message to the topic': 'Сообщение в обсуждение',
   'Step in: write to the topic…': 'Вмешаться: написать в обсуждение…',
