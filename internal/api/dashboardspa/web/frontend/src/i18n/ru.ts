@@ -58,6 +58,17 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'The supervisor skipped a tick: disk is under pressure':
     'Супервизор пропустил такт: диск перегружен',
 
+  // Owner plate (components/home/OwnerPlate).
+  'Nothing waits for you right now.': 'Сейчас вас ничего не ждёт',
+  'The city is running on its own.': 'Город работает сам.',
+  'Checking whether anything waits for you…': 'Проверяю, ждёт ли вас что-нибудь…',
+  'Could not check: {reasons}.': 'Не удалось проверить: {reasons}.',
+  'Questions from the Mayor could not be read': 'вопросы Мэра не прочитались',
+  'Your mail could not be read': 'почта не прочиталась',
+  'Answer in chat': 'Ответить в чате',
+  Open: 'Открыть',
+  'Questions from the Mayor arrive in the chat.': 'Вопросы Мэра приходят в чат.',
+
   // Attention rows (attention/registry).
   'A task outside this view': 'Задача вне окна',
   'awaiting input': 'ждёт ответа',
