@@ -69,6 +69,15 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   Open: 'Открыть',
   'Questions from the Mayor arrive in the chat.': 'Вопросы Мэра приходят в чат.',
 
+  // Tasks in flight (components/home/TasksInFlight).
+  'What is going on': 'Что идёт',
+  'Reading the board…': 'Читаю доску…',
+  'Nothing is going on right now': 'Сейчас ничего не идёт',
+  Working: 'Пишется код',
+  PR: 'Вливание',
+  'Show all {n}': 'Показать все {n}',
+  'Show fewer': 'Свернуть',
+
   // Attention rows (attention/registry).
   'A task outside this view': 'Задача вне окна',
   'awaiting input': 'ждёт ответа',
@@ -80,6 +89,16 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   unclaimed: 'никто не взял',
 
   // Plurals.
+  '{n} more tasks in the queue': {
+    one: 'Ещё {n} задача в очереди',
+    few: 'Ещё {n} задачи в очереди',
+    many: 'Ещё {n} задач в очереди',
+  },
+  '{n} more runs with no task on the board': {
+    one: 'Ещё {n} прогон без задачи на доске',
+    few: 'Ещё {n} прогона без задачи на доске',
+    many: 'Ещё {n} прогонов без задачи на доске',
+  },
   '{n} things wait for you': {
     one: 'Вас ждёт {n} дело',
     few: 'Вас ждут {n} дела',
