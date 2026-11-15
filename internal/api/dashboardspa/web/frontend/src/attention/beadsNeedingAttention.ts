@@ -111,6 +111,8 @@ export interface BeadAttentionRow {
   summary: string;
   /** Movement timestamp used for ordering and aging. */
   updatedAt: string;
+  /** For `waiting-human`: who it waits on (`human`, `mayor`, a name). */
+  waitingOn?: string;
 }
 
 /**
@@ -238,6 +240,7 @@ function waitingHumanRow(bead: Bead, nowMs: number): BeadAttentionRow | null {
     reason: 'waiting-human',
     severity: escalates ? 'attention' : 'watch',
     summary: phrase,
+    waitingOn: who,
     updatedAt: bead.updated_at ?? bead.created_at,
   };
 }
