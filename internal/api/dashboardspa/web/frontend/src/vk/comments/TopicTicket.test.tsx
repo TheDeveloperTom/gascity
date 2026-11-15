@@ -67,6 +67,35 @@ describe('TopicTicket', () => {
     expect(within(pane).queryByRole('link', { name: /задача/ })).toBeNull();
   });
 
+  // BOARD-LIVE L14: both cities use `dw` ids. The link follows `ticket_ref`
+  // (city, rig, id), never the id alone and never who opened the topic.
+  it('L14: our ticket on HIS topic links to our card, by ticket_ref', () => {
+    const pane = renderTopic(HIS, (tp) => {
+      tp[0]!.ticket = 'dw-abc';
+      tp[0]!.ticket_ref = { city: 'me', rig: 'devwork', id: 'dw-abc' };
+    });
+    const link = within(pane).getByRole('link', { name: '→ задача dw-abc' });
+    expect(link.getAttribute('href')).toBe('/beads?bead=dw-abc');
+  });
+
+  it('L14: his ticket with the same id links to HIS card, never to our dw-abc', () => {
+    const pane = renderTopic(OURS, (tp) => {
+      tp[1]!.ticket = 'dw-abc';
+      tp[1]!.ticket_ref = { city: 'rich', rig: 'devwork', id: 'dw-abc' };
+    });
+    const link = within(pane).getByRole('link', { name: '→ задача dw-abc' });
+    expect(link.getAttribute('href')).toBe(`/beads?${new URLSearchParams({ bead: 'peer:rich:devwork:dw-abc' })}`);
+  });
+
+  it('L14: a ticket_ref naming a third city is text only', () => {
+    const pane = renderTopic(OURS, (tp) => {
+      tp[1]!.ticket = 'dw-abc';
+      tp[1]!.ticket_ref = { city: 'olga', rig: 'devwork', id: 'dw-abc' };
+    });
+    expect(within(pane).getByText('→ задача dw-abc')).toBeTruthy();
+    expect(within(pane).queryByRole('link', { name: /задача/ })).toBeNull();
+  });
+
   it('an invalid ticket id shows nothing (N-1)', () => {
     const pane = renderTopic(OURS, (tp) => {
       tp[1]!.ticket = 'dw x/../1';

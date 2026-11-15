@@ -257,7 +257,7 @@ describe('buildBoardModel with a peer board', () => {
     expect(peer.map((c) => c.key).sort()).toEqual(['peer:rich:crm-api:dw-iy9a', 'peer:rich:devwork:dw-zz1']);
     const schema = peer.find((c) => c.node.bead.title === 'Изменение схемы users')!;
     expect(schema.stage.stage).toBe('working');
-    expect(schema.project).toEqual({ key: 'crm-api', label: 'crm-api', kind: 'rig' });
+    expect(schema.project).toEqual({ key: 'peer:rich:crm-api', label: 'crm-api', kind: 'rig' });
     expect(schema.peer).toMatchObject({ login: 'rich', label: 'Ричарда', avatar: 'Р', rig: 'crm-api' });
     // own cards keep their bead id as the key
     expect(all(model).find((c) => c.owner === 'me' && c.node.bead.id === 'dw-iy9a')?.key).toBe('dw-iy9a');
@@ -276,17 +276,45 @@ describe('buildBoardModel with a peer board', () => {
     expect(all(buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]))).toHaveLength(4);
   });
 
-  it('peer rigs are projects: counted, filterable and tagged', () => {
+  // BOARD-LIVE L14: a project is (city, rig). His `devwork` is not our
+  // `devwork`: both cities name their rig the same.
+  it('peer rigs are projects keyed by city and rig: counted, filterable and tagged', () => {
     const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]);
-    expect(model.projects.map((p) => [p.key, p.count])).toEqual([
-      ['all', 4],
-      ['devwork', 2],
-      ['crm-api', 1],
-      ['city', 1],
+    expect(model.projects.map((p) => [p.key, p.label, p.count])).toEqual([
+      ['all', 'All', 4],
+      ['devwork', 'devwork', 1],
+      ['peer:rich:crm-api', 'crm-api · Ричарда', 1],
+      ['peer:rich:devwork', 'devwork · Ричарда', 1],
+      ['city', 'City', 1],
     ]);
-    const crm = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'crm-api' }, [PEER]);
+    const crm = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'peer:rich:crm-api' }, [PEER]);
     expect(all(crm).map((c) => c.key)).toEqual(['peer:rich:crm-api:dw-iy9a']);
+    // the card's tag stays its rig (the card already says whose it is)
     expect(all(model).find((c) => c.key === 'peer:rich:crm-api:dw-iy9a')?.tag).toBe('crm-api');
+  });
+
+  it('L14: our devwork project never shows his devwork cards, and his never shows ours', () => {
+    const ours = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'devwork' }, [PEER]);
+    expect(all(ours).map((c) => c.key)).toEqual(['dw-iy9a']);
+    const his = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'peer:rich:devwork' }, [PEER]);
+    expect(all(his).map((c) => c.key)).toEqual(['peer:rich:devwork:dw-zz1']);
+  });
+
+  it('L14: the epic filter never merges our M04 with his M04', () => {
+    const hisM04 = { rig: 'devwork', bead: bead('dw-iy9a', { title: 'his M04 card', labels: ['milestone:M04'] }) };
+    const peer = { ...PEER, cards: [hisM04] };
+    const m04 = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, epic: 'M04' }, [peer]);
+    expect(all(m04).map((c) => c.key)).toEqual(['dw-iy9a']);
+    const none = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, epic: NO_EPIC }, [PEER]);
+    expect(all(none).map((c) => c.key)).toEqual(['dp-dh6']);
+  });
+
+  it('L14: waiting groups keep his M04 apart from ours', () => {
+    const hisM04 = { rig: 'devwork', bead: bead('dw-iy9a', { title: 'his M04 card', labels: ['milestone:M04'] }) };
+    const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [{ ...PEER, cards: [hisM04] }]);
+    const groups = model.waitingGroups.map((g) => [g.key, g.name, g.cards.map((c) => c.key)]);
+    expect(groups).toContainEqual(['milestone:M04', 'M04', ['dw-iy9a']]);
+    expect(groups).toContainEqual(['peer:rich:milestone:M04', 'M04 · Ричарда', ['peer:rich:devwork:dw-iy9a']]);
   });
 
   it('peer cards never add holds or blockers to my cards', () => {

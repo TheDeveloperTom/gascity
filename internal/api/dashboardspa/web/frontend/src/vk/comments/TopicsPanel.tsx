@@ -240,7 +240,7 @@ function TopicView({
         {/* Review I-2: «Сделать задачей» starts only from the owner's button
             (BOARD-LIVE L11), so no peer text ever leaves here. The dashboard
             shows the ticket the Mayor linked. */}
-        <TopicTicket topic={topic} />
+        <TopicTicket topic={topic} ownLogin={ownLogin} peerLogin={peer.login} />
       </div>
 
       <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">

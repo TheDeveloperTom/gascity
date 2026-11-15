@@ -470,6 +470,83 @@ describe('BeadsPage with Richard’s board', () => {
     });
   });
 
+  // BOARD-LIVE L14: both cities use the `dw` prefix and the rig name
+  // `devwork`. Our devwork/dw-ab12 and his devwork/dw-ab12 are two cards;
+  // opening, commenting, the topic thread and the project filter each hit
+  // the right one, keyed by (city, rig, id).
+  describe('L14: our devwork/dw-ab12 and his devwork/dw-ab12', () => {
+    const HIS_KEY = 'peer:rich:devwork:dw-ab12';
+    const hisCard = () => document.querySelector(`[data-card-key="${HIS_KEY}"]`) as HTMLElement | null;
+    function collide() {
+      const topics = peerTopics() as Record<string, unknown>[];
+      topics[0]!.card = { city: 'rich', rig: 'devwork', id: 'dw-ab12' };
+      const body = peerBody({ snapshotAt: minutesAgo(1), topics, top: { own_login: 'me' } });
+      const card = body.peers[0]!.cards[0] as Record<string, unknown>;
+      card.rig = 'devwork';
+      peerResponse = () => json(body);
+    }
+
+    it('coexist; opening and writing under each reaches its own city', async () => {
+      collide();
+      const posts = capturePosts();
+      renderPage();
+      await screen.findByText('Изменение схемы users');
+      expect(myCard()).not.toBeNull();
+      expect(hisCard()).not.toBeNull();
+      // his card: his thread only, and the message names HIS card
+      fireEvent.click(within(hisCard()!).getByRole('button', { name: /Изменение схемы users/ }));
+      let dialog = await screen.findByRole('dialog');
+      let thread = within(dialog).getByRole('region', { name: 'Обсуждение карточки' });
+      expect(within(thread).getByText('Уточняю у Артёма.')).toBeTruthy();
+      expect(within(thread).queryByText('Кто обновит Node?')).toBeNull();
+      fireEvent.change(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' }), {
+        target: { value: 'его' },
+      });
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+      });
+      expect(posts.at(-1)!.body.card).toEqual({ city: 'rich', rig: 'devwork', id: 'dw-ab12' });
+      cleanup();
+      // our card: our thread only, and the message names OUR card
+      renderPage();
+      await screen.findByText('Изменение схемы users');
+      fireEvent.click(within(myCard()!).getByRole('button', { name: /Моя карточка с тем же id/ }));
+      dialog = await screen.findByRole('dialog');
+      thread = await within(dialog).findByRole('region', { name: 'Обсуждение карточки' });
+      expect(within(thread).getByText('Кто обновит Node?')).toBeTruthy();
+      expect(within(thread).queryByText('Уточняю у Артёма.')).toBeNull();
+      fireEvent.change(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' }), {
+        target: { value: 'наш' },
+      });
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+      });
+      expect(posts.at(-1)!.body.card).toEqual({ city: 'me', rig: 'devwork', id: 'dw-ab12' });
+    });
+
+    it('the project filter is (city, rig): our devwork never shows his card, his never shows ours', async () => {
+      collide();
+      renderPage('/beads?project=devwork');
+      await screen.findByText('Моя карточка с тем же id');
+      expect(myCard()).not.toBeNull();
+      expect(hisCard()).toBeNull();
+      cleanup();
+      renderPage(`/beads?${new URLSearchParams({ project: 'peer:rich:devwork' })}`);
+      await screen.findByText('Изменение схемы users');
+      expect(hisCard()).not.toBeNull();
+      expect(myCard()).toBeNull();
+    });
+
+    it('a link to his card by its board key opens HIS card, never ours', async () => {
+      collide();
+      renderPage(`/beads?${new URLSearchParams({ bead: HIS_KEY })}`);
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('Схема users меняется.')).toBeTruthy();
+      expect(within(dialog).getByText(/только для чтения/)).toBeTruthy();
+      expect(requests.some((p) => p.includes('/bead/dw-ab12') || p.includes('/beads/dw-ab12'))).toBe(false);
+    });
+  });
+
   it('no peer service: the owner chips stay off and nothing breaks', async () => {
     peerResponse = () => json({ status: 404 }, 404);
     renderPage();

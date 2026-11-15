@@ -202,7 +202,12 @@ function groupWaiting(
     let kind: keyof typeof GROUP_RANK;
     let name: string;
     let subtitle: string | null = null;
-    if (stage !== null) {
+    if (stage !== null && card.peer !== null) {
+      // BOARD-LIVE L14: his M04 is not our M04 (both cities number stages alike)
+      key = `${card.owner}:${MILESTONE_LABEL_PREFIX}${stage}`;
+      kind = 'milestone';
+      name = `${stage} · ${card.peer.label}`;
+    } else if (stage !== null) {
       key = `${MILESTONE_LABEL_PREFIX}${stage}`;
       kind = 'milestone';
       name = stage;
@@ -366,7 +371,11 @@ export function buildBoardModel(
 
   // Peer cards: each (peer, rig) is its own small board, so ids never meet
   // ours or another rig's; there are no route beads in a snapshot.
-  const peerRigs = new Set<string>();
+  // BOARD-LIVE L14: a peer project is (city, rig), `peer:<login>:<rig>`, so
+  // his `devwork` never merges with ours.
+  // The card keeps the rig as its tag (it already shows whose card it is);
+  // the project menu names the city too.
+  const peerProjects = new Map<string, { key: string; label: string }>();
   for (const peer of peers) {
     const byRig = new Map<string, SupervisorBead[]>();
     for (const card of peer.cards) {
@@ -387,14 +396,15 @@ export function buildBoardModel(
         asOf: peer.asOf,
         stale: peer.stale,
       };
-      if (peerTasks.length > 0) peerRigs.add(rig);
+      const project: ProjectRef = { key: `${peer.owner}:${rig}`, label: rig, kind: 'rig' };
+      if (peerTasks.length > 0) peerProjects.set(project.key, { key: project.key, label: `${rig} · ${peer.label}` });
       for (const stage of STAGES) {
         for (const card of board.columns[stage.id]) {
           const bead = card.node.bead;
           allCards[stage.id].push({
             ...card,
             key: `${peer.owner}:${rig}:${bead.id}`,
-            project: { key: rig, label: rig, kind: 'rig' },
+            project,
             owner: peer.owner,
             peer: info,
             tag: null,
@@ -419,19 +429,16 @@ export function buildBoardModel(
   const projects: { key: string; label: string; count: number }[] = [
     { key: ALL_PROJECTS, label: t('All'), count: visible.length },
   ];
-  const ownRigNames = new Set(rigs.map((rig) => rig.name));
   if (prefixComplete) {
     for (const rig of rigs) {
       const count = counts.get(rig.name) ?? 0;
       if (count > 0) projects.push({ key: rig.name, label: rig.name, count });
     }
   }
-  // A peer rig we do not run ourselves is its own project (after ours).
-  for (const rig of [...peerRigs].sort()) {
-    const count = counts.get(rig) ?? 0;
-    if (count > 0 && !(prefixComplete && ownRigNames.has(rig)) && rig !== CITY_PROJECT_KEY) {
-      projects.push({ key: rig, label: rig, count });
-    }
+  // Every peer (city, rig) is its own project, after ours (L14).
+  for (const ref of [...peerProjects.values()].sort((a, b) => a.key.localeCompare(b.key))) {
+    const count = counts.get(ref.key) ?? 0;
+    if (count > 0) projects.push({ key: ref.key, label: ref.label, count });
   }
   if (prefixComplete) {
     const city = counts.get(CITY_PROJECT_KEY) ?? 0;
@@ -450,16 +457,19 @@ export function buildBoardModel(
   const needle = filters.search.trim().toLowerCase();
   const epic = filters.epic ?? ALL_EPICS;
   const owner = filters.owner ?? 'all';
-  const matchesEpic = (bead: SupervisorBead) => {
+  // The epic choices are OUR epics (epicSummaries of our rows): his M04 is
+  // another epic, so a chosen epic never shows his cards (L14).
+  const matchesEpic = (card: BoardCard) => {
     if (epic === ALL_EPICS) return true;
-    const milestone = milestoneOf(bead);
+    if (card.peer !== null) return false;
+    const milestone = milestoneOf(card.node.bead);
     return epic === NO_EPIC ? milestone === null : milestone === epic;
   };
   const keep = (card: BoardCard) =>
     (filters.showTests || !card.isTest) &&
     (filters.project === ALL_PROJECTS || card.project.key === filters.project) &&
     (owner === 'all' || card.owner === owner) &&
-    matchesEpic(card.node.bead) &&
+    matchesEpic(card) &&
     matchesSearch(card.node.bead, needle);
 
   const columns: Record<StageId, BoardCard[]> = {
