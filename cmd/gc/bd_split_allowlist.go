@@ -113,6 +113,10 @@ var bdSplitAllowlist = map[string]bdSplitCommand{
 	"backup status":  {why: "read"},
 	"dolt status":    {why: "read"},
 	"dolt show":      {why: "read"},
+	"events tail": {
+		only: []string{"--follow", "--since"},
+		why:  "reads the events journal (bd_events_journal) after a seq, and with --follow keeps reading as records commit; it writes nothing. --limit is not vetted; events export and events prune stay refused",
+	},
 
 	// Writes that touch no field Classify reads.
 	"close":        {why: "status and close reason"},

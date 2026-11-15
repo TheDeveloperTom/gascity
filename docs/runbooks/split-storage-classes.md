@@ -717,7 +717,11 @@ unchanged.
 `state list`, `comments`, `comments list`, `label list`, `label list-all`,
 `dep list`, `dep tree`, `dep cycles`, `mol current`, `mol show`,
 `mol progress`, `formula list`, `formula show`, `gate list`, `config get`,
-`config list`, `config show`, `backup status`, `dolt status`, `dolt show`.
+`config list`, `config show`, `backup status`, `dolt status`, `dolt show`,
+and `events tail` (only `--follow` and `--since`; `--json` is global). The
+journal's head, the last seq bd assigned, is a plain read through `sql`:
+`gc bd sql --json "SELECT next_seq FROM bd_events_seq WHERE id = 0"`.
+`events export`, `events prune` and the bare `events` stay refused.
 gc serves its own `release-if-current` itself.
 
 **Writes that change no field the class depends on:** `close`, `reopen`,
