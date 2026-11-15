@@ -10,6 +10,10 @@ import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadAttentionPanel } from '../components/beads/BeadAttentionPanel';
 import { BeadBoard } from '../components/beads/BeadBoard';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
+import { IdleNotice } from '../components/beads/IdleNotice';
+import { useBoardSources, type OwnerFilter } from '../lib/boardOwner';
+import { mayorChannelUrl } from '../lib/discussWithMayor';
+import { ALL_EPICS, epicSummaries } from '../lib/epics';
 import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
 import { Field } from '../components/Field';
@@ -20,7 +24,6 @@ import { useNow } from '../contexts/NowContext';
 import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel } from '../lib/boardModel';
-import { readOpenGroups, writeOpenGroups } from '../lib/openGroups';
 import { resolveRigName, rigNameOptions } from '../lib/rigNames';
 import {
   BOARD_RECENT_CLOSED_LIMIT,
@@ -73,7 +76,9 @@ export function BeadsPage() {
   const [project, setProject] = useState<string>(ALL_PROJECTS);
   const [search, setSearch] = useState('');
   const [showTests, setShowTests] = useState(false);
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => readOpenGroups());
+  const [epic, setEpic] = useState<string>(ALL_EPICS);
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
+  const boardSources = useBoardSources();
   const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
@@ -267,19 +272,28 @@ export function BeadsPage() {
           project,
           search,
           showTests,
+          epic,
+          owner: ownerFilter,
         },
       ),
-    [rows, routeBeads, serviceItems, routesComplete, rigItems, project, search, showTests],
+    [
+      rows,
+      routeBeads,
+      serviceItems,
+      routesComplete,
+      rigItems,
+      project,
+      search,
+      showTests,
+      epic,
+      ownerFilter,
+    ],
   );
-  const toggleGroup = useCallback((key: string) => {
-    setOpenGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      writeOpenGroups(next);
-      return next;
-    });
-  }, []);
+  const epics = useMemo(
+    () => epicSummaries(rows, { closedCapped: !showAllHistory }),
+    [rows, showAllHistory],
+  );
+  const boardSessions = board.sessions;
 
   // The dialog graph also holds the route and service beads, so a step or a
   // gate opened by its deep link keeps its dependency neighbourhood.
@@ -437,28 +451,45 @@ export function BeadsPage() {
           testCount={boardModel.testCount}
           showTests={showTests}
           onShowTests={setShowTests}
+          epics={epics}
+          epic={epic}
+          onEpic={setEpic}
+          sources={boardSources}
+          ownerFilter={ownerFilter}
+          onOwnerFilter={setOwnerFilter}
+          newTaskUrl={mayorChannelUrl()}
         />
       </div>
 
       {!hasLoadedBoard && loading ? (
         <p className="text-body text-fg-muted">{t('Loading beads.')}</p>
-      ) : boardModel.matched === 0 && (search.trim().length > 0 || project !== ALL_PROJECTS) ? (
+      ) : boardModel.matched === 0 &&
+        (search.trim().length > 0 ||
+          project !== ALL_PROJECTS ||
+          epic !== ALL_EPICS ||
+          ownerFilter !== 'all') ? (
         <p className="text-body text-fg-muted">{t('No tasks match the search or filter.')}</p>
       ) : boardModel.matched === 0 ? (
         <p className="text-body text-fg-muted">{t('Nothing on the board right now.')}</p>
       ) : (
-        <BeadBoard
-          model={boardModel}
-          selectedId={selectedId}
-          attentionSeverity={beadAttentionSeverity}
-          noteOf={beadNoteOf}
-          nowMs={nowMs}
-          onSelect={setSelectedId}
-          openGroups={openGroups}
-          onToggleGroup={toggleGroup}
-          showAllHistory={showAllHistory}
-          onToggleHistory={() => setShowAllHistory((prev) => !prev)}
-        />
+        <section aria-label={t('Board')} className="min-w-0 space-y-4">
+          {boardModel.idle.state !== 'busy' &&
+            boardModel.columns.working.length +
+              boardModel.columns.review.length +
+              boardModel.columns.pr.length ===
+              0 && <IdleNotice idle={boardModel.idle} />}
+          <BeadBoard
+            model={boardModel}
+            selectedId={selectedId}
+            attentionSeverity={beadAttentionSeverity}
+            noteOf={beadNoteOf}
+            sessions={boardSessions}
+            nowMs={nowMs}
+            onSelect={setSelectedId}
+            showAllHistory={showAllHistory}
+            onToggleHistory={() => setShowAllHistory((prev) => !prev)}
+          />
+        </section>
       )}
 
       {hasLoadedBoard && boardModel.orphanRuns > 0 && (

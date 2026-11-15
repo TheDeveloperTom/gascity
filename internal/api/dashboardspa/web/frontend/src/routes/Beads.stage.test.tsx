@@ -127,7 +127,7 @@ describe('BeadsPage stopped runs (review I6)', () => {
     windowExtra = [STRANDED];
     renderPage();
     await screen.findByText('Run ended under me');
-    const card = screen.getByTitle('Select dw-5').closest('li');
+    const card = screen.getByTitle('Select dw-5').closest('article');
     expect(card?.getAttribute('data-route-attention')).toBe('route-stopped');
     expect(within(card as HTMLElement).getByText('route stopped')).toBeTruthy();
   });
@@ -137,7 +137,7 @@ describe('BeadsPage stopped runs (review I6)', () => {
     windowTotal = 5000;
     renderPage();
     await screen.findByText('Run ended under me');
-    const card = screen.getByTitle('Select dw-5').closest('li');
+    const card = screen.getByTitle('Select dw-5').closest('article');
     expect(card?.getAttribute('data-route-attention')).toBeNull();
   });
 });
@@ -146,9 +146,9 @@ describe('BeadsPage Show all history (review I3)', () => {
   it('keeps merged tasks and live work instead of emptying the board', async () => {
     renderPage();
     await screen.findByText('Merged last night');
-    fireEvent.click(screen.getByRole('button', { name: 'Show all history' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show older' }));
     await waitFor(() => expect(beadQueries.some((q) => q.get('all') === 'true')).toBe(true));
-    const merged = await screen.findByRole('region', { name: 'Merged' });
+    const merged = await screen.findByRole('region', { name: 'Merged · last 7 days' });
     await waitFor(() => expect(within(merged).getByText('Merged last night')).toBeTruthy());
     expect(screen.queryByText('No tasks match the search or filter.')).toBeNull();
     expect(screen.queryByTitle('Select gcg-777')).toBeNull();
@@ -170,18 +170,21 @@ describe('BeadsPage stage board', () => {
 
   it('shows recent merges by default from a rig-scoped closed leg', async () => {
     renderPage();
-    const merged = await screen.findByRole('region', { name: 'Merged' });
+    const merged = await screen.findByRole('region', { name: 'Merged · last 7 days' });
     await waitFor(() => expect(within(merged).getByText('Merged last night')).toBeTruthy());
     const closedLeg = beadQueries.find((q) => q.get('status') === 'closed');
     expect(closedLeg?.get('rig')).toBe('east');
     expect(closedLeg?.has('all')).toBe(false);
   });
 
-  // B7 / RB12: the synopsis is gone; the route line carries the counts.
-  it('the route line counts tasks only', async () => {
+  // vk lane 1: the route line is gone; the column header carries the count.
+  it('the column header counts tasks only', async () => {
     renderPage();
     await screen.findByText('Ship the stage board');
-    expect(screen.getByRole('link', { name: 'Working: 1' })).toBeTruthy();
+    const working = screen.getByRole('region', { name: 'Working' });
+    expect(within(working).getByRole('heading', { name: 'Working' }).nextSibling?.textContent).toBe(
+      '1',
+    );
   });
 
   it('counts runs that have no task on the board instead of showing them', async () => {

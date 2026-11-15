@@ -193,46 +193,28 @@ describe('BeadsPage one board', () => {
     renderPage();
     await screen.findByText('Приёмка города: часть B');
     const first = beadQueries.length;
-    const history = screen.getByRole('button', { name: 'Show all history' });
+    // vk lane 1: «Показать старые» under «Влито · за 7 дней» widens the fetch.
+    const history = screen.getByRole('button', { name: 'Show older' });
     fireEvent.click(history);
     await waitFor(() =>
       expect(beadQueries.slice(first).some((q) => q.get('all') === 'true')).toBe(true),
     );
     expect(
-      screen.getByRole('button', { name: 'Recent merges only' }).getAttribute('aria-pressed'),
+      screen.getByRole('button', { name: 'Hide older' }).getAttribute('aria-expanded'),
     ).toBe('true');
     const second = beadQueries.length;
-    fireEvent.click(screen.getByRole('button', { name: 'Recent merges only' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide older' }));
     await waitFor(() => expect(beadQueries.length).toBeGreaterThan(second));
     await waitFor(() => expect(beadQueries.slice(second).some((q) => q.has('all'))).toBe(false));
   });
 
-  it('open groups persist', async () => {
+  // vk lane 1: the VK columns have no Waiting groups to open or remember, so
+  // the three open-group tests became one: a big Waiting shows every card,
+  // and survives a locale change.
+  it('a big Waiting shows every card and survives a locale change', async () => {
     windowItems = manyWaiting();
-    const first = renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /^M04/ }));
-    expect(window.localStorage.getItem('gcd:board:openGroups')).toBe('["milestone:M04"]');
-    first.unmount();
     renderPage();
     expect(await screen.findByText('M04 card 0')).toBeTruthy();
-  });
-
-  it('storage failure keeps working', async () => {
-    windowItems = manyWaiting();
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('denied');
-    });
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /^M04/ }));
-    expect(await screen.findByText('M04 card 0')).toBeTruthy();
-    expect(screen.queryByText('Dashboard view failed.')).toBeNull();
-  });
-
-  it('open groups survive a locale change', async () => {
-    windowItems = manyWaiting();
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /^M04/ }));
-    expect(screen.getByText('M04 card 0')).toBeTruthy();
     act(() => setLocale('ru'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Задачи' })).toBeTruthy();
     expect(screen.getByText('M04 card 0')).toBeTruthy();

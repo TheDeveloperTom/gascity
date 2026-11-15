@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
-import type { BadgeSeverity } from '../attention/compose';
+import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
 import { BeadBoard } from '../components/beads/BeadBoard';
 import {
   ALL_PROJECTS,
@@ -14,7 +14,8 @@ import { isRouteBead } from '../lib/stageBoard';
 import type { SupervisorBead } from '../supervisor/beadReads';
 
 // One helper for every board test (B5): the model is built by B4's
-// buildBoardModel, the same way the Beads page builds it.
+// buildBoardModel, the same way the Beads page builds it, and rendered by the
+// VK board (vk lane 1).
 
 export interface RenderBoardOptions {
   routeBeads?: SupervisorBead[];
@@ -24,12 +25,9 @@ export interface RenderBoardOptions {
   filters?: Partial<BoardFilters>;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
-  openGroups?: ReadonlySet<string>;
-  onToggleGroup?: (key: string) => void;
   showAllHistory?: boolean;
   onToggleHistory?: () => void;
-  attentionSeverity?: (id: string) => BadgeSeverity | null;
-  noteOf?: (id: string) => string | null;
+  sessions?: BeadAttentionSession[];
   nowMs?: number;
 }
 
@@ -44,7 +42,6 @@ export function boardData(beads: SupervisorBead[], options: RenderBoardOptions =
 
 export function renderBoard(beads: SupervisorBead[], options: RenderBoardOptions = {}) {
   const onSelect = options.onSelect ?? vi.fn();
-  const onToggleGroup = options.onToggleGroup ?? vi.fn();
   const onToggleHistory = options.onToggleHistory ?? vi.fn();
   const model = buildBoardModel(boardData(beads, options), options.rigs ?? [], {
     project: ALL_PROJECTS,
@@ -57,18 +54,13 @@ export function renderBoard(beads: SupervisorBead[], options: RenderBoardOptions
       <BeadBoard
         model={model}
         selectedId={options.selectedId ?? null}
-        {...(options.attentionSeverity === undefined
-          ? {}
-          : { attentionSeverity: options.attentionSeverity })}
-        {...(options.noteOf === undefined ? {} : { noteOf: options.noteOf })}
+        sessions={options.sessions ?? []}
         nowMs={options.nowMs ?? Date.parse('2026-11-15T10:40:00Z')}
         onSelect={onSelect}
-        openGroups={options.openGroups ?? new Set()}
-        onToggleGroup={onToggleGroup}
         showAllHistory={options.showAllHistory ?? false}
         onToggleHistory={onToggleHistory}
       />
     </MemoryRouter>,
   );
-  return { ...result, model, onSelect, onToggleGroup, onToggleHistory };
+  return { ...result, model, onSelect, onToggleHistory };
 }

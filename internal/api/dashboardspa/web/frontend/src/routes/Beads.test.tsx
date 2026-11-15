@@ -182,7 +182,7 @@ describe('BeadsPage', () => {
       expect(query.has('all')).toBe(false);
     }
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show all history' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show older' }));
 
     // Activating `closed` flips the data scope, forcing exactly one fresh read
     // whose window now carries all=true (closed beads included). The
@@ -206,7 +206,7 @@ describe('BeadsPage', () => {
     // Deactivating `closed` must revert to an open-only fetch — otherwise the
     // chip would read inactive while the board silently keeps scanning closed
     // history (the showClosed/chip desync this dual-state wiring must avoid).
-    fireEvent.click(screen.getByRole('button', { name: 'Recent merges only' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide older' }));
     await waitFor(() => expect(beadQueries.length).toBe(13));
     const reopened = beadQueries.slice(9);
     expect(reopened.some((q) => q.has('all'))).toBe(false);

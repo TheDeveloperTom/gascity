@@ -6,6 +6,7 @@ import { t, tn } from '../../i18n';
 import type { BoardCard } from '../../lib/boardModel';
 import { routeRunHref, type StageMark, type TaskStage } from '../../lib/stageBoard';
 import { formatWhen } from '../../lib/whenText';
+import { ExternalLink } from '../../vk/ExternalLink';
 import { StatusShape } from '../icons';
 
 // One card on the board (OWNER-HOME-PLAN B6, RB6): the title first, then one
@@ -86,9 +87,9 @@ function StepLine({ stage }: { stage: TaskStage }) {
         ))}
       {pr !== null &&
         (pr.url !== null ? (
-          <a href={pr.url} target="_blank" rel="noreferrer" className={`tnum ${STEP_LINK}`}>
+          <ExternalLink href={pr.url} className={`tnum ${STEP_LINK}`}>
             {pr.number !== null ? `PR #${pr.number}` : 'PR'}
-          </a>
+          </ExternalLink>
         ) : (
           <span className="tnum text-fg-muted">{`PR #${pr.number}`}</span>
         ))}

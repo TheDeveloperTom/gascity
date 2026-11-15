@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
 
 import { m04Idle } from '../test/fixtures/m04Idle';
+import { ALL_EPICS, NO_EPIC } from './epics';
 import {
   ALL_PROJECTS,
   buildBoardModel,
@@ -196,5 +197,26 @@ describe('buildBoardModel', () => {
     expect(find('milestone:m04').sort()).toEqual(['dw-iy9a', 'dw-x']);
     expect(find('DEVWORK/WORKER')).toEqual(['dw-iy9a']);
     expect(buildBoardModel(data(items), RIGS, { ...NO_FILTERS, search: 'x' }).matched).toBe(1);
+  });
+
+  const EPIC_ITEMS = [DP, IY, bead('dw-m5', { labels: ['milestone:M05'] })];
+
+  it('epic filter M04 keeps only milestone:M04 cards', () => {
+    const model = buildBoardModel(data(EPIC_ITEMS), RIGS, { ...NO_FILTERS, epic: 'M04' });
+    expect(ids(model.columns.waiting)).toEqual(['dw-iy9a']);
+    const all = buildBoardModel(data(EPIC_ITEMS), RIGS, { ...NO_FILTERS, epic: ALL_EPICS });
+    expect(ids(all.columns.waiting).sort()).toEqual(['dp-dh6', 'dw-iy9a', 'dw-m5']);
+  });
+
+  it('epic filter none keeps only cards without a milestone', () => {
+    const model = buildBoardModel(data(EPIC_ITEMS), RIGS, { ...NO_FILTERS, epic: NO_EPIC });
+    expect(ids(model.columns.waiting)).toEqual(['dp-dh6']);
+  });
+
+  it('every card has owner "me"', () => {
+    const model = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'all' });
+    expect(model.columns.waiting.map((c) => c.owner)).toEqual(['me', 'me']);
+    const richard = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, owner: 'richard' });
+    expect(ids(richard.columns.waiting)).toEqual([]);
   });
 });
