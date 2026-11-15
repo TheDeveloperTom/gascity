@@ -249,6 +249,7 @@ export function CockpitHomePage() {
         tasks={taskStages}
         issues={cityIssues}
         unreadable={cityUnreadable}
+        readiness={attention.cityReadiness}
       />
 
       <details className="group border-t border-rule pt-3">
