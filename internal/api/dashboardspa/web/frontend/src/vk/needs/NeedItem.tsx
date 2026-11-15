@@ -1,4 +1,3 @@
-import { CaretRight } from '@phosphor-icons/react';
 import { useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { t, tn } from '../../i18n';
@@ -44,8 +43,9 @@ export function discussSummary(need: Need): string {
   return text.length <= SUMMARY_MAX ? text : `${text.slice(0, SUMMARY_MAX - 1)}…`;
 }
 
-const CARD =
-  'focus-mark flex min-h-11 min-w-0 items-start gap-3 rounded-t-md px-4 pb-2 pt-3 hover:bg-vk-bg-secondary';
+// Design pass 15.11 (vibe-kanban density): the card is one row — the text
+// opens the task, the quiet «Обсудить» sits at the right edge.
+const CARD = 'focus-mark flex min-h-11 min-w-0 flex-1 items-start gap-3 rounded-md px-3 py-2.5';
 
 function isStall(need: Need): need is StallItem {
   return need.kind === 'stall' && 'forOwner' in need;
@@ -76,7 +76,7 @@ function CardLink({
       </ExternalLink>
     );
   }
-  return <div className={CARD.replace(' hover:bg-vk-bg-secondary', '')}>{children}</div>;
+  return <div className={CARD}>{children}</div>;
 }
 
 export function NeedItem({ need }: { need: Need }) {
@@ -101,19 +101,21 @@ export function NeedItem({ need }: { need: Need }) {
       data-need={need.id}
       data-kind={need.kind}
       {...(isStall(need) ? { 'data-for-owner': String(need.forOwner) } : {})}
-      className="min-w-0 rounded-md border border-vk-border bg-vk-bg-panel text-vk-text-normal"
+      className="group flex min-w-0 flex-col rounded-md border border-vk-border bg-vk-bg-primary text-vk-text-normal transition-colors hover:border-vk-text-low/40 hover:bg-vk-bg-panel sm:flex-row sm:items-center"
     >
       <CardLink need={need} labelledBy={titleId}>
         <div className="min-w-0 flex-1">
-          {meta.length > 0 && <p className="text-label text-vk-text-low">{meta}</p>}
+          {meta.length > 0 && <p className="text-[13px] leading-5 text-vk-text-low">{meta}</p>}
           <p
             id={titleId}
-            className="mt-0.5 text-body font-semibold text-vk-text-high [overflow-wrap:anywhere]"
+            className="text-[15px] font-medium leading-6 text-vk-text-high [overflow-wrap:anywhere]"
           >
             {need.title}
           </p>
           {need.summary !== null && (
-            <p className="mt-1 line-clamp-2 text-body [overflow-wrap:anywhere]">{need.summary}</p>
+            <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-vk-text-normal [overflow-wrap:anywhere]">
+              {need.summary}
+            </p>
           )}
           {need.holds > 0 && (
             <p className="mt-2 flex flex-wrap gap-x-2 text-label text-vk-text-low">
@@ -138,13 +140,13 @@ export function NeedItem({ need }: { need: Need }) {
             </ul>
           )}
         </div>
-        <CaretRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-vk-text-low" />
       </CardLink>
       {canWrite() && (
-        <div className="px-4 pb-3">
+        <div className="-mt-2 flex shrink-0 justify-end px-1 pb-0.5 sm:mt-0 sm:pb-0 sm:pr-2">
+          {/* quiet until the row is hovered or focused: the row is the action */}
           <DiscussButton
             ctx={ctx}
-            className="focus-mark inline-flex min-h-11 items-center rounded border border-vk-border px-3 text-label font-medium text-vk-text-high hover:bg-vk-bg-secondary disabled:opacity-50"
+            className="sm:opacity-70 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
           />
         </div>
       )}

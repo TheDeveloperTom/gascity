@@ -7,6 +7,7 @@ import { ThemeProvider } from '../contexts/ThemeContext';
 import { ViewingAsProvider } from '../contexts/ViewingAsContext';
 import { LOCALE_STORAGE_KEY, setLocale, t } from '../i18n';
 import { LocaleProvider } from '../i18n/LocaleProvider';
+import { resetActivityPlumbingForTests } from '../lib/apiBase';
 import { Header } from './Header';
 
 vi.mock('../api/client', () => ({
@@ -79,6 +80,24 @@ describe('Header language toggle', () => {
     cleanup();
     setLocale('en');
     window.localStorage.removeItem(LOCALE_STORAGE_KEY);
+  });
+
+  // Design pass 15.11: inside the Discord Activity the bar is one tight row;
+  // Discord sets the theme and names the place, so those controls are gone,
+  // and the board is dark whatever the OS says.
+  it('inside the Activity: no theme or language toggle, «Ещё» stays, dark is pinned', () => {
+    vi.stubEnv('VITE_EMBED', '1');
+    try {
+      const { container } = renderHeader();
+      expect(screen.queryByRole('button', { name: /Switch to (light|dark) theme/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Switch language/ })).toBeNull();
+      expect(container.querySelector('header details summary')).not.toBeNull();
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    } finally {
+      vi.unstubAllEnvs();
+      resetActivityPlumbingForTests();
+      document.documentElement.removeAttribute('data-theme');
+    }
   });
 
   it('toggle switches the nav to Russian and back', async () => {

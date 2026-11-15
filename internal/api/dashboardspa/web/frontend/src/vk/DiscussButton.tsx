@@ -1,3 +1,4 @@
+import { ChatCircleDotsIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 import { t } from '../i18n';
 import { discussWithMayor, mayorChannelUrl, type DiscussContext } from '../lib/discussWithMayor';
@@ -53,11 +54,13 @@ export function DiscussButton({ ctx, className, label }: DiscussButtonProps) {
           ? t('Did not work — try again')
           : (label ?? t('Discuss in Discord'));
 
+  // Design pass 15.11: a quiet secondary action (ghost, icon + label), never
+  // a full-width slab; the card's own primary action keeps the weight.
   return (
     <button
       type="button"
       className={cn(
-        'inline-flex min-h-[44px] w-full items-center justify-center rounded-sm border border-vk-border bg-vk-bg-primary px-3 text-[15px] text-vk-text-high transition-colors hover:bg-vk-bg-secondary disabled:cursor-not-allowed disabled:opacity-60 focus-mark',
+        'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-sm font-medium text-vk-text-low transition-colors hover:bg-vk-bg-panel hover:text-vk-text-high disabled:cursor-not-allowed disabled:opacity-60 focus-mark md:h-8',
         className,
       )}
       disabled={unconfigured || phase === 'sending'}
@@ -65,6 +68,7 @@ export function DiscussButton({ ctx, className, label }: DiscussButtonProps) {
       {...(phase === 'error' ? { role: 'alert' } : {})}
       onClick={onClick}
     >
+      <ChatCircleDotsIcon aria-hidden="true" size={16} className="shrink-0" />
       {text}
     </button>
   );

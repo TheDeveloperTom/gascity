@@ -124,7 +124,7 @@ export function BeadDetailModal({
   const actions =
     bead && discussCtx ? (
       <>
-        <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} className="md:w-auto" />
+        <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} />
         {renderActions?.(bead)}
       </>
     ) : undefined;

@@ -136,12 +136,14 @@ describe('«Табличка» tokens', () => {
     });
   }
 
-  it('enamel is #1B3F8B in light and #2C4E9E in dark', () => {
+  // design pass 15.11: dark enamel is a brighter cobalt (#3355C2) on the
+  // vibe-kanban dark ladder, ground #1A1B1E (Discord's darker frame).
+  it('enamel is #1B3F8B in light and #3355C2 in dark', () => {
     expect(hexClose(toHex(tokenLinear(BLOCKS.light, 'plate')), '#1B3F8B')).toBe(true);
-    expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'plate')), '#2C4E9E')).toBe(true);
+    expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'plate')), '#3355C2')).toBe(true);
     expect(hexClose(toHex(tokenLinear(BLOCKS.light, 'surface')), '#F2F2EF')).toBe(true);
     expect(hexClose(toHex(tokenLinear(BLOCKS.light, 'fg')), '#1F2238')).toBe(true);
-    expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'surface')), '#1B1C22')).toBe(true);
+    expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'surface')), '#1A1B1E')).toBe(true);
   });
 
   it('in light the focus ring is the enamel itself (review m5: no drift)', () => {

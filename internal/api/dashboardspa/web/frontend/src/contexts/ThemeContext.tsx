@@ -12,6 +12,7 @@ import {
   removeBrowserStorage,
   writeBrowserStorage,
 } from '../lib/browserStorage';
+import { isEmbedded } from '../lib/apiBase';
 
 // Theme is one of three values:
 //   'light'  — operator pinned light, overrides system.
@@ -63,8 +64,14 @@ function applyDocumentAttr(pref: ThemePref) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [pref, setPref] = useState<ThemePref>(readStoredPref);
+  // Inside the Discord Activity the board sits in Discord's dark client
+  // (design pass 15.11): dark, whatever the OS says, with no toggle.
+  const [pref, setPref] = useState<ThemePref>(() => (isEmbedded() ? 'dark' : readStoredPref()));
   const [system, setSystem] = useState<ThemeResolved>(readSystemResolved);
+
+  useEffect(() => {
+    if (isEmbedded()) applyDocumentAttr('dark');
+  }, []);
 
   // Track system theme live so 'system' mode follows it.
   useEffect(() => {

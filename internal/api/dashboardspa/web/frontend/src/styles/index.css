@@ -155,23 +155,28 @@
     --sair: var(--discord-safe-area-inset-right, env(safe-area-inset-right, 0px));
   }
 
+  /* Dark (owner 15.11, design pass): vibe-kanban's neutral dark ladder
+     (#1C1C1C / #212121 / #292929, border #333, text 96/77/56 %) pulled a hair
+     cool so it sits inside Discord's #1E1F22 frame instead of reading as a
+     grey slab. Ground < card < hover each one clear step apart; the enamel is
+     a brighter cobalt so the one primary action actually carries weight. */
   :root[data-theme='dark'] {
-    --surface: 22.8% 0.012 278; /* #1B1C22: a night street (review §5, chosen) */
-    --surface-raised: 26.5% 0.013 272.8; /* #23252C */
-    --surface-tint: 30.2% 0.015 274.4; /* #2C2E36 */
-    --fg: 94.3% 0.011 291.9; /* #ECEBF3 */
-    --fg-muted: 77.2% 0.021 289; /* #B4B3C2 */
-    --fg-faint: 69% 0.026 288.2; /* #9A99AB */
-    --rule: 35.8% 0.017 276.5; /* #3A3C46 */
-    --primary: 94.3% 0.011 291.9; /* = ink #ECEBF3 */
-    --on-primary: 22.8% 0.012 278; /* #1B1C22 */
+    --surface: 22.2% 0.006 271.1; /* #1A1B1E: ground, Discord's darker frame */
+    --surface-raised: 25.7% 0.008 274.7; /* #222327: cards, columns, panels */
+    --surface-tint: 29.8% 0.009 276.8; /* #2C2D32: hover, selected, inputs */
+    --fg: 96.2% 0.003 286.3; /* #F2F2F4 */
+    --fg-muted: 82.4% 0.009 271.3; /* #C3C5CB */
+    --fg-faint: 67.7% 0.014 271.2; /* #9497A0, AA on every ground */
+    --rule: 34.1% 0.011 271.1; /* #36383E */
+    --primary: 96.2% 0.003 286.3; /* = ink #F2F2F4 */
+    --on-primary: 22.2% 0.006 271.1; /* #1A1B1E */
     --accent: 75.9% 0.144 26.1; /* #FF8A80 */
     --warn: 77.6% 0.142 77.4; /* #E8A93A */
     --ok: 76.9% 0.121 156.6; /* #6CCB94 */
-    --plate: 44.4% 0.136 264.3; /* #2C4E9E: the white rim carries the edge */
+    --plate: 49% 0.175 266.7; /* #3355C2: enamel, white letters 6.5:1 */
     --on-plate: 100% 0 0; /* #FFFFFF */
-    --on-plate-muted: 86.8% 0.039 269.4; /* #C9D3EE */
-    --plate-ring: 64.5% 0.122 265.5; /* #6A8BD8: lighter enamel, ≥4:1 (WCAG 1.4.11) */
+    --on-plate-muted: 91.7% 0.03 271.1; /* #DCE3F8: 5.1:1 on the brighter enamel */
+    --plate-ring: 80.2% 0.087 270.6; /* #A9BCF7: ≥3:1 on the plate and every ground */
     --scrim: 13.2% 0.011 250.2; /* #05080C */
     --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
     --vk-mine: var(--plate-ring);
@@ -183,22 +188,22 @@
   /* System dark with no pinned choice: repeats the dark values exactly. */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']):not([data-theme='dark']) {
-      --surface: 22.8% 0.012 278;
-      --surface-raised: 26.5% 0.013 272.8;
-      --surface-tint: 30.2% 0.015 274.4;
-      --fg: 94.3% 0.011 291.9;
-      --fg-muted: 77.2% 0.021 289;
-      --fg-faint: 69% 0.026 288.2;
-      --rule: 35.8% 0.017 276.5;
-      --primary: 94.3% 0.011 291.9;
-      --on-primary: 22.8% 0.012 278;
+      --surface: 22.2% 0.006 271.1;
+      --surface-raised: 25.7% 0.008 274.7;
+      --surface-tint: 29.8% 0.009 276.8;
+      --fg: 96.2% 0.003 286.3;
+      --fg-muted: 82.4% 0.009 271.3;
+      --fg-faint: 67.7% 0.014 271.2;
+      --rule: 34.1% 0.011 271.1;
+      --primary: 96.2% 0.003 286.3;
+      --on-primary: 22.2% 0.006 271.1;
       --accent: 75.9% 0.144 26.1;
       --warn: 77.6% 0.142 77.4;
       --ok: 76.9% 0.121 156.6;
-      --plate: 44.4% 0.136 264.3;
+      --plate: 49% 0.175 266.7;
       --on-plate: 100% 0 0;
-      --on-plate-muted: 86.8% 0.039 269.4;
-      --plate-ring: 64.5% 0.122 265.5;
+      --on-plate-muted: 91.7% 0.03 271.1;
+      --plate-ring: 80.2% 0.087 270.6;
       --scrim: 13.2% 0.011 250.2;
       --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
       --vk-mine: var(--plate-ring);

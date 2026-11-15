@@ -41,7 +41,19 @@ function mount(el: HTMLElement): void {
 // ACTIVITY-PLAN Task 6: inside the Discord Activity, sign in through the
 // Embedded App SDK before the board's first request; on 403 «Нет доступа»
 // (or a sign-in error) is rendered instead and the board never mounts.
-if (isEmbedded()) {
+// Dev server only (stripped from production builds by Vite): `?embed_preview`
+// renders the embedded shell as the owner against the dev proxy, with no
+// Discord sign-in, so the Activity layout can be screenshotted.
+const embedPreview =
+  (import.meta.env as unknown as Record<string, unknown>).DEV === true &&
+  new URLSearchParams(globalThis.location?.search ?? '').has('embed_preview');
+
+if (isEmbedded() && embedPreview) {
+  void import('./embed/activitySession').then(({ setActivityRole }) => {
+    setActivityRole('owner');
+    mount(root);
+  });
+} else if (isEmbedded()) {
   void runActivityBoot(import.meta.env.VITE_DISCORD_CLIENT_ID, root).then((ok) => {
     if (ok) mount(root);
   });

@@ -20,13 +20,15 @@ function measureOf(path: string): string {
 }
 
 describe('Layout', () => {
-  it('/ and /beads are wide, /runs keeps max-w-dashboard', () => {
-    for (const path of ['/', '/beads']) {
-      const cls = measureOf(path);
-      expect(cls, path).toContain('max-w-[120rem]');
-      expect(cls, path).not.toContain('max-w-dashboard');
-      cleanup();
-    }
+  it('/beads is wide, / keeps a centred reading measure, /runs keeps max-w-dashboard', () => {
+    const board = measureOf('/beads');
+    expect(board).toContain('max-w-[120rem]');
+    expect(board).not.toContain('max-w-dashboard');
+    cleanup();
+    const home = measureOf('/');
+    expect(home).toContain('max-w-[64rem]');
+    expect(home).toContain('mx-auto');
+    cleanup();
     for (const path of ['/runs', '/health', '/agents']) {
       const cls = measureOf(path);
       expect(cls, path).toContain('max-w-dashboard');

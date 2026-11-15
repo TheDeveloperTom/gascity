@@ -68,7 +68,8 @@ describe('Signal & Pavement tokens', () => {
     expect(lightBlock).toContain('--accent: 50.1% 0.178 28.7');
     expect(lightBlock).toContain('--primary: 26% 0.041 277.2');
     expect(darkBlock).toContain('--accent: 75.9% 0.144 26.1');
-    expect(darkBlock).toContain('--primary: 94.3% 0.011 291.9');
+    // design pass 15.11: the vibe-kanban dark ladder inside Discord's frame
+    expect(darkBlock).toContain('--primary: 96.2% 0.003 286.3');
   });
 
   it('self-hosts Golos and drops Inter', () => {

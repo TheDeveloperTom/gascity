@@ -34,7 +34,7 @@ export function Shelf({
   const [open, setOpen] = useState(defaultOpen);
   const Caret = open ? CaretDown : CaretRight;
   return (
-    <section className="min-w-0 border-t border-vk-border pt-2">
+    <section className="min-w-0 border-t border-vk-border pt-2 first:border-t-0 first:pt-0">
       <h2 className="text-body font-semibold text-vk-text-high">
         <button
           type="button"
