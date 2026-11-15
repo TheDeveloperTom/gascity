@@ -67,15 +67,13 @@ test.describe('dashboard render smoke over the seeded corpus', () => {
     await expect(dials.getByRole('link', { name: 'active sessions: 1' })).toBeVisible();
     // runs-in-flight canonical-state section carries the same run count.
     await expect(
-      page
-        .getByRole('region', { name: 'runs in flight · canonical state' })
-        .getByRole('link', { name: 'running: 1' }),
+      page.getByRole('region', { name: 'Runs by state' }).getByRole('link', { name: 'running: 1' }),
     ).toBeVisible();
     // formula-run-progress section names the seeded run's formula — a run-summary
     // derived instrument, empty unless the run projected.
     await expect(
       page
-        .getByRole('region', { name: 'formula run progress' })
+        .getByRole('region', { name: 'Run progress' })
         .getByRole('link', { name: new RegExp(ANCHOR_FORMULA) }),
     ).toBeVisible();
     // systems section's mail lamp carries the seeded unread count (3 seeded

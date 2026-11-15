@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Link } from 'react-router';
 import type {
   ListBodySessionResponse,
   RunsCensusOutputBody,
@@ -27,6 +26,9 @@ import {
   pipelineSegments,
   tokensPerMinute,
 } from '../components/cockpit/model';
+import { Button } from '../components/Button';
+import { NeedsYouBoard } from '../components/home/NeedsYouBoard';
+import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
 import { useCachedData } from '../hooks/useCachedData';
 import { useRunSummary } from '../runs/runSummarySubscription';
@@ -299,150 +301,194 @@ export function CockpitHomePage() {
     canonicalRuns?.status_counts.active,
   )} running · ${usageAvailable ? formatCompact(usage.today.input_tokens + usage.today.output_tokens + usage.today.cache_read_tokens + usage.today.cache_creation_tokens) : '—'} tokens today`;
 
+  // One honest line under the synopsis naming every reading that has no data
+  // and is not loading, so the dashes further down are explained up top.
+  const unavailableReadings = (
+    [
+      { name: 'usage', reading: usageReading },
+      { name: 'city status', reading: statusReading },
+      { name: 'run states', reading: runsReading },
+      { name: 'sessions', reading: sessionsReading },
+    ] as const
+  )
+    .filter(({ reading }) => reading.data === undefined && !reading.loading)
+    .map(({ name }) => name);
+
   return (
     <section>
       <PageHeader
         title="Home"
         synopsis={synopsis}
         meta={
-          <button
+          <Button
             type="button"
             aria-pressed={paused}
             onClick={() => setPaused((current) => !current)}
-            className="focus-mark min-h-6 border-b border-rule text-fg-muted hover:text-fg"
           >
-            {paused ? 'resume' : 'pause'} instruments
-          </button>
+            {paused ? 'Resume updates' : 'Pause updates'}
+          </Button>
         }
       />
 
-      <NeedsYouStrip items={attention.topItems} />
+      {unavailableReadings.length > 0 && (
+        <p className="-mt-5 mb-6 flex items-center gap-2 text-label text-warn">
+          <StatusShape tone="warn" />
+          <span>Some readings are unavailable: {unavailableReadings.join(', ')}.</span>
+        </p>
+      )}
 
-      <div className="mb-8">
-        <ActivityTrace
-          samples={activitySamples}
-          available={usageAvailable}
-          note={
-            usageNote ??
-            (activitySamples.length === 0 ? 'waiting for the first usage sample' : undefined)
-          }
-        />
+      <NeedsYouBoard items={attention.topItems} overflow={attention.overflowByDomain} />
+
+      <div className="mb-10 grid grid-cols-1 items-start gap-x-8 gap-y-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="text-title font-semibold text-fg">Runs</h2>
+          </div>
+          <div className="rounded-lg border border-rule bg-surface-raised">
+            <section aria-labelledby="run-state-title" className="px-4 py-4">
+              <h3 id="run-state-title" className="mb-3 text-label font-medium text-fg-muted">
+                Runs by state
+              </h3>
+              <PipelineBar segments={segments} available={canonicalRuns !== undefined} />
+              {runsNote && <InstrumentNote>{runsNote}</InstrumentNote>}
+            </section>
+            <section aria-labelledby="progress-title" className="border-t border-rule px-4 py-4">
+              <h3 id="progress-title" className="mb-3 text-label font-medium text-fg-muted">
+                Run progress
+              </h3>
+              <RunRings runs={rings} />
+              {ringsNote && <InstrumentNote>{ringsNote}</InstrumentNote>}
+            </section>
+          </div>
+        </div>
+
+        <section aria-labelledby="systems-title" className="min-w-0">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 id="systems-title" className="text-title font-semibold text-fg">
+              Systems
+            </h2>
+          </div>
+          <div className="rounded-lg border border-rule bg-surface-raised px-4 py-1">
+            <StatusLamps lamps={lamps} />
+          </div>
+        </section>
       </div>
 
-      <div
-        className="mb-8 grid items-start justify-items-center gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"
-        data-testid="dial-grid"
-      >
-        <Odometer
-          label="model calls today"
-          value={usageAvailable ? usage.today.invocations : null}
-          note={
-            usageAvailable
-              ? [`${formatUsd(usage.today.cost_usd_estimate)} estimated today`, usageNote]
-                  .filter((note): note is string => note !== undefined)
-                  .join(' · ')
-              : usageNote
-          }
-        />
-        <Gauge
-          label="active sessions"
-          value={activeSessions}
-          max={Math.max(10, (activeSessions ?? 0) * 1.25)}
-          formatted={formatCount(activeSessions)}
-          href="/agents"
-          note={activeSessionsNote}
-        />
-        <Gauge
-          label="tokens / min"
-          value={recentTokens}
-          max={Math.max(1_000, (recentTokens ?? 0) * 1.25)}
-          formatted={recentTokens === null ? '—' : formatCompact(recentTokens)}
-          href="/activity"
-          note={rateNote}
-        />
-        <Gauge
-          label="burn · $ / hr"
-          value={recentBurn}
-          max={Math.max(10, (recentBurn ?? 0) * 1.25)}
-          formatted={recentBurn === null ? '—' : formatUsd(recentBurn)}
-          href="/activity"
-          note={rateNote}
-        />
-      </div>
-
-      <section className="mb-8" aria-labelledby="last24h-title">
-        <h2 id="last24h-title" className="mb-2 text-label uppercase tracking-wider text-fg-faint">
-          last 24 hours
-        </h2>
+      <section aria-labelledby="right-now-title" className="mb-10">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 id="right-now-title" className="text-title font-semibold text-fg">
+            Right now
+          </h2>
+        </div>
         <div
-          className="grid items-start justify-items-center gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fit,minmax(120px,1fr))]"
-          data-testid="last24h-grid"
+          className="grid items-start gap-x-8 gap-y-6 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]"
+          data-testid="dial-grid"
         >
-          <StatTile
-            label="tokens in"
-            value={
-              usageAvailable && last24h !== undefined ? formatCompact(last24h.input_tokens) : null
+          <Odometer
+            label="model calls today"
+            value={usageAvailable ? usage.today.invocations : null}
+            note={
+              usageAvailable
+                ? [`${formatUsd(usage.today.cost_usd_estimate)} estimated today`, usageNote]
+                    .filter((note): note is string => note !== undefined)
+                    .join(' · ')
+                : usageNote
             }
           />
-          <StatTile
-            label="tokens out"
-            value={
-              usageAvailable && last24h !== undefined ? formatCompact(last24h.output_tokens) : null
-            }
+          <Gauge
+            label="active sessions"
+            value={activeSessions}
+            max={Math.max(10, (activeSessions ?? 0) * 1.25)}
+            formatted={formatCount(activeSessions)}
+            href="/agents"
+            note={activeSessionsNote}
           />
-          <StatTile
-            label="model calls"
-            value={
-              usageAvailable && last24h !== undefined ? formatCount(last24h.invocations) : null
-            }
+          <Gauge
+            label="tokens / min"
+            value={recentTokens}
+            max={Math.max(1_000, (recentTokens ?? 0) * 1.25)}
+            formatted={recentTokens === null ? '—' : formatCompact(recentTokens)}
+            href="/activity"
+            note={rateNote}
           />
-          <StatTile
-            label="est. cost"
-            value={
-              usageAvailable && last24h !== undefined ? formatUsd(last24h.cost_usd_estimate) : null
+          <Gauge
+            label="burn · $ / hr"
+            value={recentBurn}
+            max={Math.max(10, (recentBurn ?? 0) * 1.25)}
+            formatted={recentBurn === null ? '—' : formatUsd(recentBurn)}
+            href="/activity"
+            note={rateNote}
+          />
+        </div>
+      </section>
+
+      <section aria-labelledby="usage-title">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 id="usage-title" className="text-title font-semibold text-fg">
+            Usage
+          </h2>
+        </div>
+        <section className="mb-8" aria-labelledby="last24h-title">
+          <h3 id="last24h-title" className="mb-2 text-label font-medium text-fg-muted">
+            Last 24 hours
+          </h3>
+          <div
+            className="grid items-start gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fit,minmax(8rem,1fr))]"
+            data-testid="last24h-grid"
+          >
+            <StatTile
+              label="tokens in"
+              value={
+                usageAvailable && last24h !== undefined ? formatCompact(last24h.input_tokens) : null
+              }
+            />
+            <StatTile
+              label="tokens out"
+              value={
+                usageAvailable && last24h !== undefined
+                  ? formatCompact(last24h.output_tokens)
+                  : null
+              }
+            />
+            <StatTile
+              label="model calls"
+              value={
+                usageAvailable && last24h !== undefined ? formatCount(last24h.invocations) : null
+              }
+            />
+            <StatTile
+              label="est. cost"
+              value={
+                usageAvailable && last24h !== undefined
+                  ? formatUsd(last24h.cost_usd_estimate)
+                  : null
+              }
+            />
+          </div>
+          {usageNote && <InstrumentNote>{usageNote}</InstrumentNote>}
+        </section>
+
+        <div className="mb-8">
+          <ActivityTrace
+            samples={activitySamples}
+            available={usageAvailable}
+            note={
+              usageNote ??
+              (activitySamples.length === 0 ? 'waiting for the first usage sample' : undefined)
             }
           />
         </div>
-        {usageNote && <InstrumentNote>{usageNote}</InstrumentNote>}
-      </section>
 
-      <section className="mb-8" aria-labelledby="run-state-title">
-        <h2 id="run-state-title" className="mb-2 text-label uppercase tracking-wider text-fg-faint">
-          runs in flight · canonical state
-        </h2>
-        <PipelineBar segments={segments} available={canonicalRuns !== undefined} />
-        {runsNote && <InstrumentNote>{runsNote}</InstrumentNote>}
-      </section>
-
-      <div className="grid grid-cols-1 gap-10 lg:[grid-template-columns:5fr_4fr_3fr]">
         <section aria-labelledby="context-title">
-          <h2 id="context-title" className="mb-2 text-label uppercase tracking-wider text-fg-faint">
-            live session context
-          </h2>
+          <h3 id="context-title" className="mb-2 text-label font-medium text-fg-muted">
+            Context window used
+          </h3>
           <ContextMeters meters={contextMeters} />
           {(sessionsNote || contextMeters.length === 0) && (
             <InstrumentNote>{sessionsNote ?? 'no live session context reported'}</InstrumentNote>
           )}
         </section>
-
-        <section aria-labelledby="progress-title">
-          <h2
-            id="progress-title"
-            className="mb-2 text-label uppercase tracking-wider text-fg-faint"
-          >
-            formula run progress
-          </h2>
-          <RunRings runs={rings} />
-          {ringsNote && <InstrumentNote>{ringsNote}</InstrumentNote>}
-        </section>
-
-        <section aria-labelledby="systems-title">
-          <h2 id="systems-title" className="mb-2 text-label uppercase tracking-wider text-fg-faint">
-            systems
-          </h2>
-          <StatusLamps lamps={lamps} />
-        </section>
-      </div>
+      </section>
     </section>
   );
 }
@@ -547,32 +593,6 @@ function storeHealthLabel(storeHealth: NonNullable<StatusBody['store_health']>):
   const lastMaintenanceStatus = storeHealth.last_gc_status?.trim();
   if (lastMaintenanceStatus && lastMaintenanceStatus !== 'success') return 'maintenance failed';
   return storeHealth.warning ? 'maintenance overdue' : 'healthy';
-}
-
-function NeedsYouStrip({
-  items,
-}: {
-  items: readonly { id: string; title: string; href?: string; severity: string }[];
-}) {
-  const item = items.find((candidate) => candidate.severity === 'attention');
-  if (!item) return null;
-  const body = (
-    <>
-      <span className="mr-2 uppercase tracking-wider">needs you</span>
-      <span className="text-fg">{item.title}</span>
-    </>
-  );
-  return (
-    <div className="mb-8 border-y border-accent/30 py-2 text-label text-accent">
-      {item.href ? (
-        <Link to={item.href} className="focus-mark inline-block min-h-6 no-underline">
-          {body}
-        </Link>
-      ) : (
-        body
-      )}
-    </div>
-  );
 }
 
 function connectionLabel(state: string): string {

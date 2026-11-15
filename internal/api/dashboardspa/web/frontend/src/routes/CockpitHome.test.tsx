@@ -579,17 +579,17 @@ describe('<CockpitHomePage>', () => {
     expect(screen.getByRole('link', { name: 'live feed: healthy, connected' })).toBeTruthy();
     expect(mocks.cityUsage).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'pause instruments' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause updates' }));
     mocks.runSummary.mockReturnValue({ ...availableRunSummary(), sseState: 'closed' });
     view.rerender(router(<CockpitHomePage />));
 
     await act(() => vi.advanceTimersByTimeAsync(120_000));
 
-    expect(screen.getByRole('button', { name: 'resume instruments' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Resume updates' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'live feed: healthy, connected' })).toBeTruthy();
     expect(mocks.cityUsage).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'resume instruments' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume updates' }));
     await act(() => vi.advanceTimersByTimeAsync(15_000));
     expect(mocks.cityUsage).toHaveBeenCalledTimes(2);
   });
