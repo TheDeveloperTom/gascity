@@ -12,28 +12,30 @@ interface FormulaRunTabsProps {
  */
 export function FormulaRunTabs({ selectedNode }: FormulaRunTabsProps) {
   return (
-    <section aria-label="Run evidence">
-      <div
-        className="flex items-baseline gap-2 text-label"
-        role="tablist"
-        aria-label="Run evidence views"
-      >
-        <button
-          id="run-evidence-tab-session"
-          type="button"
-          role="tab"
-          aria-selected
-          aria-controls="run-evidence-panel"
-          className="focus-mark rounded-sm px-0.5 uppercase tracking-wider text-fg font-semibold underline decoration-fg underline-offset-4"
+    <section aria-label="Run evidence" className="rounded-lg border border-rule bg-surface-raised">
+      <div className="border-b border-rule px-4 py-2.5">
+        <div
+          className="inline-flex rounded-md border border-rule bg-surface-raised p-0.5 text-label"
+          role="tablist"
+          aria-label="Run evidence views"
         >
-          Session
-        </button>
+          <button
+            id="run-evidence-tab-session"
+            type="button"
+            role="tab"
+            aria-selected
+            aria-controls="run-evidence-panel"
+            className="focus-mark h-8 rounded bg-surface-tint px-3 font-semibold text-fg"
+          >
+            Session
+          </button>
+        </div>
       </div>
       <div
         id="run-evidence-panel"
         role="tabpanel"
         aria-labelledby="run-evidence-tab-session"
-        className="pt-5"
+        className="px-4 py-4"
       >
         <RunNodeSessionPanel node={selectedNode} visible />
       </div>

@@ -34,18 +34,29 @@ interface StageLadderProps {
   label: string;
 }
 
+// Chip fill per status: the active stage reads as "you are here", the
+// blocked stage carries the alarm tint, finished and pending stay quiet.
+const STAGE_CHIP: Record<RunStage['status'], string> = {
+  pending: 'border-rule',
+  active: 'border-fg/25 bg-surface-tint font-semibold',
+  complete: 'border-transparent bg-fg/[0.06]',
+  blocked: 'border-accent/40 bg-accent/10',
+};
+
 export function StageLadder({ stages, label }: StageLadderProps) {
   if (stages.length === 0) return null;
   return (
-    <ol className="mt-2 flex items-baseline gap-x-2 flex-wrap" aria-label={`${label} stages`}>
+    <ol className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label={`${label} stages`}>
       {stages.map((stage) => (
         <li
           key={stage.key}
-          className={`text-label uppercase tracking-wider ${STAGE_TONE[stage.status]}`}
+          className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-label ${STAGE_CHIP[stage.status]} ${STAGE_TONE[stage.status]}`}
           title={`${stage.label}: ${stage.status}`}
         >
-          <span aria-hidden="true">{STAGE_GLYPH[stage.status]}</span>{' '}
-          <span className={STAGE_WORD_TONE[stage.status]}>{stage.label}</span>
+          <span aria-hidden="true" className="leading-none">
+            {STAGE_GLYPH[stage.status]}
+          </span>{' '}
+          <span className={`min-w-0 truncate ${STAGE_WORD_TONE[stage.status]}`}>{stage.label}</span>
         </li>
       ))}
     </ol>
