@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
 import type {
   DoltNomsTrend,
   HealthMetric,
@@ -16,6 +16,7 @@ import { getActiveCity } from '../api/cityBase';
 import { useAttentionModel } from '../attention/context';
 import { attentionSectionProps, prefixedAttentionSeverity } from '../attention/routeHighlight';
 import { Button } from '../components/Button';
+import { CityIssues } from '../components/health/CityIssues';
 import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge, type StatusTone } from '../components/StatusBadge';
@@ -121,6 +122,13 @@ export function HealthPage() {
   const adminAttention = prefixedAttentionSeverity(attention, 'health', ['health:dashboard-']);
   const doltNomsAttention = prefixedAttentionSeverity(attention, 'health', ['health:dolt-noms-']);
 
+  // Every source that could not be read, whichever audience it feeds: an
+  // unreadable source is the city's machinery, said once here.
+  const unreadable = useMemo(
+    () => attention.items.filter((item) => item.severity === 'unavailable'),
+    [attention.items],
+  );
+
   useVisibleRefresh(refresh, 30_000);
 
   return (
@@ -138,6 +146,14 @@ export function HealthPage() {
       />
 
       <PageAlerts messages={errors} />
+
+      {/* HE-12: city trouble first, in its own section, never wrapping an
+          existing Health h2. Reads the attention model's city slice. */}
+      <CityIssues
+        slice={attention.city}
+        unreadable={unreadable}
+        readiness={attention.cityReadiness}
+      />
 
       {hasAnyData ? (
         <>

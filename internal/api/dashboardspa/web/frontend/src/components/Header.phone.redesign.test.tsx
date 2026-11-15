@@ -83,10 +83,14 @@ describe('Header on phones', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows one red "need you" chip counting attention only, outside the nav', async () => {
+  // Task 9: the chip is the owner slice's total; city items never count.
+  it('shows one red "need you" chip counting owner items only, outside the nav', async () => {
     const { container } = renderHeader([
-      contributor('beads', [item('b1', 'beads', 'attention'), item('b2', 'beads', 'watch')]),
-      contributor('mail', [item('m1', 'mail', 'attention')]),
+      contributor('beads', [
+        { ...item('b1', 'beads', 'attention'), audience: 'owner' },
+        item('b2', 'beads', 'attention'),
+      ]),
+      contributor('mail', [{ ...item('m1', 'mail', 'attention'), audience: 'owner' }]),
     ]);
     const chip = await screen.findByRole('link', { name: '2 need you' });
     expect(chip.getAttribute('href')).toBe('/');

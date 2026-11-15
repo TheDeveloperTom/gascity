@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { tIfKnown } from '../i18n';
 
 // The opener of every route: an optional back link, the h1 naming the
 // view, a one-line synopsis of state, and a right-aligned meta slot (live
@@ -28,7 +29,9 @@ export function PageHeader({ title, synopsis, meta, back, className = '' }: Page
             {back}
           </p>
         )}
-        <h1 className="text-headline font-semibold text-fg [overflow-wrap:anywhere]">{title}</h1>
+        <h1 className="text-headline font-semibold text-fg [overflow-wrap:anywhere]">
+          {tIfKnown(title)}
+        </h1>
         {synopsis && <p className="max-w-prose text-body text-fg-muted">{synopsis}</p>}
       </div>
       {meta && <div className="flex flex-wrap items-center gap-3 md:justify-end">{meta}</div>}

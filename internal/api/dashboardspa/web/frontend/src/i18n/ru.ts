@@ -38,6 +38,45 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   Board: 'Доска',
   City: 'Город',
 
+  // Rail (Task 9).
+  'Switch city': 'Сменить город',
+  '{city} (unknown)': '{city} (не найден)',
+  '{city} (stopped)': '{city} (остановлен)',
+  city: 'город',
+  'Reading as {name}': 'Вы смотрите почту как {name}',
+  'Switch language to Russian (RU)': 'Переключить язык на русский (RU)',
+  'Switch language to English (EN)': 'Переключить язык на английский (EN)',
+  'Switch to light theme': 'Переключить на светлую тему',
+  'Switch to dark theme': 'Переключить на тёмную тему',
+  Light: 'Светлая',
+  Dark: 'Тёмная',
+  '{n} need you': {
+    one: '{n} дело ждёт вас',
+    few: '{n} дела ждут вас',
+    many: '{n} дел ждут вас',
+  },
+  // The owner pill keeps the old English aria form (Mail pin); in Russian it
+  // says what it means.
+  '{label}: {n} attention items': {
+    one: '{label}: {n} дело ждёт вас',
+    few: '{label}: {n} дела ждут вас',
+    many: '{label}: {n} дел ждут вас',
+  },
+  '{label}: {n} city issues': {
+    one: '{label}: {n} неполадка города',
+    few: '{label}: {n} неполадки города',
+    many: '{label}: {n} неполадок города',
+  },
+
+  // Health: city issues (Task 10).
+  'City issues': 'Неполадки города',
+  'No city issues': 'Неполадок нет',
+  'Reading the state of the city…': 'Читаю состояние города…',
+  'Could not read': 'Не удалось прочитать',
+
+  // Page titles (Task 9; PageHeader translates a known title).
+  Agent: 'Агент',
+  Cockpit: 'Пульт',
   // Agent roles (lib/agentNames).
   Implementer: 'Исполнитель',
   Dispatcher: 'Диспетчер',

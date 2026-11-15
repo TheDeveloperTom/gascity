@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { api } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
@@ -11,6 +11,8 @@ import { ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { useViewingAs } from '../contexts/ViewingAsContext';
 import { displayLabel } from '../hooks/aliasPriority';
 import { useCachedData } from '../hooks/useCachedData';
+import { t, tn } from '../i18n';
+import { useLocale } from '../i18n/LocaleProvider';
 import { supervisorApi } from '../supervisor/client';
 import { ALL_VIEWS } from '../views/registry';
 import { filterEnabledViews } from '../views/resolve';
@@ -53,6 +55,10 @@ function navGroups(routes: ReadonlyArray<NavRoute>): ReadonlyArray<ReadonlyArray
   ].filter((group) => group.length > 0);
 }
 
+// Set by the language toggle just before the remount it causes; the next
+// Header mount takes focus back to the toggle and clears it.
+let refocusLocaleToggle = false;
+
 const NAV_ICONS: Readonly<Record<string, IconName>> = {
   '/': 'home',
   '/runs': 'runs',
@@ -79,6 +85,7 @@ const NAV_ATTENTION_DOMAINS: Readonly<Record<string, AttentionDomain>> = {
 // row, so it never wraps and never widens the page. No hamburger, no state.
 export function Header() {
   const { resolved, toggle } = useTheme();
+  const { locale, setLocale } = useLocale();
   const { viewingAs } = useViewingAs();
   const { operatorAlias } = useOperatorConfig();
   const readOnly = useReadOnly();
@@ -130,16 +137,20 @@ export function Header() {
   // sense inside the mail surface.
   const showReadingAs = !viewingAs.isOperator && pathname.startsWith('/mail');
 
-  // One number for "need you" (ruling C1): attention items across domains,
-  // the same total as the Home board headline and the red rail pills.
-  const needsYou = Object.values(attention.byDomain).reduce(
-    (sum, summary) => sum + summary.attention,
-    0,
-  );
+  // One number for "need you" (ruling C1, R4): the owner slice's total, the
+  // same number as the Home plate and the sum of the red rail pills.
+  const needsYou = attention.owner.total;
 
   // On phones the nav is one scrolling row; bring the active item into view
   // by moving only the row's scrollLeft (never the page). A no-op whenever the
   // row does not overflow, which includes the desktop rail.
+  const localeToggleRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!refocusLocaleToggle) return;
+    refocusLocaleToggle = false;
+    localeToggleRef.current?.focus();
+  }, []);
+
   const navRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const nav = navRef.current;
@@ -163,7 +174,7 @@ export function Header() {
           </span>
           {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
-              Switch city
+              {t('Switch city')}
             </label>
           ) : null}
           {showSwitcher ? (
@@ -180,19 +191,18 @@ export function Header() {
                   (gascity-dashboard-ux-stale-city-url-no-recovery). */}
               {!activeCityKnown && selectedCity !== '' ? (
                 <option value={selectedCity} disabled>
-                  {selectedCity} (unknown)
+                  {t('{city} (unknown)', { city: selectedCity })}
                 </option>
               ) : null}
               {cityItems.map((c) => (
                 <option key={c.name} value={c.name}>
-                  {c.name}
-                  {c.running ? '' : ' (stopped)'}
+                  {c.running ? c.name : t('{city} (stopped)', { city: c.name })}
                 </option>
               ))}
             </select>
           ) : (
             <span className="min-w-0 truncate text-label font-medium text-fg-muted">
-              {selectedCity || 'city'}
+              {selectedCity || t('city')}
             </span>
           )}
           {needsYou > 0 && (
@@ -200,7 +210,7 @@ export function Header() {
               to="/"
               className="focus-mark ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-accent px-2.5 text-label font-semibold text-on-primary tnum lg:hidden"
             >
-              {needsYou} need you
+              {tn(needsYou, { one: '{n} needs you', other: '{n} need you' })}
             </Link>
           )}
         </div>
@@ -247,11 +257,12 @@ export function Header() {
                               }
                             />
                           )}
-                          {r.label}
+                          {t(r.label)}
                           {domain !== undefined && (
                             <NavAttentionIndicator
                               label={r.label}
-                              summary={attention.byDomain[domain]}
+                              ownerCount={attention.owner.byDomain[domain]}
+                              cityCount={domain === 'health' ? attention.city.total : 0}
                             />
                           )}
                         </>
@@ -269,7 +280,9 @@ export function Header() {
             <StatusBadge
               tone="warn"
               variant="inline"
-              label={`Reading as ${displayLabel(viewingAs.alias, operatorAlias)}`}
+              label={t('Reading as {name}', {
+                name: displayLabel(viewingAs.alias, operatorAlias),
+              })}
             />
           </p>
         )}
@@ -283,11 +296,36 @@ export function Header() {
           <button
             type="button"
             onClick={toggle}
-            aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={
+              resolved === 'dark' ? t('Switch to light theme') : t('Switch to dark theme')
+            }
             className="inline-flex h-8 items-center gap-2 rounded px-1.5 text-label font-medium text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
           >
             <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[18px] w-[18px]" />
-            {resolved === 'dark' ? 'Light' : 'Dark'}
+            {/* Below lg the icon alone (the aria-label names the action), so
+                the city name keeps its room beside the need-you chip. */}
+            <span className="hidden lg:inline">{resolved === 'dark' ? t('Light') : t('Dark')}</span>
+          </button>
+          {/* Language toggle (SH-18, ruling R2): the label names the language
+              it switches TO; the choice persists in gascity:locale. The
+              accessible name, in the current language, contains the visible
+              code (label in name). The tree remounts on a change, so focus is
+              handed back to the new toggle (review M-5). */}
+          <button
+            ref={localeToggleRef}
+            type="button"
+            onClick={() => {
+              refocusLocaleToggle = true;
+              setLocale(locale === 'ru' ? 'en' : 'ru');
+            }}
+            aria-label={
+              locale === 'ru'
+                ? t('Switch language to English (EN)')
+                : t('Switch language to Russian (RU)')
+            }
+            className="inline-flex h-8 items-center rounded px-1.5 text-label font-semibold text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
+          >
+            {locale === 'ru' ? 'EN' : 'RU'}
           </button>
         </div>
       </div>
