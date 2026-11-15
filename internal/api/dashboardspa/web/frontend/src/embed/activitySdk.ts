@@ -12,7 +12,7 @@
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 import { setAuthHeaders, withApiBase } from '../lib/apiBase';
 import { setExternalOpener } from '../lib/openExternal';
-import { setActivityRole, setReauth, type ActivityRole } from './activitySession';
+import { captureLaunch, setActivityRole, setReauth, type ActivityRole } from './activitySession';
 
 export { getActivityRole, canWrite } from './activitySession';
 export type { ActivityRole } from './activitySession';
@@ -106,6 +106,8 @@ export async function bootActivity(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ActivityIdentity> {
   const sdk = new DiscordSDK(clientId);
+  // vk-final part 5: the Mayor's card link (`custom_id=bead:<id>`), read once.
+  captureLaunch(sdk.customId, sdk.instanceId);
   await sdk.ready();
   const who = await signIn(sdk, clientId, fetchImpl);
 

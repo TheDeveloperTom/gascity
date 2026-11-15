@@ -94,7 +94,15 @@ export function TaskDrawer({ open, onClose, chips, top, title, actions, children
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex min-h-[52px] items-center justify-between gap-2 border-b border-vk-border px-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">{chips}</div>
+          {/* vk-final part 5: the phone's full-screen card returns to the board. */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="-ml-2 inline-flex h-11 shrink-0 items-center rounded-sm px-2 text-[15px] text-vk-text-normal focus-mark md:hidden"
+          >
+            {t('← Board')}
+          </button>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{chips}</div>
           <button
             type="button"
             onClick={onClose}

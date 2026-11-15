@@ -29,6 +29,7 @@ import { ALL_VIEWS } from './views/registry';
 import { filterEnabledViews, resolveDefaultViewWithLogging } from './views/resolve';
 import type { FrontendViewDescriptor } from './views/types';
 import { CommandBar } from './vk/CommandBar';
+import { LaunchCardOpener } from './embed/LaunchCardOpener';
 
 const AgentsPage = lazy(() => import('./routes/Agents').then((m) => ({ default: m.AgentsPage })));
 const AgentDetailPage = lazy(() =>
@@ -105,6 +106,8 @@ export function App() {
                 </Layout>
                 {/* vk lane 5: the ⌘K palette, mounted once inside the router. */}
                 <CommandBar />
+                {/* vk-final part 5: the Activity's launch card (a no-op outside it). */}
+                <LaunchCardOpener />
               </AttentionRoot>
             </RunSummaryProvider>
           </ReadOnlyProvider>

@@ -21,7 +21,65 @@ onPlumbingReset(() => {
   role = null;
   reauth = null;
   inflight = null;
+  launch = null;
+  consumedInMemory.clear();
 });
+
+// ---- launch card (vk-final part 5, ACTIVITY-LINKS.md §3) ----------------
+//
+// A Mayor link `https://discord.com/activities/<app>?custom_id=bead:<id>`
+// reaches the SDK as `customId`, read once at iframe load. It is consumed
+// once per Activity instance (`consumed:<instanceId>` in sessionStorage,
+// guarded; an in-memory set backs it when storage throws), so a reload in the
+// same instance does not reopen a drawer the user already closed. This is
+// also the slot a gateway «pending card» fallback would fill.
+
+const LAUNCH_RE = /^bead:([A-Za-z0-9._-]{1,64})$/;
+const CONSUMED_PREFIX = 'gascity:activity:consumed:';
+let launch: { bead: string; instanceId: string } | null = null;
+const consumedInMemory = new Set<string>();
+
+/** `bead:<id>` → the id; anything else → null (ignored silently). */
+export function parseLaunchCustomId(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const match = LAUNCH_RE.exec(raw);
+  if (match === null) return null;
+  const id = match[1] ?? '';
+  return id.includes('..') ? null : id;
+}
+
+/** Called by bootActivity right after `new DiscordSDK(clientId)`. */
+export function captureLaunch(customId: string | null | undefined, instanceId: string): void {
+  const bead = parseLaunchCustomId(customId);
+  launch = bead === null ? null : { bead, instanceId };
+}
+
+function wasConsumed(instanceId: string): boolean {
+  if (consumedInMemory.has(instanceId)) return true;
+  try {
+    return window.sessionStorage.getItem(CONSUMED_PREFIX + instanceId) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function markConsumed(instanceId: string): void {
+  consumedInMemory.add(instanceId);
+  try {
+    window.sessionStorage.setItem(CONSUMED_PREFIX + instanceId, '1');
+  } catch {
+    // storage blocked: the in-memory mark covers this page load
+  }
+}
+
+/** The card the Activity was launched for, once per instance; null otherwise. */
+export function takeLaunchBead(): string | null {
+  const current = launch;
+  launch = null;
+  if (current === null || wasConsumed(current.instanceId)) return null;
+  markConsumed(current.instanceId);
+  return current.bead;
+}
 
 /** The signed-in Activity role; null outside the Activity or before sign-in. */
 export function getActivityRole(): ActivityRole | null {

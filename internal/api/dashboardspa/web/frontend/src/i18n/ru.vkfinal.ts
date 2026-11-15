@@ -83,4 +83,9 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'First message': 'Первое сообщение',
   'Open the topic': 'Открыть обсуждение',
   'Topics with {owner} city': 'Обсуждения с городом {owner}',
+  // part 5: Activity deep links
+  Notice: 'Уведомление',
+  'Task {id} not found — maybe closed or from another city':
+    'Задача {id} не найдена — возможно, закрыта или из другого города',
+  '← Board': '← Доска',
 };
