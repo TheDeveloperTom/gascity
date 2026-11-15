@@ -70,7 +70,8 @@ const STEPS: ReadonlyArray<[string, string, string]> = [
   ['open-pr', 'PR в цель задачи и auto-merge', 'pr'],
   ['await-merge', 'Wait for the merge gate', 'pr'],
   ['verify-merged', 'Verify the merge gate', 'pr'],
-  ['close-source-anchor', 'Закрыть задачу, когда её код в цели', 'merged'],
+  // Round 1 (review I4): PR until the task closes; Merged means closed.
+  ['close-source-anchor', 'Закрыть задачу, когда её код в цели', 'pr'],
 ];
 
 /** The open steps of a route from `from` on; the first is `firstStatus`. */
