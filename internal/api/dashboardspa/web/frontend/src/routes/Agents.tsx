@@ -7,6 +7,9 @@ import {
   type AgentNeedsYou,
 } from 'gas-city-dashboard-shared';
 import { Button } from '../components/Button';
+import { FoldList } from '../components/FoldList';
+import { StatusShape } from '../components/icons';
+import { PageAlerts } from '../components/PageAlerts';
 import { useAttentionModel } from '../attention/context';
 import {
   agentNeedsYouActionLabel,
@@ -273,8 +276,8 @@ export function AgentsPage() {
         sortValue: (r) => agentRowLabel(r),
         render: (r) => {
           // Per-rig dispatchers (alias '<rig>/control-dispatcher') perform an
-          // orchestration role; italicize the label so the operator can spot
-          // them at a glance.
+          // orchestration role; a neutral `dispatcher` pill after the label
+          // lets the operator spot them at a glance (a word, not a slant).
           const dispatcher = isPerRigDispatcherAgent(r);
           // Primary label is 'rig · agent' (e.g. 'gascity-packs · polecat-1').
           // display_name is the provider's human-readable label
@@ -293,19 +296,20 @@ export function AgentsPage() {
           const linkColor = orphan ? 'text-fg-muted' : 'text-fg';
           return (
             <div className="min-w-0">
-              <Link
-                to={`/agents/${encodeURIComponent(agentSlug(r))}`}
-                className={`block ${linkColor} truncate hover:text-primary focus-mark ${
-                  dispatcher ? 'font-normal italic' : 'font-medium'
-                }`}
-                title={linkTitle}
-              >
-                {agentRowLabel(r)}
-              </Link>
+              <div className="flex min-w-0 items-center gap-2">
+                <Link
+                  to={`/agents/${encodeURIComponent(agentSlug(r))}`}
+                  className={`min-w-0 truncate font-medium ${linkColor} hover:text-primary hover:underline focus-mark`}
+                  title={linkTitle}
+                >
+                  {agentRowLabel(r)}
+                </Link>
+                {dispatcher && (
+                  <StatusBadge tone="neutral" label="dispatcher" className="shrink-0" />
+                )}
+              </div>
               {secondary && (
-                <div className="text-label uppercase tracking-wider text-fg-faint mt-1 truncate">
-                  {secondary}
-                </div>
+                <div className="mt-0.5 truncate text-label text-fg-faint">{secondary}</div>
               )}
             </div>
           );
@@ -320,11 +324,11 @@ export function AgentsPage() {
           <StatusBadge
             tone={stateTone(r.state)}
             label={r.state}
-            {...(r.session?.attached ? { trailing: 'att' } : {})}
+            {...(r.session?.attached ? { trailing: 'attached' } : {})}
             {...(r.unavailable_reason ? { title: `unavailable: ${r.unavailable_reason}` } : {})}
           />
         ),
-        className: 'w-32',
+        className: 'w-44',
       },
       {
         key: 'activity',
@@ -457,11 +461,6 @@ export function AgentsPage() {
         meta={
           <>
             <SseIndicator state={sseState} />
-            {error && (
-              <span className="normal-case text-body text-accent" role="alert">
-                {error}
-              </span>
-            )}
             <PartialDataNotice
               show={data?.partial === true}
               label="roster partial"
@@ -474,6 +473,8 @@ export function AgentsPage() {
         }
       />
 
+      <PageAlerts messages={[error]} />
+
       <NeedsYouSection rows={needsYouRows} />
 
       <WorkInFlight
@@ -483,42 +484,46 @@ export function AgentsPage() {
         sessionsError={sessionsCache.error}
       />
 
-      {/* The bottom roster is the "available agents" view — the mayor, PLs, and
+      {/* The bottom roster is every configured agent — the mayor, PLs, and
           dispatchers that are running-but-idle, distinct from the working
-          sessions above. A calm section header (matching the "Workers active"
-          style) keeps the two groups from bleeding into one. */}
-      <header className="flex items-baseline justify-between border-b border-rule pb-2 mb-4">
-        <h2 className="text-headline text-fg">Available agents</h2>
-        <span className="text-label tnum text-fg-muted">{rows.length}</span>
+          sessions above. A section title outside the table keeps the two
+          groups from bleeding into one. */}
+      <header className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-title font-semibold text-fg">All agents</h2>
+        <span className="inline-flex min-w-[1.375rem] justify-center rounded-full bg-fg/[0.06] px-1.5 text-label font-semibold text-fg-muted tnum">
+          {rows.length}
+        </span>
       </header>
 
-      <div className="mb-6 space-y-3">
-        <ListSearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="Search agents by alias, rig, pool, provider"
-          matchCount={visibleRows.length}
-          totalCount={rows.length}
-          ariaLabel="Search agents"
-        />
-        <div className="flex items-baseline gap-6">
-          <label className="inline-flex items-baseline gap-2 text-label uppercase tracking-wider text-fg-muted cursor-pointer hover:text-fg transition-colors duration-150 ease-out-quart">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="min-w-0 md:flex-1">
+          <ListSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search agents by alias, rig, pool, provider"
+            matchCount={visibleRows.length}
+            totalCount={rows.length}
+            ariaLabel="Search agents"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded border border-rule bg-surface-raised px-3 text-body text-fg transition-colors duration-150 ease-out-quart hover:bg-surface-tint">
             <input
               type="checkbox"
               checked={runningOnly}
               onChange={(e) => setRunningOnly(e.target.checked)}
-              className="translate-y-[2px]"
+              className="h-4 w-4 focus-mark"
             />
             <span>running</span>
           </label>
           {rigOptions.length > 1 && (
-            <label className="inline-flex items-baseline gap-2 text-label uppercase tracking-wider text-fg-muted">
-              <span>rig</span>
+            <label className="inline-flex items-center gap-2 text-label font-medium text-fg-muted">
+              <span>Rig</span>
               <select
                 value={rigFilter}
                 onChange={(e) => setRigFilter(e.target.value)}
                 aria-label="Rig filter"
-                className="text-label uppercase tracking-wider text-fg-muted bg-transparent border-0 focus-mark cursor-pointer hover:text-fg transition-colors duration-150 ease-out-quart"
+                className="h-10 cursor-pointer rounded border border-rule bg-surface-raised px-3 text-body text-fg focus-mark"
               >
                 <option value="">all rigs</option>
                 {rigOptions.map((rig) => (
@@ -590,23 +595,35 @@ interface NeedsYouRow {
 }
 
 // gascity-dashboard-2j8e.4: the agents that need the operator, each with the
-// reason (glyph + word) and the next step. Mirrors the Runs Blocked section:
-// hairline-divided rows, no card chrome, hidden entirely when nothing needs
-// you (the calm room does not announce the absence of trouble).
+// reason (shape + word) and the next step. A panel under a red signal band,
+// first 5 rows then `Show all N` (DESIGN-PLAN §6.3, R8). Hidden entirely when
+// nothing needs you (the calm room does not announce the absence of trouble).
 function NeedsYouSection({ rows }: { rows: readonly NeedsYouRow[] }) {
   if (rows.length === 0) return null;
   return (
-    <section aria-label="Agents needing you" className="mb-10">
-      <h2 className="text-label uppercase tracking-wider text-fg-faint tnum">
-        Needs you ({rows.length})
-      </h2>
-      <ol className="mt-3 divide-y divide-rule">
-        {rows.map(({ need, label, slug }) => (
-          <li key={need.name} className="py-3">
-            <div className="flex items-baseline justify-between gap-4">
+    <section
+      aria-label="Agents needing you"
+      className="mb-10 overflow-hidden rounded-lg border border-accent/40 bg-surface-raised"
+    >
+      <header className="flex items-center gap-2.5 border-b border-accent/20 bg-accent/[0.08] px-4 py-3">
+        <span aria-hidden="true" className="flex text-accent">
+          <StatusShape tone="stuck" />
+        </span>
+        <h2 className="text-title font-semibold text-fg">
+          Needs you <span className="tnum text-fg-muted">({rows.length})</span>
+        </h2>
+      </header>
+      <FoldList
+        items={rows}
+        limit={5}
+        itemKey={(row) => row.need.name}
+        className="divide-y divide-rule"
+        renderItem={({ need, label, slug }) => (
+          <li className="px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
               <Link
                 to={`/agents/${encodeURIComponent(slug)}`}
-                className="focus-mark block min-w-0 truncate text-title text-fg hover:text-primary"
+                className="focus-mark block min-w-0 truncate text-title font-semibold text-fg hover:text-primary hover:underline"
               >
                 {label}
               </Link>
@@ -615,13 +632,13 @@ function NeedsYouSection({ rows }: { rows: readonly NeedsYouRow[] }) {
                 label={agentNeedsYouReasonLabel(need.reason)}
               />
             </div>
-            <p className="mt-1 text-body text-fg leading-snug">{need.detail}</p>
-            <p className="mt-0.5 text-body text-fg-muted leading-snug">
+            <p className="mt-1 text-body leading-snug text-fg">{need.detail}</p>
+            <p className="mt-0.5 text-body leading-snug text-fg-muted">
               {agentNeedsYouActionLabel(need.action)}
             </p>
           </li>
-        ))}
-      </ol>
+        )}
+      />
     </section>
   );
 }

@@ -38,19 +38,19 @@ const ROLE_TONE: Record<string, string> = {
 
 function RoleLabel({ role }: { role: string }) {
   const tone = ROLE_TONE[roleClass(role)] ?? 'text-fg-faint';
-  return <span className={`text-label uppercase tracking-wider font-medium ${tone}`}>{role}</span>;
+  return <span className={`text-label font-medium ${tone}`}>{role}</span>;
 }
 
-// Small uppercase metadata chip used for the secondary header fields (provider,
+// Small metadata chip used for the secondary header fields (provider,
 // model, usage, status, …) so they read as labels next to the role/time.
 function HeaderMeta({ children }: { children: string }) {
-  return <span className="text-label uppercase tracking-wider text-fg-faint tnum">{children}</span>;
+  return <span className="text-label text-fg-faint tnum">{children}</span>;
 }
 
 // Title row shared by every tool/metadata block: a kind chip then a label.
 function BlockTitle({ kind, label }: { kind: string; label: string }) {
   return (
-    <div className="text-label uppercase tracking-wider text-fg-muted">
+    <div className="text-label text-fg-muted">
       <span className="font-semibold text-fg-muted">{kind}</span> {label}
     </div>
   );
@@ -191,13 +191,13 @@ export function StructuredBlock({ block }: { block: SessionStructuredBlock }) {
   switch (block.type) {
     case 'text':
       return (
-        <pre className="text-body whitespace-pre-wrap leading-relaxed overflow-x-auto text-fg">
+        <pre className="whitespace-pre-wrap overflow-x-auto font-sans text-reading text-fg">
           {block.text ?? ''}
         </pre>
       );
     case 'thinking':
       return (
-        <pre className="text-body whitespace-pre-wrap leading-relaxed overflow-x-auto text-fg-muted italic">
+        <pre className="whitespace-pre-wrap overflow-x-auto font-sans text-reading text-fg-muted">
           {block.thinking !== undefined && block.thinking !== '' ? `[thinking] ${block.thinking}` : '[thinking]'}
         </pre>
       );

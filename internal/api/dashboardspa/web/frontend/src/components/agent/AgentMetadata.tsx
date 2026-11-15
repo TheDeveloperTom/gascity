@@ -35,13 +35,23 @@ export function AgentMetadata({ session, now }: { session: DashboardSession; now
   ];
 
   return (
-    <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-5 mb-12">
-      {items.map((it) => (
-        <div key={it.label}>
-          <dt className="text-label uppercase tracking-wider text-fg-faint mb-1">{it.label}</dt>
-          <dd className="text-body text-fg">{it.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <section
+      aria-labelledby="agent-facts-title"
+      className="rounded-lg border border-rule bg-surface-raised"
+    >
+      <header className="border-b border-rule px-4 py-3">
+        <h2 id="agent-facts-title" className="text-title font-semibold text-fg">
+          Facts
+        </h2>
+      </header>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 px-4 py-4">
+        {items.map((it) => (
+          <div key={it.label} className="min-w-0">
+            <dt className="text-label font-medium text-fg-muted">{it.label}</dt>
+            <dd className="text-body text-fg [overflow-wrap:anywhere]">{it.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

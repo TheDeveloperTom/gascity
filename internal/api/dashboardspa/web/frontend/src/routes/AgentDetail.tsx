@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { formatApiError } from '../api/client';
 import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
+import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
 import { RelatedEntities } from '../components/RelatedEntities';
 import { StatusBadge, stateTone } from '../components/StatusBadge';
@@ -268,66 +269,73 @@ export function AgentDetailPage() {
     <section>
       <PageHeader
         title={label}
+        back={
+          <Link to="/agents" className="focus-mark">
+            <span aria-hidden="true">← </span>Agents
+          </Link>
+        }
         synopsis={
-          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <StatusBadge
               tone={tone}
               label={session.state}
-              {...(session.attached ? { trailing: 'att' } : {})}
+              {...(session.attached ? { trailing: 'attached' } : {})}
               {...(session.reason ? { title: `reason: ${session.reason}` } : {})}
             />
-            <span className="text-fg-faint">·</span>
-            <code className="text-fg-muted">{session.template ?? '—'}</code>
+            <code className="font-mono text-[0.8125rem] text-fg-muted">
+              {session.template ?? '—'}
+            </code>
             {session.session_name && session.session_name !== session.alias && (
-              <>
-                <span className="text-fg-faint">·</span>
-                <span className="text-fg-faint">{session.session_name}</span>
-              </>
+              <span className="text-label text-fg-muted">
+                session <span className="font-mono text-[0.8125rem]">{session.session_name}</span>
+              </span>
             )}
-            <span className="text-fg-faint">·</span>
-            <span className="text-fg-faint">
-              id <code className="text-fg-muted">{session.id}</code>
+            <span className="text-label text-fg-muted">
+              id <code className="font-mono text-[0.8125rem] text-fg-muted">{session.id}</code>
             </span>
           </span>
         }
-        meta={
-          <Link to="/agents">
-            <Button size="sm" tone="quiet">
-              ← Agents
-            </Button>
-          </Link>
-        }
       />
 
-      {error && (
-        <p className="text-body text-accent mb-6" role="alert">
-          {error}
-        </p>
-      )}
+      <PageAlerts messages={[error]} />
 
-      <AgentMetadata session={session} now={now} />
-
-      <AgentBeadsAssigned
-        beads={assignedBeads}
-        error={beadsError}
-        loading={beads === null}
-        onSelect={(b) => {
-          setViewingBeadId(null);
-          setViewingBead(b);
-        }}
-      />
-
-      <RelatedEntities
-        view={links.view}
-        loading={links.loading}
-        error={links.error}
-        now={now}
-        onOpenBead={openBead}
-      />
-
-      <AgentLivePeek session={session} />
-
-      <AgentChatThread messages={chatMessages} loading={chatLoading} error={chatError} now={now} />
+      {/* Live work first (DESIGN-PLAN R15): the main column answers "what is this
+          agent doing"; facts, beads and related sit in the side column. On a
+          phone the order is facts, live peek, chat, beads, related. */}
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[auto_1fr]">
+        <div className="order-2 min-w-0 lg:order-1 lg:row-span-2">
+          <AgentLivePeek session={session} />
+          <AgentChatThread
+            messages={chatMessages}
+            loading={chatLoading}
+            error={chatError}
+            now={now}
+          />
+        </div>
+        <div className="order-1 min-w-0 lg:order-2">
+          <AgentMetadata session={session} now={now} />
+        </div>
+        <div className="order-3 min-w-0 space-y-6">
+          <AgentBeadsAssigned
+            beads={assignedBeads}
+            error={beadsError}
+            loading={beads === null}
+            onSelect={(b) => {
+              setViewingBeadId(null);
+              setViewingBead(b);
+            }}
+          />
+          <div className="rounded-lg border border-rule bg-surface-raised px-4 py-4 [&>section]:mt-0">
+            <RelatedEntities
+              view={links.view}
+              loading={links.loading}
+              error={links.error}
+              now={now}
+              onOpenBead={openBead}
+            />
+          </div>
+        </div>
+      </div>
 
       <BeadDetailModal
         open={viewingBead !== null || viewingBeadId !== null}

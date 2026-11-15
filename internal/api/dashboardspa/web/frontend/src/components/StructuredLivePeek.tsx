@@ -1,4 +1,8 @@
-import { useStructuredSessionStream, type StructuredStreamState } from '../hooks/useStructuredSessionStream';
+import { StatusShape } from './icons';
+import {
+  useStructuredSessionStream,
+  type StructuredStreamState,
+} from '../hooks/useStructuredSessionStream';
 import { PROMPT_INJECTION_NOTICE } from '../lib/constants';
 import { LiveSessionPeek, streamBadge } from './LiveSessionPeek';
 import { StatusBadge } from './StatusBadge';
@@ -25,13 +29,19 @@ interface StructuredLivePeekProps {
   showBadge?: boolean;
 }
 
-export function StructuredLivePeek({ sessionId, stream, showBadge = true }: StructuredLivePeekProps) {
+export function StructuredLivePeek({
+  sessionId,
+  stream,
+  showBadge = true,
+}: StructuredLivePeekProps) {
   const state = useStructuredSessionStream(sessionId, stream);
 
   // The server returned a non-structured transcript — render the conversation
   // peek instead so the view never goes blank.
   if (state.status === 'unavailable') {
-    return <LiveSessionPeek sessionId={sessionId} stream={stream} showBadge={showBadge} showCaption />;
+    return (
+      <LiveSessionPeek sessionId={sessionId} stream={stream} showBadge={showBadge} showCaption />
+    );
   }
   if (state.status === 'idle') return null;
 
@@ -44,7 +54,7 @@ export function StructuredLivePeek({ sessionId, stream, showBadge = true }: Stru
             tone={badge.tone}
             label={badge.label}
             title={`Session stream: ${state.stream.status}`}
-            className="text-label uppercase tracking-wider"
+            className="text-label"
           />
         </div>
       )}
@@ -55,7 +65,7 @@ export function StructuredLivePeek({ sessionId, stream, showBadge = true }: Stru
 
 function StructuredPeekBody({ state }: { state: StructuredStreamState }) {
   if (state.status === 'loading') {
-    return <p className="text-fg-muted italic">Fetching transcript.</p>;
+    return <p className="text-fg-muted">Fetching transcript.</p>;
   }
   if (state.status === 'failed') {
     return (
@@ -68,13 +78,18 @@ function StructuredPeekBody({ state }: { state: StructuredStreamState }) {
 
   const { result } = state;
   if (result.items.length === 0 && result.history === null) {
-    return <p className="text-fg-muted italic">No structured transcript yet.</p>;
+    return <p className="text-fg-muted">No structured transcript yet.</p>;
   }
 
   return (
     <TranscriptBox>
       <div className="space-y-6">
-        <p className="text-label uppercase tracking-wider text-warn">▲ {PROMPT_INJECTION_NOTICE}</p>
+        <p className="flex items-start gap-2 text-label text-warn">
+          <span className="mt-[5px] flex">
+            <StatusShape tone="warn" />
+          </span>
+          <span>{PROMPT_INJECTION_NOTICE}</span>
+        </p>
         {result.history !== null && <StructuredHistory history={result.history} />}
         <ol className="space-y-5" aria-live="polite" aria-relevant="additions text">
           {result.items.map((item) =>
