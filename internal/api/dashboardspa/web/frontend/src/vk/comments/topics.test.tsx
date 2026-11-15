@@ -13,10 +13,9 @@ import type * as ActivitySession from '../../embed/activitySession';
 // General-Thread, Phone-Topics; the city's final contract in
 // topics-report.md). The Mayors talk; people watch and can step in.
 
-const writes = vi.hoisted(() => ({ open: vi.fn(), action: vi.fn(), read: vi.fn() }));
+const writes = vi.hoisted(() => ({ action: vi.fn(), read: vi.fn() }));
 vi.mock('../../supervisor/peerCommentWrites', async (orig) => ({
   ...(await orig<typeof PeerCommentWrites>()),
-  openTopic: writes.open,
   postTopicAction: writes.action,
   markTopicRead: writes.read,
 }));
@@ -29,7 +28,7 @@ vi.mock('../../embed/activitySession', async (orig) => ({
 const NOW = Date.parse('2026-11-15T19:00:00Z');
 const OPEN = { city: 'rich', topicId: 'tp-aaaaaaaaaaaaaaaaaaaa' };
 
-function setup(selected: string | null = null, onSelect = vi.fn()) {
+function setup(selected: string | null = null, onSelect = vi.fn(), ownLogin: string | null = 'me') {
   const result = parsePeerBoards(peerBody({ topics: peerTopics() }));
   const peer = peerSourcesOf(result, NOW)[0]!;
   render(
@@ -42,6 +41,7 @@ function setup(selected: string | null = null, onSelect = vi.fn()) {
         selectedTopicId={selected}
         onSelectTopic={onSelect}
         nowMs={NOW}
+        ownLogin={ownLogin}
       />
     </MemoryRouter>,
   );
@@ -51,7 +51,6 @@ function setup(selected: string | null = null, onSelect = vi.fn()) {
 beforeEach(() => {
   setLocale('ru');
   resetMissing();
-  writes.open.mockReset().mockResolvedValue(undefined);
   writes.action.mockReset().mockResolvedValue(undefined);
   writes.read.mockReset().mockResolvedValue(undefined);
 });
@@ -101,15 +100,9 @@ describe('TopicsPanel list', () => {
     expect(onSelect).toHaveBeenCalledWith('tp-bbbbbbbbbbbbbbbbbbbb');
   });
 
-  it('«Новое обсуждение» opens a topic with the peer (POST /v1/topics)', async () => {
+  it('people do not open topics (city contract c664ac8f): no «Новое обсуждение»', () => {
     setup();
-    fireEvent.click(screen.getByRole('button', { name: /Новое обсуждение/ }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Тема' }), { target: { value: 'Общий CI' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Первое сообщение' }), { target: { value: 'Можно в 22:00?' } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Открыть обсуждение' }));
-    });
-    expect(writes.open).toHaveBeenCalledWith('rich', 'Общий CI', 'Можно в 22:00?');
+    expect(screen.queryByRole('button', { name: /Новое обсуждение/ })).toBeNull();
   });
 });
 
@@ -140,12 +133,11 @@ describe('TopicsPanel thread', () => {
     expect(within(pane()).getByRole('button', { name: 'Сделать задачей' })).toBeTruthy();
   });
 
-  it('«Решено» and «Пауза» sit side by side; «Решено» shows one check and asks for the outcome', async () => {
+  it('«Решено» shows one check and asks for the outcome; people have no «Пауза» (contract c664ac8f)', async () => {
     setup('tp-aaaaaaaaaaaaaaaaaaaa');
     const resolve = within(pane()).getByRole('button', { name: 'Решено ✓' });
     expect(resolve.textContent).toBe('Решено ✓');
-    const pause = within(pane()).getByRole('button', { name: 'Пауза' });
-    expect(resolve.parentElement).toBe(pause.parentElement);
+    expect(within(pane()).queryByRole('button', { name: 'Пауза' })).toBeNull();
     fireEvent.click(resolve);
     const summary = within(pane()).getByRole('textbox', { name: 'Итог в одну строку' });
     fireEvent.change(summary, { target: { value: 'перезагружаем в 22:00' } });
@@ -157,10 +149,6 @@ describe('TopicsPanel thread', () => {
       reason: 'resolved',
       summary: 'перезагружаем в 22:00',
     });
-    await act(async () => {
-      fireEvent.click(within(pane()).getByRole('button', { name: 'Пауза' }));
-    });
-    expect(writes.action).toHaveBeenCalledWith(OPEN, { action: 'pause' });
     expect(collectMissing()).toEqual([]);
   });
 
@@ -199,6 +187,14 @@ describe('TopicsPanel thread', () => {
     const { onSelect } = setup('tp-aaaaaaaaaaaaaaaaaaaa');
     fireEvent.click(screen.getByRole('button', { name: 'К списку обсуждений' }));
     expect(onSelect).toHaveBeenCalledWith(null);
+  });
+
+  it('our login unknown to the city service: our own topic is read-only, his stays writable', () => {
+    setup('tp-bbbbbbbbbbbbbbbbbbbb', vi.fn(), null);
+    expect(within(pane()).queryByRole('textbox')).toBeNull();
+    cleanup();
+    setup('tp-aaaaaaaaaaaaaaaaaaaa', vi.fn(), null);
+    expect(within(pane()).getByRole('textbox', { name: 'Сообщение в обсуждение' })).toBeTruthy();
   });
 
   it('a reader watches: no composer, no actions', () => {

@@ -83,47 +83,59 @@ export function topicHref(login: string, topicId: string): string {
 }
 
 export interface CardRef {
-  /** His login for his card; null for my card (its city is mine, never a peer's). */
-  peerLogin: string | null;
+  /** Our card (true) or a peer's (false). */
+  mine: boolean;
+  /**
+   * The card's city, from a TRUSTED source only: the peer whose board the
+   * card came from, or our own login as our city service states it. Null
+   * (our login unknown) matches nothing.
+   */
+  city: string | null;
   rig: string;
   id: string;
 }
 
 export interface CardTopic {
-  /** The peer the topic is with (whose panel opens it). */
+  /** The peer whose board carries the topic (whose panel opens it). */
   login: string;
   topic: PeerTopic;
 }
 
-/** The Mayor topics linked to one card (`topic.card`), newest activity first. */
+/**
+ * The Mayor topics linked to one card (`topic.card`), newest activity first.
+ * Security scan 15.11: matched on trusted keys only. His card: topics from HIS
+ * board whose card city is him. Our card: topics whose card city is OUR login
+ * (from our city service). A peer can never place a topic on another peer's
+ * card, nor on ours under some other city name.
+ */
 export function topicsForCard(result: PeerBoardsResult | null, card: CardRef): CardTopic[] {
-  if (result === null) return [];
-  const peers = new Set(result.peers.map((p) => p.login));
+  if (result === null || card.city === null) return [];
   const out: CardTopic[] = [];
   for (const peer of result.peers) {
+    if (!card.mine && peer.login !== card.city) continue;
     for (const topic of peer.topics) {
       const ref = topic.card;
-      if (ref === null || ref.rig !== card.rig || ref.id !== card.id) continue;
-      const cityMatches = card.peerLogin === null ? !peers.has(ref.city) : ref.city === card.peerLogin;
-      if (cityMatches) out.push({ login: peer.login, topic });
+      if (ref === null || ref.city !== card.city || ref.rig !== card.rig || ref.id !== card.id) continue;
+      out.push({ login: peer.login, topic });
     }
   }
   return out.sort((a, b) => lastActivity(b.topic) - lastActivity(a.topic));
 }
 
 /**
- * Our own people.json login, learnt from the topics: a topic we opened has
- * `city` = us; a topic the peer opened has `peer` = us. Null until one exists
- * (the dashboard has no other source for it).
+ * Where a person's topic action goes, or null when it must not be sent: the
+ * topic must come from the board of the peer we post to, and be owned by
+ * that peer or by us (our login from our city service).
  */
-export function ownLoginOf(result: PeerBoardsResult | null): string | null {
-  for (const peer of result?.peers ?? []) {
-    for (const topic of peer.topics) {
-      if (topic.mine) return topic.city;
-      if (topic.peerCity !== null) return topic.peerCity;
-    }
-  }
-  return null;
+export function topicTarget(
+  topic: PeerTopic,
+  boardLogin: string,
+  peerLogin: string,
+  ownLogin: string | null,
+): { city: string; topicId: string } | null {
+  if (boardLogin !== peerLogin) return null;
+  const ownerOk = topic.city === peerLogin || (ownLogin !== null && topic.city === ownLogin);
+  return ownerOk ? { city: topic.city, topicId: topic.topicId } : null;
 }
 
 export interface TopicNeed {

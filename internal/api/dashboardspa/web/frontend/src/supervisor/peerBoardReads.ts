@@ -69,7 +69,24 @@ const AuthorObject = z.looseObject({
   city: optString,
   name: z.string(),
   agent: optString,
+  // owner 15.11: the author's Discord identity, the avatar cached and served
+  // by OUR city service (same origin); see safeAvatarUrl.
+  display_name: optString,
+  avatar_url: optString,
 });
+
+// Only a root-relative path into our own peer-boards service's avatar cache:
+// `/v0/city/<city>/svc/peer-boards/v1/avatars/<id>.<png|webp|jpg|gif>`. Any
+// other origin (Discord's own image host included) or a climbing path is dropped,
+// so the board never loads a third-party image (and works in the Activity
+// with no extra CSP).
+const AVATAR_PATH_RE =
+  /^\/v0\/city\/[A-Za-z0-9._-]+\/svc\/peer-boards\/v1\/avatars\/[A-Za-z0-9_-]{1,80}\.(?:png|webp|jpg|jpeg|gif)$/;
+
+function safeAvatarUrl(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string' || !AVATAR_PATH_RE.test(raw)) return null;
+  return raw;
+}
 
 const CommentSchema = z.looseObject({
   id: z.string().min(1),
@@ -137,6 +154,10 @@ export interface CommentAuthor {
   city: string | null;
   name: string;
   agent: string | null;
+  /** The Discord display name, when the city supplies it. */
+  displayName: string | null;
+  /** Same-origin path to the cached Discord avatar, when the city supplies it. */
+  avatarUrl: string | null;
 }
 
 export type CommentState = 'queued' | 'queued_local' | 'delivered' | 'rejected';
@@ -206,9 +227,19 @@ export interface PeerTopic {
 const STATES: ReadonlySet<string> = new Set(['queued', 'queued_local', 'delivered', 'rejected']);
 
 function toAuthor(raw: string | z.infer<typeof AuthorObject>, fallbackCity: string | null): CommentAuthor {
-  if (typeof raw === 'string') return { kind: 'person', city: fallbackCity, name: raw, agent: null };
+  if (typeof raw === 'string') {
+    return { kind: 'person', city: fallbackCity, name: raw, agent: null, displayName: null, avatarUrl: null };
+  }
   const kind: AuthorKind = raw.kind === 'mayor' || raw.kind === 'agent' ? raw.kind : 'person';
-  return { kind, city: raw.city ?? fallbackCity, name: raw.name, agent: raw.agent ?? null };
+  const displayName = raw.display_name?.trim() ?? '';
+  return {
+    kind,
+    city: raw.city ?? fallbackCity,
+    name: raw.name,
+    agent: raw.agent ?? null,
+    displayName: displayName.length > 0 ? displayName : null,
+    avatarUrl: safeAvatarUrl(raw.avatar_url),
+  };
 }
 
 function toComments(raw: readonly unknown[], peerLogin: string): PeerComment[] {
@@ -315,6 +346,9 @@ const ResponseSchema = z.looseObject({
   schema: optString,
   heartbeat_seconds: z.number().nullish(),
   stale_after_seconds: z.number().positive().nullish(),
+  // our own people.json login, from OUR city service (trusted; never taken
+  // from peer-supplied topics) — security scan 15.11
+  own_login: optString,
   peers: z.array(PeerSchema),
 });
 
@@ -340,6 +374,8 @@ export interface PeerBoard {
 
 export interface PeerBoardsResult {
   peers: readonly PeerBoard[];
+  /** Our own login as our city service states it (`own_login`); null until it does. */
+  ownLogin: string | null;
   heartbeatSeconds: number | null;
   staleAfterSeconds: number;
 }
@@ -353,6 +389,7 @@ export class PeerBoardsError extends Error {
 
 const EMPTY: PeerBoardsResult = {
   peers: [],
+  ownLogin: null,
   heartbeatSeconds: null,
   staleAfterSeconds: DEFAULT_STALE_AFTER_SECONDS,
 };
@@ -385,6 +422,7 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
   if (!parsed.success) throw new PeerBoardsError(`peer-boards: ${parsed.error.issues[0]?.message ?? 'bad body'}`);
   const res = parsed.data;
   return {
+    ownLogin: res.own_login != null && LOGIN_RE.test(res.own_login) ? res.own_login : null,
     heartbeatSeconds: res.heartbeat_seconds ?? null,
     staleAfterSeconds: res.stale_after_seconds ?? DEFAULT_STALE_AFTER_SECONDS,
     peers: res.peers.map((p) => {

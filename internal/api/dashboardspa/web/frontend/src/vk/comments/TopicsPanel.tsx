@@ -1,15 +1,14 @@
-import { CaretLeftIcon, CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
+import { CaretLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { canWrite } from '../../embed/activitySession';
 import { refreshPeerBoards } from '../../hooks/usePeerBoards';
 import { t, tn } from '../../i18n';
 import { asOfClock, type PeerBoardSource } from '../../lib/boardOwner';
-import { previewOf, topicSections, unreadIdsOf, waitingOn } from '../../lib/peerTopics';
+import { previewOf, topicSections, topicTarget, unreadIdsOf, waitingOn } from '../../lib/peerTopics';
 import type { PeerComment, PeerTopic } from '../../supervisor/peerBoardReads';
 import {
   commentErrorText,
   markTopicRead,
-  openTopic,
   postTopicAction,
   type TopicAction,
   type TopicTarget,
@@ -25,15 +24,22 @@ import { authorName, CommentComposer, CommentList } from './CommentThread';
 // stays readable and muted (no delete), and a new human message reopens it.
 // Desktop: list and thread side by side; phone: the list leads into the
 // thread, and the composer sits pinned right above the tab bar.
+// People only step in (sync/topics c664ac8f): message, «Продолжить», «Решено»
+// and read stamps; they do not open, pause, reopen or react. Every action is
+// sent only through topicTarget (security scan 15.11): the topic must come
+// from this peer's board and be owned by that peer or by us.
 
 export interface TopicsPanelProps {
   open: boolean;
   onClose: () => void;
+  /** The peer whose board the topics come from. */
   peer: PeerBoardSource;
   topics: readonly PeerTopic[];
   selectedTopicId: string | null;
   onSelectTopic: (topicId: string | null) => void;
   nowMs: number;
+  /** Our login from our city service (`own_login`); null = only the peer's own topics are writable. */
+  ownLogin?: string | null;
 }
 
 /** The resolution reason in the list («→ решено») and on the banner. */
@@ -108,16 +114,17 @@ function SectionHead({ label, count }: { label: string; count: number }) {
 }
 
 /** Reads a stamp only for a message that was actually on screen (not merely loaded). */
-function useReadStamps(topic: PeerTopic | null, writable: boolean) {
+function useReadStamps(topic: PeerTopic | null, target: TopicTarget | null) {
   const sent = useRef(new Map<string, string>());
   const observer = useRef<IntersectionObserver | null>(null);
   const unread = useMemo(() => (topic === null ? new Set<string>() : unreadIdsOf(topic)), [topic]);
   const byId = useMemo(() => new Map(topic?.messages.map((m) => [m.id, m]) ?? []), [topic]);
+  const city = target?.city ?? null;
 
   useEffect(() => {
-    if (topic === null || !writable || unread.size === 0 || typeof IntersectionObserver === 'undefined') return;
+    if (topic === null || city === null || unread.size === 0 || typeof IntersectionObserver === 'undefined') return;
     const topicId = topic.topicId;
-    const target: TopicTarget = { city: topic.city, topicId };
+    const stampTarget: TopicTarget = { city, topicId };
     observer.current = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
@@ -127,14 +134,14 @@ function useReadStamps(topic: PeerTopic | null, writable: boolean) {
         const last = sent.current.get(topicId);
         if (last !== undefined && last >= msg.createdAt) continue;
         sent.current.set(topicId, msg.createdAt);
-        void markTopicRead(target, msg.createdAt).catch(() => undefined);
+        void markTopicRead(stampTarget, msg.createdAt).catch(() => undefined);
       }
     }, { threshold: 0.6 });
     return () => {
       observer.current?.disconnect();
       observer.current = null;
     };
-  }, [topic, writable, unread, byId]);
+  }, [topic, city, unread, byId]);
 
   const itemRef = useCallback(
     (comment: PeerComment) =>
@@ -152,7 +159,8 @@ function TopicView({
   topic,
   peer,
   nowMs,
-  writable,
+  writable: canAct,
+  ownLogin,
   send,
   onBack,
   composerRef,
@@ -161,16 +169,20 @@ function TopicView({
   peer: PeerBoardSource;
   nowMs: number;
   writable: boolean;
+  ownLogin: string | null;
   send: (target: TopicTarget, action: TopicAction) => Promise<void>;
   onBack: () => void;
   composerRef: RefObject<HTMLTextAreaElement>;
 }) {
-  const target: TopicTarget = { city: topic.city, topicId: topic.topicId };
+  // never a guess: this peer's board, owned by this peer or by us
+  const guarded = topicTarget(topic, peer.login, peer.login, ownLogin);
+  const writable = canAct && guarded !== null;
+  const target: TopicTarget = guarded ?? { city: '', topicId: topic.topicId };
   const closed = topic.status === 'resolved' || topic.status === 'rejected';
   const [resolving, setResolving] = useState(false);
   const [outcome, setOutcome] = useState('');
   const outcomeId = useId();
-  const { unread, itemRef } = useReadStamps(topic, writable);
+  const { unread, itemRef } = useReadStamps(topic, writable ? guarded : null);
   const acks = useMemo(
     () => new Set(topic.reactions.filter((r) => r.kind === 'ack').map((r) => r.messageId)),
     [topic.reactions],
@@ -309,16 +321,6 @@ function TopicView({
               >
                 {t('Resolved ✓')}
               </button>
-              {topic.status !== 'paused' && (
-                <button
-                  type="button"
-                  onClick={() => act({ action: 'pause' })}
-                  className="inline-flex h-11 items-center gap-1.5 rounded-sm border border-vk-border bg-vk-bg-secondary px-2.5 text-sm text-vk-text-high focus-mark md:h-8"
-                >
-                  <PauseGlyph />
-                  {t('Pause')}
-                </button>
-              )}
             </div>
           )}
           {!closed && resolving && (
@@ -369,87 +371,6 @@ function TopicView({
   );
 }
 
-function NewTopic({
-  peer,
-  send,
-  onBack,
-}: {
-  peer: PeerBoardSource;
-  send: (to: string, title: string, text: string) => Promise<void>;
-  onBack: () => void;
-}) {
-  const titleId = useId();
-  const textId = useId();
-  const [title, setTitle] = useState('');
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const ready = title.trim().length > 0 && text.trim().length > 0 && !sending;
-  const submit = async () => {
-    if (!ready) return;
-    setSending(true);
-    setError(null);
-    try {
-      await send(peer.login, title.trim(), text.trim());
-      onBack();
-    } catch (err) {
-      setError(commentErrorText(err));
-    } finally {
-      setSending(false);
-    }
-  };
-  return (
-    <section aria-label={t('New topic')} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={t('Back to the topics')}
-          className="-ml-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-vk-text-low focus-mark md:hidden"
-        >
-          <CaretLeftIcon size={18} weight="bold" aria-hidden="true" />
-        </button>
-        <h2 className="text-lg font-medium text-vk-text-high">{t('New topic')}</h2>
-      </div>
-      <p className="text-sm text-vk-text-low">{t('One topic is one question; it closes once it is answered.')}</p>
-      <label htmlFor={titleId} className="text-sm text-vk-text-normal">
-        {t('Subject')}
-      </label>
-      <input
-        id={titleId}
-        value={title}
-        maxLength={120}
-        onChange={(e) => setTitle(e.target.value)}
-        className="h-11 rounded-sm border border-vk-border bg-vk-bg-secondary px-2 text-base text-vk-text-high focus-mark md:h-9"
-      />
-      <label htmlFor={textId} className="text-sm text-vk-text-normal">
-        {t('First message')}
-      </label>
-      <textarea
-        id={textId}
-        rows={4}
-        value={text}
-        maxLength={2000}
-        onChange={(e) => setText(e.target.value)}
-        className="resize-none rounded-sm border border-vk-border bg-vk-bg-secondary p-2 text-base text-vk-text-high focus-mark"
-      />
-      {error !== null && (
-        <p role="alert" className="text-sm text-vk-error">
-          {error}
-        </p>
-      )}
-      <button
-        type="button"
-        disabled={!ready}
-        onClick={() => void submit()}
-        className="h-11 self-start rounded-sm bg-vk-brand-secondary px-3 text-base font-medium text-vk-on-brand focus-mark disabled:opacity-50 md:h-9"
-      >
-        {t('Open the topic')}
-      </button>
-    </section>
-  );
-}
-
 export function TopicsPanel({
   open,
   onClose,
@@ -458,10 +379,10 @@ export function TopicsPanel({
   selectedTopicId,
   onSelectTopic,
   nowMs,
+  ownLogin = null,
 }: TopicsPanelProps) {
   const writable = canWrite();
   const [showResolved, setShowResolved] = useState(false);
-  const [creating, setCreating] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sections = useMemo(() => topicSections(topics, nowMs), [topics, nowMs]);
   const selected = topics.find((tp) => tp.topicId === selectedTopicId) ?? null;
@@ -479,23 +400,16 @@ export function TopicsPanel({
     await postTopicAction(target, action);
     void refreshPeerBoards();
   }, []);
-  const open_ = useCallback(async (to: string, title: string, text: string) => {
-    await openTopic(to, title, text);
-    void refreshPeerBoards();
-  }, []);
 
   if (!open) return null;
-  const showPane = creating || selected !== null;
+  const showPane = selected !== null;
 
   const row = (tp: PeerTopic, extra?: ReactNode) => (
     <button
       key={tp.topicId}
       type="button"
       aria-current={tp.topicId === selectedTopicId ? 'true' : undefined}
-      onClick={() => {
-        setCreating(false);
-        onSelectTopic(tp.topicId);
-      }}
+      onClick={() => onSelectTopic(tp.topicId)}
       className={cn(
         'flex min-h-11 w-full flex-col gap-0.5 rounded-sm border p-2 text-left focus-mark',
         tp.topicId === selectedTopicId ? 'border-vk-brand bg-vk-bg-primary' : 'border-vk-border bg-vk-bg-primary',
@@ -564,12 +478,12 @@ export function TopicsPanel({
                     </button>
                     {tp.pausedReason === 'needs_human' ? (
                       <NeedsHumanBanner
-                        writable={writable}
-                        onContinue={() =>
-                          void send({ city: tp.city, topicId: tp.topicId }, { action: 'continue' }).catch(() => undefined)
-                        }
+                        writable={writable && topicTarget(tp, peer.login, peer.login, ownLogin) !== null}
+                        onContinue={() => {
+                          const target = topicTarget(tp, peer.login, peer.login, ownLogin);
+                          if (target !== null) void send(target, { action: 'continue' }).catch(() => undefined);
+                        }}
                         onDecide={() => {
-                          setCreating(false);
                           onSelectTopic(tp.topicId);
                           requestAnimationFrame(() => composerRef.current?.focus());
                         }}
@@ -610,32 +524,16 @@ export function TopicsPanel({
                 ),
               )}
           </div>
-          {writable && (
-            <div className="border-t border-vk-border p-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectTopic(null);
-                  setCreating(true);
-                }}
-                className="flex h-11 w-full items-center justify-center gap-1.5 rounded-sm border border-vk-border bg-vk-bg-primary text-[15px] text-vk-text-high focus-mark md:h-9"
-              >
-                <PlusIcon size={14} weight="bold" aria-hidden="true" />
-                {t('New topic')}
-              </button>
-            </div>
-          )}
         </nav>
 
         <div className={cn('min-h-0 min-w-0 flex-1 flex-col', showPane ? 'flex' : 'hidden md:flex')}>
-          {creating ? (
-            <NewTopic peer={peer} send={open_} onBack={() => setCreating(false)} />
-          ) : selected !== null ? (
+          {selected !== null ? (
             <TopicView
               topic={selected}
               peer={peer}
               nowMs={nowMs}
               writable={writable}
+              ownLogin={ownLogin}
               send={send}
               onBack={() => onSelectTopic(null)}
               composerRef={composerRef}

@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
-import { peerBody, peerThread, peerTopics } from '../test/fixtures/peerBoards';
+import {
+  AVATAR_BASE,
+  DEPUTY_DISCORD,
+  peerBody,
+  peerThread,
+  peerTopics,
+  RICHARD_DISCORD,
+  RICH_MAYOR_DISCORD,
+} from '../test/fixtures/peerBoards';
 import {
   DEFAULT_STALE_AFTER_SECONDS,
   listPeerBoards,
@@ -95,6 +103,16 @@ describe('listPeerBoards', () => {
     expect(res.peers[0]!.cards[0]!.bead.issue_type).toBe('task');
   });
 
+  it('our own login comes from the city service (`own_login`), checked; never from topics', async () => {
+    fetchMock.mockResolvedValueOnce(json({ ...peerBody({ topics: peerTopics() }), own_login: 'TheDeveloperTom' }));
+    expect((await listPeerBoards()).ownLogin).toBe('TheDeveloperTom');
+    fetchMock.mockResolvedValueOnce(json({ ...peerBody(), own_login: '../x' }));
+    expect((await listPeerBoards()).ownLogin).toBeNull();
+    // topics say «me» everywhere, but without the service's field we do not know
+    fetchMock.mockResolvedValueOnce(json(peerBody({ topics: peerTopics() })));
+    expect((await listPeerBoards()).ownLogin).toBeNull();
+  });
+
   it('404 and 503 (service not running) resolve to no peers', async () => {
     fetchMock.mockResolvedValueOnce(json({ status: 404 }, 404));
     expect((await listPeerBoards()).peers).toEqual([]);
@@ -114,14 +132,65 @@ describe('listPeerBoards', () => {
     const thread = peer!.threads[0]!;
     expect([thread.rig, thread.card]).toEqual(['crm-api', 'dw-ab12']);
     const [mayor, mine, , , agent, nameOnly] = thread.comments;
-    expect(mayor!.author).toEqual({ kind: 'mayor', city: 'rich', name: 'mayor', agent: null });
+    expect(mayor!.author).toEqual({
+      kind: 'mayor',
+      city: 'rich',
+      name: 'mayor',
+      agent: null,
+      displayName: null,
+      avatarUrl: null,
+    });
     expect(mayor!.mine).toBe(false);
     expect(mine!.mine).toBe(true);
     expect(mine!.state).toBe('delivered');
     expect(agent!.author).toMatchObject({ kind: 'agent', agent: 'deputy' });
-    expect(nameOnly!.author).toEqual({ kind: 'person', city: null, name: 'Артём', agent: null });
+    expect(nameOnly!.author).toEqual({
+      kind: 'person',
+      city: null,
+      name: 'Артём',
+      agent: null,
+      displayName: null,
+      avatarUrl: null,
+    });
     expect(nameOnly!.state).toBe('queued');
     expect(thread.comments.map((c) => c.createdAt)).toEqual([...thread.comments.map((c) => c.createdAt)].sort());
+  });
+
+  it('authors carry their Discord identity; only a same-origin avatar path is kept', async () => {
+    const topics = peerTopics();
+    const msgs = topics[0]!.messages as Record<string, unknown>[];
+    msgs[0]!.author = RICH_MAYOR_DISCORD;
+    msgs.push(
+      { id: 'm-3', author: RICHARD_DISCORD, text: 'a', created_at: '2026-11-15T18:50:00Z' },
+      { id: 'm-4', author: DEPUTY_DISCORD, text: 'b', created_at: '2026-11-15T18:51:00Z' },
+      {
+        id: 'm-5',
+        author: { kind: 'person', city: 'rich', name: 'Ричард', avatar_url: 'https://cdn.discordapp.com/avatars/2/x.png' },
+        text: 'c',
+        created_at: '2026-11-15T18:52:00Z',
+      },
+      {
+        id: 'm-6',
+        author: { kind: 'person', city: 'rich', name: 'Ричард', avatar_url: `${AVATAR_BASE}/../../boards` },
+        text: 'd',
+        created_at: '2026-11-15T18:53:00Z',
+      },
+    );
+    fetchMock.mockResolvedValue(json(peerBody({ topics })));
+    const [peer] = (await listPeerBoards()).peers;
+    const byId = new Map(peer!.topics[0]!.messages.map((m) => [m.id, m.author]));
+    expect(byId.get('m-1')).toMatchObject({
+      kind: 'mayor',
+      displayName: 'Richard’s Mayor',
+      avatarUrl: `${AVATAR_BASE}/111111111111111111.png`,
+    });
+    expect(byId.get('m-3')).toMatchObject({ displayName: 'richard.dev', avatarUrl: `${AVATAR_BASE}/222222222222222222.png` });
+    expect(byId.get('m-4')).toMatchObject({ kind: 'agent', avatarUrl: `${AVATAR_BASE}/333333333333333333.webp` });
+    // never a third-party origin, never a path that climbs out of /avatars/
+    expect(byId.get('m-5')!.avatarUrl).toBeNull();
+    expect(byId.get('m-6')!.avatarUrl).toBeNull();
+    // no identity: both null
+    expect(byId.get('m-2')).toMatchObject({ displayName: null, avatarUrl: null });
   });
 
   it('a malformed thread or comment is skipped, never the board', async () => {
@@ -151,7 +220,11 @@ describe('listPeerBoards', () => {
     // `mine` on a message comes from the service, not from guessing the city
     expect(open!.messages.map((m) => m.mine)).toEqual([false, true]);
     expect(open!.reactions).toEqual([
-      { messageId: 'm-1', kind: 'ack', by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null } },
+      {
+        messageId: 'm-1',
+        kind: 'ack',
+        by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null, displayName: null, avatarUrl: null },
+      },
     ]);
     expect(paused).toMatchObject({ status: 'paused', pausedReason: 'needs_human', mine: true });
     // a topic may be linked to one card: {city, rig, id}

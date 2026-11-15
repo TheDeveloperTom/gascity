@@ -16,7 +16,7 @@ import { IdleNotice } from '../components/beads/IdleNotice';
 import { asOfClock, boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
 import { usePeerBoards } from '../hooks/usePeerBoards';
 import type { PeerCard } from '../supervisor/peerBoardReads';
-import { ownLoginOf, topicsForCard } from '../lib/peerTopics';
+import { topicsForCard } from '../lib/peerTopics';
 import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
@@ -244,11 +244,11 @@ export function BeadsPage() {
   // card (`topic.card`); there are no human comments on cards.
   const peerTopicCount = useMemo(() => {
     const byKey = new Map<string, number>();
-    const peers = new Set((peerBoards.result?.peers ?? []).map((p) => p.login));
     for (const peer of peerBoards.result?.peers ?? []) {
       for (const topic of peer.topics) {
         const ref = topic.card;
-        if (ref === null || !peers.has(ref.city)) continue;
+        // trusted keys only: a topic counts on HIS card only from HIS board
+        if (ref === null || ref.city !== peer.login) continue;
         const key = `peer:${ref.city}:${ref.rig}:${ref.id}`;
         byKey.set(key, (byKey.get(key) ?? 0) + topic.messages.length);
       }
@@ -287,11 +287,13 @@ export function BeadsPage() {
     (card: BoardCard) => (card.peer === null ? 0 : (peerTopicCount.get(card.key) ?? 0)),
     [peerTopicCount],
   );
-  // OUR card: its rig (the rig whose prefix starts the id), the topics that
-  // reference it, our own login (learnt from the topics) and the peer the
-  // box writes to (the topic's peer, else the first peer board).
+  // OUR card: its rig (the rig whose prefix starts the id), our login from
+  // OUR city service (`own_login`; never from peer topics), and the topics
+  // that reference {our login, rig, id}. Who the box writes to is decided in
+  // CardConversation from these trusted facts only (security scan 15.11).
+  const ownLogin = peerBoards.result?.ownLogin ?? null;
   const ownCard = useMemo(() => {
-    const none = { rig: null, topics: [], city: null, peer: null } as const;
+    const none = { rig: null, topics: [] } as const;
     const id = selectedId;
     if (id === null || isPeerKey(id)) return none;
     const rig = rigItems.find((r) => {
@@ -299,10 +301,8 @@ export function BeadsPage() {
       return prefix.length > 0 && id.startsWith(`${prefix}-`);
     });
     if (rig === undefined) return none;
-    const topics = topicsForCard(peerBoards.result, { peerLogin: null, rig: rig.name, id });
-    const peer = peerSources.find((p) => p.login === topics[0]?.login) ?? peerSources[0] ?? null;
-    return { rig: rig.name, topics, city: ownLoginOf(peerBoards.result), peer };
-  }, [selectedId, rigItems, peerBoards.result, peerSources]);
+    return { rig: rig.name, topics: topicsForCard(peerBoards.result, { mine: true, city: ownLogin, rig: rig.name, id }) };
+  }, [selectedId, rigItems, peerBoards.result, ownLogin]);
   const openTopicFromCard = useCallback(
     (login: string, topicId: string) => {
       setSelectedId(null);
@@ -614,6 +614,7 @@ export function BeadsPage() {
           selectedTopicId={topicParam}
           onSelectTopic={(id) => setTopicsParams(topicsPeer.login, id)}
           nowMs={nowMs}
+          ownLogin={ownLogin}
         />
       )}
 
@@ -621,11 +622,12 @@ export function BeadsPage() {
         <CardConversation
           key={selectedId ?? ''}
           topics={topicsForCard(peerBoards.result, {
-            peerLogin: selectedPeer.peer.login,
+            mine: false,
+            city: selectedPeer.peer.login,
             rig: selectedPeer.card.rig,
             id: selectedPeer.card.bead.id,
           })}
-          peer={selectedPeer.peer}
+          peers={[selectedPeer.peer]}
           card={{
             city: selectedPeer.peer.login,
             rig: selectedPeer.card.rig,
@@ -658,8 +660,8 @@ export function BeadsPage() {
       <CardConversation
         key={`own:${ownSelectedId ?? ''}`}
         topics={ownCard.topics}
-        peer={ownCard.peer}
-        card={{ city: ownCard.city ?? '', rig: ownCard.rig ?? '', id: ownSelectedId ?? '', title: selectedBead?.title ?? '' }}
+        peers={peerSources}
+        card={{ city: ownLogin, rig: ownCard.rig ?? '', id: ownSelectedId ?? '', title: selectedBead?.title ?? '' }}
         ours
         nowMs={nowMs}
         onOpenTopic={openTopicFromCard}
@@ -670,7 +672,7 @@ export function BeadsPage() {
             onClose={() => setSelectedId(null)}
             beadId={ownSelectedId}
             initialBead={selectedBead}
-            extra={ownCard.rig !== null && ownCard.peer !== null ? thread : null}
+            extra={ownCard.rig !== null && ownLogin !== null && peerSources.length > 0 ? thread : null}
             footer={ownCard.rig !== null ? composer : null}
             depNode={selectedNode}
             sessions={sessionItems}

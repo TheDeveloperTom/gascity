@@ -73,6 +73,33 @@ const RICH_MAYOR = { kind: 'mayor', city: 'rich', name: 'mayor' };
 const MY_MAYOR = { kind: 'mayor', city: 'me', name: 'mayor' };
 
 /**
+ * Authors with their Discord identity (owner 15.11): `display_name` and an
+ * `avatar_url` served by OUR city service from its local cache (same
+ * origin; the browser never loads cdn.discordapp.com).
+ */
+export const AVATAR_BASE = '/v0/city/test-city/svc/peer-boards/v1/avatars';
+export const RICH_MAYOR_DISCORD = {
+  ...RICH_MAYOR,
+  display_name: 'Richard’s Mayor',
+  avatar_url: `${AVATAR_BASE}/111111111111111111.png`,
+};
+export const RICHARD_DISCORD = {
+  kind: 'person',
+  city: 'rich',
+  name: 'Ричард',
+  display_name: 'richard.dev',
+  avatar_url: `${AVATAR_BASE}/222222222222222222.png`,
+};
+export const DEPUTY_DISCORD = {
+  kind: 'agent',
+  city: 'rich',
+  name: 'deputy',
+  agent: 'deputy',
+  display_name: 'Deputy',
+  avatar_url: `${AVATAR_BASE}/333333333333333333.webp`,
+};
+
+/**
  * Topics in the city's final dashboard contract (topics-report.md «Final
  * dashboard contract»): one open with unread, one paused by the rails
  * (needs_human), one paused by a person, one resolved.

@@ -273,10 +273,11 @@ describe('BeadsPage with Richard’s board', () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
     });
+    // one call for every card message; the city posts into the card's topic
     expect(posts).toEqual([
       {
-        path: '/v0/city/test-city/svc/peer-boards/v1/topics/message',
-        body: { city: 'rich', topic_id: 'tp-aaaaaaaaaaaaaaaaaaaa', text: 'Подождите 0425, пожалуйста' },
+        path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
+        body: { card: { city: 'rich', rig: 'crm-api', id: 'dw-ab12' }, text: 'Подождите 0425, пожалуйста' },
       },
     ]);
     expect(await within(dialog).findByText('Подождите 0425, пожалуйста')).toBeTruthy();
@@ -297,19 +298,76 @@ describe('BeadsPage with Richard’s board', () => {
     });
     expect(posts).toEqual([
       {
-        path: '/v0/city/test-city/svc/peer-boards/v1/topics',
-        body: {
-          to: 'rich',
-          title: 'Изменение схемы users',
-          text: 'Когда вольёте схему?',
-          card: { city: 'rich', rig: 'crm-api', id: 'dw-ab12' },
-        },
+        path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
+        body: { card: { city: 'rich', rig: 'crm-api', id: 'dw-ab12' }, text: 'Когда вольёте схему?' },
       },
     ]);
   });
 
-  it('OUR card: the topic that references it is its thread, with the same box', async () => {
+  async function openMyCard() {
+    await screen.findByText('Изменение схемы users');
+    fireEvent.click(within(myCard()!).getByRole('button', { name: /Моя карточка с тем же id/ }));
+    return screen.findByRole('dialog');
+  }
+
+  it('OUR card, our login unknown to the city service: no thread lookup and no box', async () => {
     peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }));
+    renderPage();
+    const dialog = await openMyCard();
+    // the panel has settled on the bead (its body reads the card)
+    await within(dialog).findByText('dw-ab12');
+    expect(within(dialog).queryByRole('textbox', { name: 'Комментарий к карточке' })).toBeNull();
+    expect(within(dialog).queryByRole('region', { name: 'Обсуждение карточки' })).toBeNull();
+  });
+
+  it('OUR card, one peer, no thread yet: the first message opens a topic with that peer about OUR card', async () => {
+    peerResponse = () => json({ ...peerBody({ snapshotAt: minutesAgo(1) }), own_login: 'me' });
+    const posts = capturePosts();
+    renderPage();
+    const dialog = await openMyCard();
+    expect(within(dialog).queryByRole('combobox', { name: 'Кому' })).toBeNull();
+    fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Комментарий к карточке' }), {
+      target: { value: 'Кто возьмёт?' },
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+    });
+    expect(posts).toEqual([
+      {
+        path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
+        body: { card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Кто возьмёт?', to: 'rich' },
+      },
+    ]);
+  });
+
+  it('OUR card, two peers, no thread yet: the person picks whom to write to; nothing goes out before', async () => {
+    const body = { ...peerBody({ snapshotAt: minutesAgo(1) }), own_login: 'me' };
+    const bob = structuredClone(body.peers[0]!) as Record<string, unknown>;
+    bob.login = 'bob';
+    bob.person = { name: 'Боб', genitive: 'Боба', initial: 'Б', dative: 'Бобу' };
+    bob.cards = [];
+    body.peers.push(bob as (typeof body.peers)[number]);
+    peerResponse = () => json(body);
+    const posts = capturePosts();
+    renderPage();
+    const dialog = await openMyCard();
+    const to = (await within(dialog).findByRole('combobox', { name: 'Кому' })) as HTMLSelectElement;
+    const box = within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' });
+    fireEvent.change(box, { target: { value: 'Кто возьмёт?' } });
+    expect((within(dialog).getByRole('button', { name: 'Отправить' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(to, { target: { value: 'bob' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+    });
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toEqual({
+      path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
+      body: { card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Кто возьмёт?', to: 'bob' },
+    });
+  });
+
+  it('OUR card: the topic that references it is its thread, with the same box', async () => {
+    peerResponse = () => json({ ...peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }), own_login: 'me' });
     const posts = capturePosts();
     renderPage();
     await screen.findByText('Изменение схемы users');
@@ -323,9 +381,10 @@ describe('BeadsPage with Richard’s board', () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
     });
+    // the topic's peer (the board it came from), never a fallback
     expect(posts.at(-1)).toEqual({
-      path: '/v0/city/test-city/svc/peer-boards/v1/topics/message',
-      body: { city: 'me', topic_id: 'tp-bbbbbbbbbbbbbbbbbbbb', text: 'Обновлю сам' },
+      path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
+      body: { card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Обновлю сам', to: 'rich' },
     });
   });
 

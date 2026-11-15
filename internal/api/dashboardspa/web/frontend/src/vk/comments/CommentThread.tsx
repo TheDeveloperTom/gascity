@@ -35,6 +35,7 @@
 import { ArrowUpIcon } from '@phosphor-icons/react';
 import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
+import { withApiBase } from '../../lib/apiBase';
 import { asOfClock } from '../../lib/boardOwner';
 import type { CommentAuthor, PeerComment } from '../../supervisor/peerBoardReads';
 import { cn } from '../cn';
@@ -62,17 +63,36 @@ export function AgentGlyph({ size = 10 }: { size?: number }) {
 
 export type Side = 'mine' | 'peer';
 
-/** The author's avatar: initials for a person, the Mayor or robot glyph for agents, in a side-colour ring. */
+/**
+ * The author's avatar in a side-colour ring. Fallback order (owner 15.11):
+ * the Discord avatar image (same-origin, cached by our city service), else the
+ * Mayor or robot glyph or the initials; the city's side rule stays either way.
+ */
 export function AuthorAvatar({ author, side }: { author: CommentAuthor; side: Side }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const image = author.avatarUrl !== null && broken !== author.avatarUrl ? author.avatarUrl : null;
   return (
     <span
       aria-hidden="true"
       className={cn(
-        'box-border flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] bg-vk-bg-secondary text-[10px] font-medium text-vk-text-low',
+        'box-border flex shrink-0 items-center justify-center overflow-hidden rounded-full border-[1.5px] bg-vk-bg-secondary text-[10px] font-medium text-vk-text-low',
+        image !== null ? 'size-5' : 'size-4',
         side === 'mine' ? 'border-vk-mine' : 'border-vk-peer',
       )}
     >
-      {author.kind === 'mayor' ? (
+      {image !== null ? (
+        <img
+          data-testid="avatar-image"
+          src={withApiBase(image)}
+          alt=""
+          width={20}
+          height={20}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setBroken(image)}
+          className="size-full object-cover"
+        />
+      ) : author.kind === 'mayor' ? (
         <MayorGlyph />
       ) : author.kind === 'agent' ? (
         <AgentGlyph />
@@ -88,6 +108,15 @@ export interface AuthorNames {
   peerLabel: string;
   /** «Артёма» when known; else «Мой Мэр». */
   myLabel?: string | undefined;
+}
+
+/**
+ * The author's role (owner 15.11): «Мэр Ричарда» / «Мой Мэр» for a Mayor,
+ * the person's name («Ричард»), or «агент · deputy» for another agent.
+ */
+export function authorRole(author: CommentAuthor, side: Side, names: AuthorNames): string {
+  if (author.kind === 'agent') return t('agent · {name}', { name: author.agent ?? author.name });
+  return authorName(author, side, names);
 }
 
 export function authorName(author: CommentAuthor, side: Side, names: AuthorNames): string {
@@ -206,10 +235,20 @@ export function CommentList({
             {!grouped && (
               <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
                 <AuthorAvatar author={comment.author} side={side} />
-                <span className="font-medium text-vk-text-low">
-                  {authorName(comment.author, side, { peerLabel, myLabel })}
-                </span>
-                {agentish && (
+                {comment.author.displayName !== null ? (
+                  // Discord identity: the display name, then the role as a caption
+                  <>
+                    <span className="font-medium text-vk-text-high">{comment.author.displayName}</span>
+                    <span className="text-xs font-light text-vk-text-low">
+                      {authorRole(comment.author, side, { peerLabel, myLabel })}
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-medium text-vk-text-low">
+                    {authorName(comment.author, side, { peerLabel, myLabel })}
+                  </span>
+                )}
+                {agentish && comment.author.displayName === null && (
                   <span className="inline-flex h-[18px] items-center rounded-sm bg-vk-bg-panel px-[5px] text-xs text-vk-text-low">
                     {t('agent')}
                   </span>
@@ -266,6 +305,8 @@ export interface CommentComposerProps {
   errorText?: (err: unknown) => string;
   className?: string;
   textareaRef?: Ref<HTMLTextAreaElement>;
+  /** Nothing can be sent yet (e.g. no recipient chosen). */
+  disabled?: boolean;
 }
 
 /** The VK comment box: textarea, hint and the round send button; Ctrl/⌘+Enter sends. */
@@ -277,12 +318,13 @@ export function CommentComposer({
   errorText,
   className,
   textareaRef,
+  disabled = false,
 }: CommentComposerProps) {
   const id = useId();
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const empty = value.trim().length === 0;
+  const empty = value.trim().length === 0 || disabled;
 
   const send = async () => {
     if (empty || sending) return;

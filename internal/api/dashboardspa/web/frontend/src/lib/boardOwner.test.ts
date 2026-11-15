@@ -9,6 +9,7 @@ import {
 } from './boardOwner';
 
 const RESULT: PeerBoardsResult = {
+  ownLogin: null,
   heartbeatSeconds: 900,
   staleAfterSeconds: 1500,
   peers: [

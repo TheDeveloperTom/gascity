@@ -2,7 +2,14 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectMissing, resetMissing, setLocale } from '../../i18n';
 import { parsePeerBoards, type PeerComment } from '../../supervisor/peerBoardReads';
-import { peerBody, peerThread } from '../../test/fixtures/peerBoards';
+import {
+  AVATAR_BASE,
+  DEPUTY_DISCORD,
+  peerBody,
+  peerThread,
+  RICHARD_DISCORD,
+  RICH_MAYOR_DISCORD,
+} from '../../test/fixtures/peerBoards';
 import { CommentComposer, CommentList } from './CommentThread';
 
 // vk-final part 4: the vibe-kanban comment look (IssueCommentsSection
@@ -76,6 +83,47 @@ describe('CommentList', () => {
     renderList({ acks: new Set(['bd-1']) });
     expect(within(items()[0]!).getByText('✓ принято')).toBeTruthy();
     expect(collectMissing()).toEqual([]);
+  });
+});
+
+describe('Discord identity (owner 15.11)', () => {
+  function withIdentity(): readonly PeerComment[] {
+    const thread = peerThread();
+    thread.comments[0]!.author = RICH_MAYOR_DISCORD;
+    thread.comments[2]!.author = RICHARD_DISCORD as never;
+    thread.comments[4]!.author = DEPUTY_DISCORD as never;
+    return parsePeerBoards(peerBody({ threads: [thread] })).peers[0]!.threads[0]!.comments;
+  }
+
+  it('the avatar image, the display name, and the role caption', () => {
+    renderList({ comments: withIdentity() });
+    const mayor = items()[0]!;
+    const img = within(mayor).getByTestId('avatar-image') as HTMLImageElement;
+    expect(img.getAttribute('src')).toBe(`${AVATAR_BASE}/111111111111111111.png`);
+    expect(within(mayor).getByText('Richard’s Mayor')).toBeTruthy();
+    expect(within(mayor).getByText('Мэр Ричарда')).toBeTruthy();
+    // the side colour stays
+    expect(mayor.getAttribute('data-side')).toBe('peer');
+    const richard = items()[2]!;
+    expect(within(richard).getByText('richard.dev')).toBeTruthy();
+    expect(within(richard).getByText('Ричард')).toBeTruthy();
+    const deputy = items().find((el) => within(el).queryByText('Deputy') !== null)!;
+    expect(within(deputy).getByText('агент · deputy')).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('a broken avatar falls back to the glyph or initials', () => {
+    renderList({ comments: withIdentity() });
+    const mayor = items()[0]!;
+    fireEvent.error(within(mayor).getByTestId('avatar-image'));
+    expect(within(mayor).queryByTestId('avatar-image')).toBeNull();
+    expect(within(mayor).getByTestId('glyph-mayor')).toBeTruthy();
+  });
+
+  it('no identity: today’s rendering (glyph or initials, role as the name)', () => {
+    renderList();
+    expect(within(items()[0]!).queryByTestId('avatar-image')).toBeNull();
+    expect(within(items()[0]!).getByText('Мэр Ричарда')).toBeTruthy();
   });
 });
 

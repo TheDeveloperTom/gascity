@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { parsePeerBoards } from '../supervisor/peerBoardReads';
 import { peerBody, peerTopics } from '../test/fixtures/peerBoards';
 import {
-  ownLoginOf,
   RESOLVED_WINDOW_MS,
   topicNeedsOf,
   topicSections,
   topicsForCard,
+  topicTarget,
   unreadIdsOf,
   waitingOn,
 } from './peerTopics';
@@ -59,29 +59,66 @@ describe('unread', () => {
   });
 });
 
+// Security scan (15.11): a card's topics are matched only on trusted keys —
+// the peer whose board carries the topic, and our own login from the city
+// service — never on the city a peer writes into `topic.card`.
 describe('topics linked to a card', () => {
-  it('his card: topics whose card is {his login, rig, id}', () => {
-    const found = topicsForCard(result(), { peerLogin: 'rich', rig: 'crm-api', id: 'dw-ab12' });
+  /** Two peers, rich and bob, each with their own board. */
+  function twoPeers(richTopics: unknown[], bobTopics: unknown[] = []) {
+    const body = peerBody({ topics: richTopics });
+    const bob = structuredClone(body.peers[0]!) as Record<string, unknown>;
+    bob.login = 'bob';
+    bob.person = { name: 'Боб', genitive: 'Боба', initial: 'Б' };
+    bob.topics = bobTopics;
+    body.peers.push(bob as (typeof body.peers)[number]);
+    return parsePeerBoards({ ...body, own_login: 'me' });
+  }
+  const topic = (id: string, card: unknown) => ({ ...peerTopics()[2]!, topic_id: id, card });
+
+  it('his card: topics from his board whose card is {his login, rig, id}', () => {
+    const found = topicsForCard(result(), { mine: false, city: 'rich', rig: 'crm-api', id: 'dw-ab12' });
     expect(found.map((f) => [f.login, f.topic.title])).toEqual([['rich', 'Перезагрузка общего CI в 22:00']]);
-    expect(topicsForCard(result(), { peerLogin: 'rich', rig: 'devwork', id: 'dw-ab12' })).toEqual([]);
+    expect(topicsForCard(result(), { mine: false, city: 'rich', rig: 'devwork', id: 'dw-ab12' })).toEqual([]);
   });
 
-  it('my card: topics whose card is in a city that is not a peer, same rig and id', () => {
-    const found = topicsForCard(result(), { peerLogin: null, rig: 'devwork', id: 'dw-ab12' });
+  it('a topic from peer A is never shown on peer B’s card', () => {
+    // rich's board claims a topic about bob's card
+    const res = twoPeers([topic('tp-x', { city: 'bob', rig: 'devwork', id: 'dw-1' })]);
+    expect(topicsForCard(res, { mine: false, city: 'bob', rig: 'devwork', id: 'dw-1' })).toEqual([]);
+    expect(topicsForCard(res, { mine: false, city: 'rich', rig: 'devwork', id: 'dw-1' })).toEqual([]);
+  });
+
+  it('my card: only topics whose card city is OUR login (from the city service)', () => {
+    const res = parsePeerBoards({ ...peerBody({ topics: peerTopics() }), own_login: 'me' });
+    const found = topicsForCard(res, { mine: true, city: 'me', rig: 'devwork', id: 'dw-ab12' });
     expect(found.map((f) => [f.login, f.topic.title])).toEqual([['rich', 'Кто обновляет Node 24']]);
+  });
+
+  it('a hostile peer claiming our card under another city name gets nothing', () => {
+    const res = twoPeers([
+      topic('tp-evil', { city: 'evil', rig: 'devwork', id: 'dw-ab12' }),
+      topic('tp-bob', { city: 'bob', rig: 'devwork', id: 'dw-ab12' }),
+    ]);
+    expect(topicsForCard(res, { mine: true, city: 'me', rig: 'devwork', id: 'dw-ab12' })).toEqual([]);
+  });
+
+  it('our login unknown: our cards show no topics', () => {
+    expect(topicsForCard(result(), { mine: true, city: null, rig: 'devwork', id: 'dw-ab12' })).toEqual([]);
   });
 });
 
-describe('ownLoginOf', () => {
-  it('learns our login from the topics: our topic’s city, or a peer topic’s `peer`', () => {
-    expect(ownLoginOf(result())).toBe('me');
-    const theirsOnly = peerTopics().filter((tp) => tp.mine === false);
-    expect(ownLoginOf(result(theirsOnly))).toBe('me');
-  });
-
-  it('no topics: unknown', () => {
-    expect(ownLoginOf(result([]))).toBeNull();
-    expect(ownLoginOf(null)).toBeNull();
+describe('postable topic', () => {
+  it('a topic may be posted to only via the peer whose board carries it, owned by that peer or by us', () => {
+    const res = parsePeerBoards({ ...peerBody({ topics: peerTopics() }), own_login: 'me' });
+    const [open, ours] = res.peers[0]!.topics;
+    expect(topicTarget(open!, 'rich', 'rich', 'me')).toEqual({ city: 'rich', topicId: 'tp-aaaaaaaaaaaaaaaaaaaa' });
+    expect(topicTarget(ours!, 'rich', 'rich', 'me')).toEqual({ city: 'me', topicId: 'tp-bbbbbbbbbbbbbbbbbbbb' });
+    // the board it came from is not the peer we would post to
+    expect(topicTarget(open!, 'rich', 'bob', 'me')).toBeNull();
+    // a topic city that is neither the peer nor us
+    expect(topicTarget({ ...open!, city: 'evil' }, 'rich', 'rich', 'me')).toBeNull();
+    // our login unknown: only the peer's own topics
+    expect(topicTarget(ours!, 'rich', 'rich', null)).toBeNull();
   });
 });
 
