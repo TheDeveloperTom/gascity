@@ -471,8 +471,23 @@ describe('PR url safety (agents write card metadata, so the url is untrusted)', 
     });
   });
 
-  it('keeps an http PR url', () => {
-    expect(prWith('http://git.local/o/r/pull/512')?.url).toBe('http://git.local/o/r/pull/512');
+  // Review M4: an agent-written url may point anywhere, so only a GitHub pull
+  // request page becomes a link; the number still shows as text.
+  it.each([
+    ['http://github.com/o/r/pull/512'],
+    ['https://evil.example/o/r/pull/512'],
+    ['https://github.com.evil.example/o/r/pull/512'],
+    ['https://github.com/o/r/issues/512'],
+    ['https://github.com/o/r/pull/512/../../../settings'],
+    ['https://user@github.com/o/r/pull/512'],
+  ])('keeps %s as text, not a link', (url) => {
+    expect(prWith(url)).toEqual({ number: '512', url: null });
+  });
+
+  it('keeps a GitHub pull url with a trailing path such as /files', () => {
+    expect(prWith('https://github.com/o/r/pull/512/files')?.url).toBe(
+      'https://github.com/o/r/pull/512/files',
+    );
   });
 });
 

@@ -258,10 +258,14 @@ function lastClosedMember(route: Route): SupervisorBead | null {
   return last;
 }
 
+const GITHUB_PULL_PATH = /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+(?:\/[A-Za-z0-9_-]*)?$/;
+
 /**
- * An external link from bead metadata, or null. Agents write card metadata, so
- * the value is untrusted: only an absolute http(s) URL may become an href
- * (`javascript:`, `data:`, protocol-relative and unparsable values may not).
+ * A PR link from bead metadata, or null. Agents write card metadata, so the
+ * value is untrusted: only an https GitHub pull-request page may become an
+ * href. `javascript:`, `data:`, plain http, other hosts, credentials and
+ * non-pull paths may not (security finding; review M4). The path is checked
+ * after the URL parser has resolved any `..` segments.
  */
 export function safeExternalUrl(raw: string): string | null {
   if (raw.length === 0) return null;
@@ -271,7 +275,9 @@ export function safeExternalUrl(raw: string): string | null {
   } catch {
     return null;
   }
-  return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') return null;
+  if (parsed.username !== '' || parsed.password !== '' || parsed.port !== '') return null;
+  return GITHUB_PULL_PATH.test(parsed.pathname) ? parsed.href : null;
 }
 
 /** The PR of a task: number and url each from the first bead (task first,
