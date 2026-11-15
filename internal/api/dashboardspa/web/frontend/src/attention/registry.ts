@@ -19,13 +19,15 @@ import { elapsedSince, formatElapsed } from './elapsed';
 import { runDetailHref } from '../supervisor/runHref';
 import { agentNeedsYouReasonLabel } from './agentNeedsYou';
 import { eventTitle } from './eventTitles';
+import { beadRowSummary } from './rowCopy';
 import { agentDisplayName } from '../lib/agentNames';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
 import type {
   AgentResponse,
   Bead,
   HealthOutputBody,
   Message,
+  StatusBody,
   TypedEventStreamEnvelope,
 } from 'gas-city-dashboard-shared/gc-supervisor';
 import type { AgentPendingInteraction } from '../supervisor/agentPending';
@@ -46,6 +48,12 @@ export interface HealthAttentionFacts {
   supervisor?: SupervisorHealthState;
   trend?: DoltNomsTrend;
   dashboardError?: string;
+  /**
+   * The city status read (store maintenance, agent quarantine). Its lamp
+   * states are city problems here, so Home, the rail and Health count one
+   * slice (review I-4). Absent when the read failed: no problem is guessed.
+   */
+  cityStatus?: StatusBody;
 }
 
 export interface RunsAttentionFacts {
@@ -125,6 +133,10 @@ export interface BeadsAttentionFacts {
   operatorAliases?: readonly string[];
   /** Route beads (workflow roots and steps) split off `items` (withRoutes). */
   routeItems?: readonly Bead[];
+  /** False when the leg that supplied the routes was truncated. */
+  routesComplete?: boolean;
+  /** The decision queue read came back incomplete (a backend failed). */
+  decisionsPartial?: boolean;
 }
 
 export interface MailAttentionFacts {
@@ -144,6 +156,8 @@ export interface ActivityAttentionFacts {
 }
 
 export interface AttentionContributorFacts {
+  /** The live update stream's state (run-summary SSE): open, connecting, … */
+  liveFeed?: string;
   activity?: ActivityAttentionFacts;
   agents?: AgentsAttentionFacts;
   beads?: BeadsAttentionFacts;
@@ -199,7 +213,7 @@ function contributorForDomain(
     case 'beads':
       return beadsContributor(facts.beads);
     case 'health':
-      return healthContributor(facts.health);
+      return healthContributor(facts.health, facts.liveFeed);
     case 'mail':
       return mailContributor(facts.mail);
     case 'runs':
@@ -207,12 +221,79 @@ function contributorForDomain(
   }
 }
 
-function healthContributor(facts: HealthAttentionFacts | undefined): AttentionContributor {
+function healthContributor(
+  facts: HealthAttentionFacts | undefined,
+  liveFeed: string | undefined,
+): AttentionContributor {
   return {
     id: 'health:derived',
     domain: 'health',
-    getItems: () => deriveHealthAttention(facts),
+    getItems: () => [
+      ...liveFeedAttention(liveFeed),
+      ...deriveHealthAttention(facts),
+      ...cityStatusAttention(facts?.cityStatus),
+    ],
   };
+}
+
+/** Still connecting is not trouble; only a dropped or degraded stream is. */
+function liveFeedAttention(liveFeed: string | undefined): readonly AttentionItem[] {
+  if (liveFeed === undefined || liveFeed === 'open' || liveFeed === 'connecting') return [];
+  return [
+    domainWatch('activity', {
+      id: 'activity:live-feed',
+      title:
+        liveFeed === 'degraded'
+          ? t('Live updates are degraded')
+          : t('Live updates are disconnected'),
+      href: '/activity',
+    }),
+  ];
+}
+
+/**
+ * The former Home lamps (HO-11) as city problems. A partial status says
+ * nothing reliable, so it adds none; Home names it as unreadable.
+ */
+function cityStatusAttention(status: StatusBody | undefined): readonly AttentionItem[] {
+  if (status === undefined || status.partial === true) return [];
+  const items: AttentionItem[] = [];
+  const store = status.store_health;
+  if (store !== undefined) {
+    const lastGc = store.last_gc_status?.trim();
+    if (lastGc && lastGc !== 'success') {
+      items.push(healthWatch({ id: 'health:store-maintenance', title: t('Task store maintenance failed') }));
+    } else if (store.warning) {
+      items.push(
+        healthWatch({ id: 'health:store-maintenance', title: t('Task store maintenance is overdue') }),
+      );
+    }
+  }
+  if (status.agents.quarantined > 0) {
+    items.push({
+      ...healthWatch({
+        id: 'health:agents-quarantined',
+        title: tn(status.agents.quarantined, {
+          one: '{n} agent quarantined',
+          other: '{n} agents quarantined',
+        }),
+      }),
+      href: '/agents',
+    });
+  }
+  if (status.agents.suspended > 0) {
+    items.push({
+      ...healthWatch({
+        id: 'health:agents-suspended',
+        title: tn(status.agents.suspended, {
+          one: '{n} agent suspended',
+          other: '{n} agents suspended',
+        }),
+      }),
+      href: '/agents',
+    });
+  }
+  return items;
 }
 
 function runsContributor(facts: RunsAttentionFacts | undefined): AttentionContributor {
@@ -469,8 +550,11 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     nowMs,
   )) {
     const builder = row.severity === 'attention' ? domainAttention : domainWatch;
+    // Owner only when the bead NAMES the owner (review C1); an unknown hold
+    // such as `hold:plan` names nobody and is city work.
     const waitsOnOwner =
       row.reason === 'waiting-human' &&
+      row.waitingOnNamed === true &&
       row.waitingOn !== undefined &&
       ownerAliases.has(row.waitingOn.trim().toLowerCase());
     items.push(
@@ -479,7 +563,10 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
         ...(waitsOnOwner ? { audience: 'owner' as const } : {}),
         ref: row.beadId,
         title: row.title,
-        summary: withoutLeadingTitle(row.summary, row.title, row.reason),
+        summary:
+          row.parts === undefined
+            ? withoutLeadingTitle(row.summary, row.title, row.reason)
+            : beadRowSummary(row.parts),
         href: beadHref(row.beadId),
         updatedAt: row.updatedAt,
       }),

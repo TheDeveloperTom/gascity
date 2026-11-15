@@ -38,6 +38,7 @@ function show(props: Partial<Props> = {}) {
         tasks={tasks}
         issues={[]}
         unreadable={[]}
+        readiness={{ state: 'ready' }}
         {...props}
       />
     </MemoryRouter>,
@@ -60,7 +61,13 @@ describe('CityStrip', () => {
     render(
       <MemoryRouter>
         <TasksInFlight stages={tasks} />
-        <CityStrip agents={{ running: 2, total: 15 }} tasks={tasks} issues={[]} unreadable={[]} />
+        <CityStrip
+          agents={{ running: 2, total: 15 }}
+          tasks={tasks}
+          issues={[]}
+          unreadable={[]}
+          readiness={{ state: 'ready' }}
+        />
       </MemoryRouter>,
     );
     expect(valueOf('Задачи').textContent).toContain('2 в работе, 16 в очереди');
@@ -73,6 +80,30 @@ describe('CityStrip', () => {
     show({ agents: 'unavailable' });
     expect(valueOf('Агенты').textContent).toBe('не удалось прочитать');
     expect(valueOf('Агенты').textContent).not.toMatch(/0 из 0/);
+  });
+
+  it('unreadable board says so in the tasks row', () => {
+    show({ tasks: { state: 'unavailable', inFlight: [], queued: 0, outsideWindow: 0 } });
+    expect(valueOf('Tasks').textContent).toBe('could not read');
+  });
+
+  // Review I-3: no zero stands in for "not read yet".
+  it('issues are not zero while the city reads load', () => {
+    show({ readiness: { state: 'loading' } });
+    const problems = valueOf('Problems');
+    expect(problems.querySelector('[data-count]')).toBeNull();
+    expect(problems.textContent).toContain('reading…');
+    expect(problems.textContent).not.toMatch(/\b0\b/);
+  });
+
+  it('degraded city reads show the count and name what failed', () => {
+    setLocale('ru');
+    show({
+      issues: [issue(1)],
+      readiness: { state: 'degraded', reasons: ['City health could not be read'] },
+    });
+    expect(valueOf('Неполадки').querySelector('[data-count]')?.textContent).toBe('1');
+    expect(screen.getByText('Не удалось проверить: здоровье города не прочиталось.')).toBeTruthy();
   });
 
   it('loading tasks are not zero either', () => {

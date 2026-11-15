@@ -6,7 +6,20 @@ import type { OperatorConfig } from '../contexts/OperatorConfigContext';
 import type * as SupervisorClient from '../supervisor/client';
 import type { RunSummary, SourceState } from 'gas-city-dashboard-shared';
 import { composeAttention } from './compose';
-import { deriveCityReadiness, useLiveAttentionContributors } from './liveContributors';
+import {
+  deriveCityReadiness,
+  deriveOwnerReadiness,
+  nextBeadSnapshot,
+  useLiveAttentionContributors,
+} from './liveContributors';
+
+const TASK_FOR_SNAPSHOT = {
+  created_at: '2026-05-29T20:00:00.000Z',
+  id: 'dw-1',
+  issue_type: 'task',
+  status: 'open',
+  title: 'T',
+};
 
 function freshRuns(): SourceState<RunSummary> {
   return {
@@ -35,6 +48,80 @@ function freshRuns(): SourceState<RunSummary> {
     },
   } as SourceState<RunSummary>;
 }
+
+describe('deriveOwnerReadiness', () => {
+  const beads = { decisionLabel: 'x', decisions: [] };
+  const mail = { items: [] };
+
+  it('ready only when both reads completed under a loaded config', () => {
+    expect(deriveOwnerReadiness(beads, mail, 'ready')).toEqual({ state: 'ready' });
+  });
+
+  // Review I4: mail resolved while the bead read is pending is still loading.
+  it('loading while the bead read is pending even if mail resolved', () => {
+    expect(deriveOwnerReadiness(undefined, mail, 'ready')).toEqual({ state: 'loading' });
+  });
+
+  // Review I1: a partial read is not a complete one.
+  it('a partial decision queue or mailbox is degraded', () => {
+    expect(
+      deriveOwnerReadiness(
+        { ...beads, decisionsPartial: true },
+        { ...mail, partial: true },
+        'ready',
+      ),
+    ).toEqual({
+      state: 'degraded',
+      reasons: [
+        'Questions from the Mayor were read only in part',
+        'Your mail was read only in part',
+      ],
+    });
+  });
+
+  // Review I2: the fallback identity must not give an all-clear.
+  it('loading until the operator config has loaded', () => {
+    expect(deriveOwnerReadiness(beads, mail, 'loading')).toEqual({ state: 'loading' });
+  });
+
+  it('a failed operator config is degraded with its reason', () => {
+    expect(deriveOwnerReadiness(beads, mail, 'failed')).toEqual({
+      state: 'degraded',
+      reasons: ['Your settings could not be read'],
+    });
+  });
+});
+
+describe('nextBeadSnapshot', () => {
+  const good = {
+    decisionLabel: 'x',
+    items: [TASK_FOR_SNAPSHOT],
+    routeItems: [],
+    routesComplete: false,
+  };
+  it('a good read is fresh and carries routesComplete', () => {
+    expect(nextBeadSnapshot(undefined, good, 'T1')).toMatchObject({
+      status: 'fresh',
+      fetchedAt: 'T1',
+      routesComplete: false,
+    });
+  });
+  it('a failed refresh keeps the last good read as stale', () => {
+    const first = nextBeadSnapshot(undefined, good, 'T1');
+    const next = nextBeadSnapshot(first, { decisionLabel: 'x', error: 'down' }, 'T2');
+    expect(next).toMatchObject({ status: 'stale', fetchedAt: 'T1' });
+    expect(next?.items).toEqual(first?.items);
+  });
+  it('a failure with no earlier read is unavailable', () => {
+    expect(nextBeadSnapshot(undefined, { decisionLabel: 'x', error: 'down' }, 'T2')).toMatchObject({
+      status: 'unavailable',
+      items: [],
+    });
+  });
+  it('no facts yet is still pending', () => {
+    expect(nextBeadSnapshot(undefined, undefined, undefined)).toBeUndefined();
+  });
+});
 
 describe('composeAttention city readiness', () => {
   it('carries the city readiness it is given, ready by default', () => {
@@ -217,6 +304,24 @@ describe('useLiveAttentionContributors owner readiness', () => {
         'Events could not be read',
       ],
     });
+  });
+
+  it('a failed bead list gives an unavailable snapshot, not a pending one', async () => {
+    mockSupervisorApi.listBeads.mockImplementation((_city, query) =>
+      query?.label !== undefined
+        ? Promise.resolve({ total: 0, items: [] })
+        : Promise.reject(new Error('list down')),
+    );
+    const { result } = renderHook(() => useLiveAttentionContributors(operator, undefined));
+    await waitFor(() => expect(result.current.beadSnapshot?.status).toBe('unavailable'));
+  });
+
+  it('owner readiness waits for the operator config', async () => {
+    const { result } = renderHook(() =>
+      useLiveAttentionContributors(operator, undefined, { configState: 'loading' }),
+    );
+    await waitFor(() => expect(result.current.beadSnapshot).toBeDefined());
+    expect(result.current.ownerReadiness).toEqual({ state: 'loading' });
   });
 
   it('beadSnapshot carries tasks and route items', async () => {

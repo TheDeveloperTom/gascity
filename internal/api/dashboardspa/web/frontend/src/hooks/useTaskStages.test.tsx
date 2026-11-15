@@ -58,8 +58,17 @@ function wrap(snapshot: BeadSnapshot | undefined) {
   );
 }
 
-function stagesOf(items: SupervisorBead[], routeItems: SupervisorBead[]) {
-  const snapshot = { items, routeItems, fetchedAt: '2026-11-15T08:00:00Z' };
+function stagesOf(
+  items: SupervisorBead[],
+  routeItems: SupervisorBead[],
+  extra: Partial<BeadSnapshot> = {},
+) {
+  const snapshot: BeadSnapshot = {
+    items,
+    routeItems,
+    fetchedAt: '2026-11-15T08:00:00Z',
+    ...extra,
+  };
   return renderHook(() => useTaskStages(), { wrapper: wrap(snapshot) }).result.current;
 }
 
@@ -129,16 +138,90 @@ describe('useTaskStages', () => {
         task('dw-c', 'Ревью', 'in_progress'),
       ],
       [
+        root('Ra', 'dw-a', { status: 'in_progress' }),
+        step('Ra', 'implement', 'Implement', 'working', 'in_progress'),
+        root('Rb', 'dw-b', { status: 'in_progress' }),
+        step('Rb', 'implement', 'Implement', 'working', 'in_progress'),
         root('Rc', 'dw-c', { status: 'in_progress' }),
         step('Rc', 'task-review', 'Review', 'review', 'in_progress'),
       ],
     );
     expect(stages.inFlight.map((t) => t.id)).toEqual(['dw-c', 'dw-b', 'dw-a']);
-    expect(stages.inFlight[1]?.href).toBe('/beads?bead=dw-b');
+  });
+
+  // Review I-1: the stage comes from the run's started steps, never from the
+  // task's own in_progress status.
+  it('an in-progress task whose new run has not started is queued, not at a stage', () => {
+    const stages = stagesOf(
+      [task('dw-4', 'Повторный запуск', 'in_progress')],
+      [root('R4', 'dw-4'), step('R4', 'task-review', 'Review round 1', 'review', 'open')],
+    );
+    expect(stages.inFlight).toEqual([]);
+    expect(stages.queued).toBe(1);
+  });
+
+  it('an in-progress task whose run ended is not shown as working', () => {
+    const stages = stagesOf(
+      [task('dw-5', 'Прогон кончился', 'in_progress')],
+      [
+        root('R5', 'dw-5', { status: 'closed' }),
+        step('R5', 'implement', 'Implement', 'working', 'closed'),
+      ],
+    );
+    expect(stages.inFlight).toEqual([]);
+    expect(stages.queued).toBe(0);
+  });
+
+  it('an in-progress task with no run in a complete window is not working', () => {
+    const stages = stagesOf([task('dw-6', 'Без прогона', 'in_progress')], []);
+    expect(stages.inFlight).toEqual([]);
+  });
+
+  it('an in-progress task with no visible run in an incomplete window links to the bead', () => {
+    const stages = stagesOf([task('dw-7', 'Окно неполное', 'in_progress')], [], {
+      routesComplete: false,
+    });
+    expect(stages.inFlight.map((t) => [t.id, t.stage, t.href])).toEqual([
+      ['dw-7', 'working', '/beads?bead=dw-7'],
+    ]);
+  });
+
+  it('a stopped task is not in flight even while its run is live', () => {
+    const stages = stagesOf(
+      [
+        task('dw-8', 'Остановлена', 'in_progress'),
+        {
+          ...task('dw-stop', 'stop card', 'open'),
+          metadata: { 'devwork.stopped_card': 'dw-8' },
+        },
+      ],
+      [
+        root('R8', 'dw-8', { status: 'in_progress' }),
+        step('R8', 'implement', 'Implement', 'working', 'in_progress'),
+      ],
+    );
+    expect(stages.inFlight.map((t) => t.id)).not.toContain('dw-8');
   });
 
   it('loading while no snapshot', () => {
     const { result } = renderHook(() => useTaskStages(), { wrapper: wrap(undefined) });
     expect(result.current).toEqual({ state: 'loading', inFlight: [], queued: 0, outsideWindow: 0 });
+  });
+
+  // Review I-2: a failed board read says so instead of loading forever.
+  it('unavailable when the bead list could not be read', () => {
+    const snapshot: BeadSnapshot = {
+      items: [],
+      routeItems: [],
+      fetchedAt: '2026-11-15T08:00:00Z',
+      status: 'unavailable',
+    };
+    const { result } = renderHook(() => useTaskStages(), { wrapper: wrap(snapshot) });
+    expect(result.current).toEqual({
+      state: 'unavailable',
+      inFlight: [],
+      queued: 0,
+      outsideWindow: 0,
+    });
   });
 });

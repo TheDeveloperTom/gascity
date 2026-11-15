@@ -67,6 +67,15 @@ export function TasksInFlight({ stages }: { stages: TaskStages }) {
       </h2>
       {stages.state === 'loading' ? (
         <p className="py-3 text-body text-fg-muted">{t('Reading the board…')}</p>
+      ) : stages.state === 'unavailable' ? (
+        <p className="border-t border-rule py-3 text-body">
+          <Link
+            to="/beads"
+            className="focus-mark text-fg underline underline-offset-2 hover:text-fg-muted"
+          >
+            {t('Could not read the board')}
+          </Link>
+        </p>
       ) : stages.inFlight.length === 0 ? (
         <p className="border-t border-rule py-3 text-body text-fg-muted">
           {t('Nothing is going on right now')}

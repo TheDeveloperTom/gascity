@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { Link } from 'react-router';
-import type { AttentionItem } from '../../attention/compose';
+import type { AttentionItem, CityReadiness } from '../../attention/compose';
 import type { TaskStages } from '../../hooks/useTaskStages';
 import { t } from '../../i18n';
 import { FoldList } from '../FoldList';
@@ -24,6 +24,7 @@ function agentsText(agents: CityAgents): string {
 
 function tasksText(tasks: TaskStages): string {
   if (tasks.state === 'loading') return t('reading…');
+  if (tasks.state === 'unavailable') return t('could not read');
   return t('{inFlight} in progress, {queued} queued', {
     inFlight: tasks.inFlight.length,
     queued: tasks.queued,
@@ -35,14 +36,18 @@ export function CityStrip({
   tasks,
   issues,
   unreadable,
+  readiness,
 }: {
   agents: CityAgents;
   tasks: TaskStages;
   issues: readonly AttentionItem[];
   unreadable: readonly AttentionItem[];
+  /** The city slice's readiness: no problem count until it has been read. */
+  readiness: CityReadiness;
 }) {
   const headingId = useId();
   const count = issues.length;
+  const loading = readiness.state === 'loading';
   return (
     <section aria-labelledby={headingId} className="mb-10">
       <h2 id={headingId} className="mb-2 text-title font-semibold text-fg">
@@ -63,9 +68,13 @@ export function CityStrip({
           <dt className="text-body text-fg-muted">{t('Problems')}</dt>
           <dd className="min-w-0">
             <span className="flex items-baseline gap-4">
-              <span data-count className={`${NUMBER} ${count > 0 ? 'text-warn' : 'text-fg'}`}>
-                {count}
-              </span>
+              {loading ? (
+                <span className="text-body text-fg-muted">{t('reading…')}</span>
+              ) : (
+                <span data-count className={`${NUMBER} ${count > 0 ? 'text-warn' : 'text-fg'}`}>
+                  {count}
+                </span>
+              )}
               <Link
                 to="/health"
                 className="focus-mark ml-auto text-body text-fg underline underline-offset-2 hover:text-fg-muted"
@@ -105,6 +114,13 @@ export function CityStrip({
           </dd>
         </div>
       </dl>
+      {readiness.state === 'degraded' && (
+        <p className="mt-2 text-label text-fg-faint [overflow-wrap:anywhere]">
+          {t('Could not check: {reasons}.', {
+            reasons: readiness.reasons.map((reason) => t(reason)).join(', '),
+          })}
+        </p>
+      )}
       {unreadable.length > 0 && (
         <p className="mt-2 text-label text-fg-faint [overflow-wrap:anywhere]">
           {t('Could not read: {names}', {

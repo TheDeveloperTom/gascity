@@ -104,6 +104,9 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Could not check: {reasons}.': 'Не удалось проверить: {reasons}.',
   'Questions from the Mayor could not be read': 'вопросы Мэра не прочитались',
   'Your mail could not be read': 'почта не прочиталась',
+  'Questions from the Mayor were read only in part': 'вопросы Мэра прочитались не полностью',
+  'Your mail was read only in part': 'почта прочиталась не полностью',
+  'Your settings could not be read': 'настройки не прочитались',
   // City readiness reasons (attention/liveContributors deriveCityReadiness).
   'Agents could not be read': 'агенты не прочитались',
   'Tasks could not be read': 'задачи не прочитались',
@@ -117,6 +120,7 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   // Tasks in flight (components/home/TasksInFlight).
   'What is going on': 'Что идёт',
   'Reading the board…': 'Читаю доску…',
+  'Could not read the board': 'Не удалось прочитать доску',
   'Nothing is going on right now': 'Сейчас ничего не идёт',
   Working: 'Пишется код',
   PR: 'Вливание',
@@ -141,6 +145,22 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'Live updates are degraded': 'Живые обновления работают с перебоями',
   'Task store maintenance is overdue': 'Обслуживание хранилища задач просрочено',
 
+  // Attention row summaries (attention/rowCopy).
+  'someone outside the city': 'кого-то вне города',
+  'nobody is on it': 'никто не взялся',
+  '{who} has no live session': 'у {who} нет живой сессии',
+  'the session ended': 'сессия закончилась',
+  'the session is {state}': 'сессия в состоянии {state}',
+  'no activity for {age}': 'нет активности {age}',
+  'Asks for help': 'Просит помощи',
+  'Nobody has taken it for {age}': 'Никто не берёт уже {age}',
+  'On hold': 'На паузе',
+  'On hold for {age}': 'На паузе уже {age}',
+  'Waiting on {who}': 'Ждёт: {who}',
+  'Waiting on {who} for {age}': 'Ждёт: {who}, уже {age}',
+  'Stalled: {cause}': 'Застряла: {cause}',
+  'Stalled for {age}: {cause}': 'Застряла {age}: {cause}',
+
   // Attention rows (attention/registry).
   'A task outside this view': 'Задача вне окна',
   'awaiting input': 'ждёт ответа',
@@ -152,6 +172,8 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   unclaimed: 'никто не взял',
 
   // Plurals.
+  '{n} hours': { one: '{n} час', few: '{n} часа', many: '{n} часов' },
+  '{n} days': { one: '{n} день', few: '{n} дня', many: '{n} дней' },
   '{n} agents quarantined': {
     one: '{n} агент на карантине',
     few: '{n} агента на карантине',

@@ -461,7 +461,6 @@ describe('<CockpitHomePage>', () => {
     );
     expect(screen.getByTestId('pipeline')).toBeTruthy();
     expect(screen.getByTestId('context-meters')).toBeTruthy();
-    expect(screen.getByText('Live updates are disconnected')).toBeTruthy();
     expect(await screen.findByText('could not read')).toBeTruthy();
     expect(screen.getAllByText(/unavailable/i).length).toBeGreaterThan(0);
   });
@@ -531,17 +530,8 @@ describe('<CockpitHomePage>', () => {
     expect(screen.queryByRole('link', { name: 'active sessions: 99' })).toBeNull();
   });
 
-  it('reports failed store maintenance when the size ratio is within threshold', async () => {
-    const current = await mocks.cityStatus();
-    mocks.cityStatus.mockResolvedValue({
-      ...current,
-      store_health: { ...current.store_health, last_gc_status: 'failed', warning: false },
-    });
-
-    render(router(<CockpitHomePage />));
-
-    expect(await screen.findByText('Task store maintenance failed')).toBeTruthy();
-  });
+  // Review I-4: store maintenance is a city problem in the attention model
+  // (attention/registry.lamps.test.ts); Home lists it from the city slice.
 
   it('marks partial status lamps unknown and reports failed store maintenance', async () => {
     const current = await mocks.cityStatus();
