@@ -1,0 +1,45 @@
+/*
+ * Portions of this file are adapted from vibe-kanban
+ * (https://github.com/BloopAI/vibe-kanban, upstream commit 3f095f0186f6).
+ *
+ * Copyright BloopAI (vibe-kanban authors)
+ *
+ * vibe-kanban's LICENSE leaves its copyright line as the Apache template
+ * placeholder ("Copyright [yyyy] [name of copyright owner]"); the holder above
+ * is taken from its npx-cli/package.json "author" ("bloop") and its GitHub
+ * organisation (BloopAI).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Modified for the Gas City dashboard: VK tokens mapped to the --vk-* aliases;
+ * the running-dot keyframes (not in our Tailwind config) become a pulse with
+ * the design's 1 / 0.6 / 0.3 opacity steps; an aria-label names the state.
+ */
+// Source: vibe-kanban packages/ui/src/components/RunningDots.tsx
+
+import { t } from '../../i18n';
+
+export function RunningDots() {
+  return (
+    <span
+      role="img"
+      aria-label={t('agent at work')}
+      data-running-dots=""
+      className="flex shrink-0 items-center gap-[3px]"
+    >
+      <span className="h-1 w-1 animate-pulse rounded-full bg-vk-brand" />
+      <span className="h-1 w-1 animate-pulse rounded-full bg-vk-brand opacity-60" />
+      <span className="h-1 w-1 animate-pulse rounded-full bg-vk-brand opacity-30" />
+    </span>
+  );
+}

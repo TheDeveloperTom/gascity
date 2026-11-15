@@ -146,7 +146,7 @@ describe('BeadsPage supervisor reads', () => {
       ]),
     ]);
 
-    const boardRow = (await screen.findByText('direct supervisor bead')).closest('li');
+    const boardRow = (await screen.findByText('direct supervisor bead')).closest('article');
     expect(boardRow?.getAttribute('data-attention-severity')).toBe('attention');
   });
 });
