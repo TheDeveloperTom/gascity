@@ -1,0 +1,116 @@
+import { CaretRight } from '@phosphor-icons/react';
+import { useId } from 'react';
+import { Link } from 'react-router';
+import { t, tn } from '../../i18n';
+import type { DiscussContext } from '../../lib/discussWithMayor';
+import type { MilestoneCount, NeedItem as Need } from '../../lib/needsFromMe';
+import { DiscussButton } from '../DiscussButton';
+
+// One «Нужно от меня» card (vk lane 3, Attention / Phone-Needs frames). The
+// card opens as a whole (the decision happens inside it, lane 2); the
+// Mayor's options show read-only. «Обсудить в Discord» sits outside the link
+// so a button never nests inside an anchor.
+
+const SUMMARY_MAX = 280;
+
+/** «3 дня 8 ч», «20 ч», «12 мин». */
+export function waitedText(ms: number): string {
+  const minutes = Math.max(1, Math.floor(ms / 60_000));
+  if (minutes < 60) return t('{n} min', { n: minutes });
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 24) return t('{n} h', { n: hours });
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  const dayText = tn(days, { one: '{n} day', other: '{n} days' });
+  return rest === 0 ? dayText : `${dayText} ${t('{n} h', { n: rest })}`;
+}
+
+export function holdsText(n: number): string {
+  return tn(n, { one: 'holds {n} task', other: 'holds {n} tasks' });
+}
+
+export function breakdownText(breakdown: readonly MilestoneCount[]): string {
+  return breakdown.map((b) => `${b.milestone} ${b.count}`).join(' · ');
+}
+
+/** What the owner is asked for, for the Mayor: ≤ 280 characters. */
+export function discussSummary(need: Need): string {
+  const parts = [need.title];
+  if (need.kind === 'stall' && need.summary !== null) parts.push(need.summary);
+  if (need.holds > 0) parts.push(holdsText(need.holds));
+  const text = parts.join(' · ');
+  return text.length <= SUMMARY_MAX ? text : `${text.slice(0, SUMMARY_MAX - 1)}…`;
+}
+
+export function NeedItem({ need }: { need: Need }) {
+  const titleId = useId();
+  const waited =
+    need.waitedMs === null
+      ? null
+      : need.kind === 'question'
+        ? t('waits for you {time}', { time: waitedText(need.waitedMs) })
+        : t('stuck for {time}', { time: waitedText(need.waitedMs) });
+  const meta = [need.kind === 'question' ? t('The Mayor asks') : null, waited]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
+  const ctx: DiscussContext = {
+    kind: 'need',
+    beadId: need.id,
+    title: need.title,
+    summary: discussSummary(need),
+  };
+  return (
+    <li
+      data-need={need.id}
+      className="min-w-0 rounded-md border border-vk-border bg-vk-bg-panel text-vk-text-normal"
+    >
+      <Link
+        to={need.href}
+        aria-labelledby={titleId}
+        className="focus-mark flex min-h-11 min-w-0 items-start gap-3 rounded-t-md px-4 pb-2 pt-3 hover:bg-vk-bg-secondary"
+      >
+        <div className="min-w-0 flex-1">
+          {meta.length > 0 && <p className="text-label text-vk-text-low">{meta}</p>}
+          <p
+            id={titleId}
+            className="mt-0.5 text-body font-semibold text-vk-text-high [overflow-wrap:anywhere]"
+          >
+            {need.title}
+          </p>
+          {need.summary !== null && (
+            <p className="mt-1 line-clamp-2 text-body [overflow-wrap:anywhere]">{need.summary}</p>
+          )}
+          {need.holds > 0 && (
+            <p className="mt-2 flex flex-wrap gap-x-2 text-label text-vk-text-low">
+              <span className="font-medium text-vk-text-normal">{holdsText(need.holds)}</span>
+              {need.breakdown.length > 0 && (
+                <span title={t('What waits for this')} className="font-vk-mono">
+                  {breakdownText(need.breakdown)}
+                </span>
+              )}
+            </p>
+          )}
+          {need.choices.length > 0 && (
+            <ul aria-label={t('Options from the Mayor')} className="mt-2 flex flex-wrap gap-1.5">
+              {need.choices.map((choice) => (
+                <li
+                  key={choice}
+                  className="rounded border border-vk-border px-2 py-0.5 text-label text-vk-text-normal [overflow-wrap:anywhere]"
+                >
+                  {choice}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <CaretRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-vk-text-low" />
+      </Link>
+      <div className="px-4 pb-3">
+        <DiscussButton
+          ctx={ctx}
+          className="focus-mark inline-flex min-h-11 items-center rounded border border-vk-border px-3 text-label font-medium text-vk-text-high hover:bg-vk-bg-secondary disabled:opacity-50"
+        />
+      </div>
+    </li>
+  );
+}

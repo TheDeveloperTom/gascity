@@ -58,14 +58,26 @@ function TaskRow({ task }: { task: TaskInFlight }) {
   );
 }
 
-export function TasksInFlight({ stages }: { stages: TaskStages }) {
+export function TasksInFlight({
+  stages,
+  heading = true,
+}: {
+  stages: TaskStages;
+  /** False inside a shelf that already names the list («Работает», vk lane 3). */
+  heading?: boolean;
+}) {
   const headingId = useId();
   const footer = stages.state === 'ready' && (stages.queued > 0 || stages.outsideWindow > 0);
   return (
-    <section aria-labelledby={headingId} className="mb-10">
-      <h2 id={headingId} className="mb-2 text-title font-semibold text-fg">
-        {t('What is going on')}
-      </h2>
+    <section
+      {...(heading ? { 'aria-labelledby': headingId } : {})}
+      className={heading ? 'mb-10' : 'min-w-0'}
+    >
+      {heading && (
+        <h2 id={headingId} className="mb-2 text-title font-semibold text-fg">
+          {t('What is going on')}
+        </h2>
+      )}
       {stages.state === 'loading' ? (
         <p className="py-3 text-body text-fg-muted">{t('Reading the board…')}</p>
       ) : stages.state === 'unavailable' ? (

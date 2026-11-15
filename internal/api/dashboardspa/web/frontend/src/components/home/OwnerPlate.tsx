@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { AttentionItem, OwnerReadiness } from '../../attention/compose';
 import { t, tn } from '../../i18n';
 import { MAYOR_QUESTIONS_ON_BOARD } from '../../lib/constants';
+import { ExternalLink } from '../../vk/ExternalLink';
 
 // The owner plate (review §4): an enamel street plate, the one loud thing on
 // Home. It answers one question, "does anything wait for me", in one sentence,
@@ -120,15 +121,13 @@ export function OwnerPlate({
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {item.externalHref !== undefined && (
-                    <a
+                    <ExternalLink
                       href={item.externalHref}
-                      target="_blank"
-                      rel="noreferrer"
                       aria-describedby={titleId}
                       className={ACTION}
                     >
                       {t('Answer in chat')}
-                    </a>
+                    </ExternalLink>
                   )}
                   {item.href !== undefined && (
                     <Link to={item.href} aria-describedby={titleId} className={ACTION}>
