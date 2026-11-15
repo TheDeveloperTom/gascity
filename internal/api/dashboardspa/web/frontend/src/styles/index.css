@@ -138,6 +138,10 @@
     --vk-on-brand: var(--on-plate);
     --vk-error: var(--accent);
     --vk-success: var(--ok);
+    /* vk-final: the two cities' side colours (comments, peer cards). Mine is
+       the brand; the peer's is a calm teal (design Main: #0F766E). */
+    --vk-mine: var(--plate);
+    --vk-peer: 51.1% 0.086 186.4; /* #0F766E */
     /* IBM Plex, self-hosted from @fontsource (imported in main.tsx); never Google Fonts. */
     --vk-font-sans: 'IBM Plex Sans', 'Golos Text Variable', system-ui, sans-serif;
     --vk-font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -170,6 +174,8 @@
     --plate-ring: 64.5% 0.122 265.5; /* #6A8BD8: lighter enamel, ≥4:1 (WCAG 1.4.11) */
     --scrim: 13.2% 0.011 250.2; /* #05080C */
     --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
+    --vk-mine: var(--plate-ring);
+    --vk-peer: 72% 0.11 183; /* lighter teal on the night street */
 
     color-scheme: dark;
   }
@@ -195,6 +201,8 @@
       --plate-ring: 64.5% 0.122 265.5;
       --scrim: 13.2% 0.011 250.2;
       --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
+      --vk-mine: var(--plate-ring);
+      --vk-peer: 72% 0.11 183;
 
       color-scheme: dark;
     }

@@ -12,8 +12,10 @@ import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
 import { asOfClock, boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
 import { usePeerBoards } from '../hooks/usePeerBoards';
-import type { PeerCard } from '../supervisor/peerBoardReads';
+import type { PeerCard, PeerThread } from '../supervisor/peerBoardReads';
+import { PeerComments, threadSize } from '../vk/comments/PeerComments';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
+import type { BoardCard } from '../lib/boardModel';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
 import {
   ALL_EPICS,
@@ -233,6 +235,18 @@ export function BeadsPage() {
   // A peer card is selected by its board key (`peer:<login>:<rig>:<id>`);
   // it opens the read-only peer window, never the bead panel.
   const selectedPeer = useMemo(() => peerCardOf(peerSources, selectedId), [peerSources, selectedId]);
+  // Part 4: each peer card's comment thread, by its board key.
+  const peerThreads = useMemo(() => {
+    const byKey = new Map<string, PeerThread>();
+    for (const peer of peerBoards.result?.peers ?? []) {
+      for (const thread of peer.threads) byKey.set(`peer:${peer.login}:${thread.rig}:${thread.card}`, thread);
+    }
+    return byKey;
+  }, [peerBoards.result]);
+  const commentCountOf = useCallback(
+    (card: BoardCard) => (card.peer === null ? 0 : threadSize(peerThreads.get(card.key))),
+    [peerThreads],
+  );
   const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
   const epics = useMemo(
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
@@ -436,6 +450,7 @@ export function BeadsPage() {
             sessions={boardSessions}
             nowMs={nowMs}
             onSelect={setSelectedId}
+            commentCountOf={commentCountOf}
             showAllHistory={showAllHistory}
             onToggleHistory={() => setShowAllHistory((prev) => !prev)}
           />
@@ -468,7 +483,15 @@ export function BeadsPage() {
           avatar={selectedPeer.peer.avatar}
           asOf={selectedPeer.peer.asOf}
           stale={selectedPeer.peer.stale}
-        />
+        >
+          <PeerComments
+            peer={selectedPeer.peer}
+            rig={selectedPeer.card.rig}
+            cardId={selectedPeer.card.bead.id}
+            thread={peerThreads.get(selectedId ?? '')}
+            nowMs={nowMs}
+          />
+        </PeerTaskDrawer>
       )}
 
       <BeadDetailModal

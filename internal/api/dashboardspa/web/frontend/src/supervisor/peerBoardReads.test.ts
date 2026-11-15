@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
-import { peerBody } from '../test/fixtures/peerBoards';
+import { peerBody, peerThread, peerTopics } from '../test/fixtures/peerBoards';
 import {
   DEFAULT_STALE_AFTER_SECONDS,
   listPeerBoards,
@@ -105,6 +105,61 @@ describe('listPeerBoards', () => {
   it('a body that is not the contract throws PeerBoardsError', async () => {
     fetchMock.mockResolvedValue(json({ items: [], total: 0 }));
     await expect(listPeerBoards()).rejects.toBeInstanceOf(PeerBoardsError);
+  });
+
+  it('parses card threads: author objects, the name-only form, our delivery state, sorted', async () => {
+    fetchMock.mockResolvedValue(json(peerBody({ threads: [peerThread()] })));
+    const [peer] = (await listPeerBoards()).peers;
+    expect(peer!.threads).toHaveLength(1);
+    const thread = peer!.threads[0]!;
+    expect([thread.rig, thread.card]).toEqual(['crm-api', 'dw-ab12']);
+    const [mayor, mine, , , agent, nameOnly] = thread.comments;
+    expect(mayor!.author).toEqual({ kind: 'mayor', city: 'rich', name: 'mayor', agent: null });
+    expect(mayor!.mine).toBe(false);
+    expect(mine!.mine).toBe(true);
+    expect(mine!.state).toBe('delivered');
+    expect(agent!.author).toMatchObject({ kind: 'agent', agent: 'deputy' });
+    expect(nameOnly!.author).toEqual({ kind: 'person', city: null, name: 'Артём', agent: null });
+    expect(nameOnly!.state).toBe('queued');
+    expect(thread.comments.map((c) => c.createdAt)).toEqual([...thread.comments.map((c) => c.createdAt)].sort());
+  });
+
+  it('a malformed thread or comment is skipped, never the board', async () => {
+    const bad = peerThread();
+    (bad.comments as unknown[]).push({ id: 'x', text: 1 });
+    fetchMock.mockResolvedValue(json(peerBody({ threads: [bad, { card: '../x', comments: [] }, 'nope'] })));
+    const [peer] = (await listPeerBoards()).peers;
+    expect(peer!.cards).toHaveLength(1);
+    expect(peer!.threads).toHaveLength(1);
+    expect(peer!.threads[0]!.comments).toHaveLength(6);
+  });
+
+  it('parses topics: status, resolution, reactions, unread, summaries', async () => {
+    fetchMock.mockResolvedValue(json(peerBody({ topics: peerTopics() })));
+    const [peer] = (await listPeerBoards()).peers;
+    const [open, paused, resolved] = peer!.topics;
+    expect(open).toMatchObject({ topicId: 'tp-aaaaaaaaaaaaaaaaaaaa', city: 'rich', status: 'open', unreadCount: 1 });
+    expect(open!.messages[0]!.summary).toBe('Можно ли в 22:00 перезагрузить CI?');
+    expect(open!.reactions).toEqual([
+      { messageId: 'm-1', kind: 'ack', by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null } },
+    ]);
+    expect(paused!.status).toBe('needs_human');
+    expect(resolved!.resolution).toMatchObject({
+      reason: 'resolved',
+      decidingMessageId: 'c-2',
+      summary: 'договорились, решено без задачи',
+    });
+    expect(resolved!.resolvedAt).toBe('2026-11-14T11:00:00Z');
+  });
+
+  it('a peer without threads or topics has empty lists', async () => {
+    const body = peerBody();
+    delete (body.peers[0] as Record<string, unknown>).threads;
+    delete (body.peers[0] as Record<string, unknown>).topics;
+    fetchMock.mockResolvedValue(json(body));
+    const [peer] = (await listPeerBoards()).peers;
+    expect(peer!.threads).toEqual([]);
+    expect(peer!.topics).toEqual([]);
   });
 
   it('a crafted card id is rejected', async () => {

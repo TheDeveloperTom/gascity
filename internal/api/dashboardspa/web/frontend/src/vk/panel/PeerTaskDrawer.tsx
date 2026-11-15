@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { canWrite } from '../../embed/activitySession';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
 import { renderMiniMarkdown } from '../../lib/miniMarkdown';
@@ -65,7 +66,7 @@ export function PeerTaskDrawer({
   );
 
   return (
-    <TaskDrawer open={open} onClose={onClose} chips={chips} title={bead.title}>
+    <TaskDrawer open={open} onClose={onClose} chips={chips} title={bead.title} aboveTabs>
       <div data-testid="peer-card" className="-mt-2 flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-1">
           <Chip>
@@ -100,7 +101,12 @@ export function PeerTaskDrawer({
             ))}
         </div>
         <p className="text-sm text-vk-text-low" style={{ borderLeft: `2px solid ${PEER_COLOR}`, paddingLeft: 8 }}>
-          {t("A task from {owner} city, read only. Only {name} can change it.", { owner: label, name })}
+          {canWrite()
+            ? t('A task from {owner} city, read only. Only {name} can change it; you can leave a comment.', {
+                owner: label,
+                name,
+              })
+            : t('A task from {owner} city, read only. Only {name} can change it.', { owner: label, name })}
         </p>
         {bead.description !== undefined && bead.description.length > 0 && (
           <div className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">

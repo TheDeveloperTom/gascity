@@ -60,9 +60,14 @@ export interface TaskDrawerProps {
   /** Action row: under the title from `md`, a sticky bottom bar below it. */
   actions?: ReactNode;
   children?: ReactNode;
+  /**
+   * Phone: stop above the bottom tab bar (56 px + safe area) so a pinned
+   * composer sits directly on it (vk-final, design Phone-Peer-Card).
+   */
+  aboveTabs?: boolean;
 }
 
-export function TaskDrawer({ open, onClose, chips, top, title, actions, children }: TaskDrawerProps) {
+export function TaskDrawer({ open, onClose, chips, top, title, actions, children, aboveTabs = false }: TaskDrawerProps) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
@@ -75,11 +80,17 @@ export function TaskDrawer({ open, onClose, chips, top, title, actions, children
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-scrim/50" onClick={onClose}>
+    <div
+      className={cn('fixed inset-0 z-50 bg-scrim/50', aboveTabs && 'bottom-[calc(3.5rem+var(--saib))] md:bottom-0')}
+      onClick={onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed inset-0 flex flex-col bg-vk-bg-primary font-vk-sans text-vk-text-normal shadow-overlay md:inset-y-0 md:left-auto md:right-0 md:w-[560px] md:max-w-full md:border-l md:border-vk-border"
+        className={cn(
+          'fixed inset-0 flex flex-col bg-vk-bg-primary font-vk-sans text-vk-text-normal shadow-overlay md:inset-y-0 md:left-auto md:right-0 md:w-[560px] md:max-w-full md:border-l md:border-vk-border',
+          aboveTabs && 'bottom-[calc(3.5rem+var(--saib))] md:bottom-0',
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex min-h-[52px] items-center justify-between gap-2 border-b border-vk-border px-4">

@@ -12,8 +12,8 @@ import { KanbanBadge } from './KanbanBadge';
 // «на HH:MM» and the «Р» avatar. No «нужен ты», no stall or relation badges:
 // those are his city's facts, judged there (SYNC-PLAN review focus 2).
 
-/** Richard's side colour (design: teal dot and avatar). */
-export const PEER_COLOR = '#0F766E';
+/** The peer city's side colour (`--vk-peer`, teal; mine is `--vk-mine`, the brand). */
+export const PEER_COLOR = 'oklch(var(--vk-peer))';
 /** The project tag's dot (design Main: the slate «crm-api» tag). */
 export const PROJECT_COLOR = '#64748B';
 
@@ -39,11 +39,11 @@ export function PeerAvatar({
   return (
     <span
       {...(label === undefined ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}
+      // design Peer-Card (redrawn 15.11): an initials avatar in a side-colour ring
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
+        'box-border inline-flex shrink-0 items-center justify-center rounded-full border-[1.5px] border-vk-peer bg-vk-bg-secondary font-semibold text-vk-text-high',
         size === 20 ? 'h-5 w-5 text-[11px]' : 'h-4 w-4 text-[10px]',
       )}
-      style={{ backgroundColor: PEER_COLOR }}
     >
       {letter}
     </span>

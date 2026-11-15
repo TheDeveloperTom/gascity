@@ -4,7 +4,147 @@
 
 export const PEER_SNAPSHOT_AT = '2026-11-15T18:52:00Z';
 
-export function peerBody(overrides: { snapshotAt?: string; cards?: unknown[] } = {}) {
+/** A card thread (COMMENTS-PLAN Revision 2: author objects, our delivery state). */
+export function peerThread() {
+  return {
+    rig: 'crm-api',
+    card: 'dw-ab12',
+    peer: 'rich',
+    comments: [
+      {
+        id: 'bd-1',
+        mine: false,
+        author: { kind: 'mayor', city: 'rich', name: 'mayor' },
+        text: 'Взял в работу, начинаю с миграции схемы.',
+        created_at: '2026-11-15T18:20:00Z',
+        state: null,
+        reason: null,
+      },
+      {
+        id: 'xc-00000000000000000001',
+        mine: true,
+        author: { kind: 'person', city: 'me', name: 'Артём' },
+        text: 'Ты тут собираешься менять схему users — давай согласуем',
+        created_at: '2026-11-15T18:40:00Z',
+        state: 'delivered',
+        reason: null,
+      },
+      {
+        id: 'bd-2',
+        mine: false,
+        author: { kind: 'person', city: 'rich', name: 'Ричард' },
+        text: 'Ок, подожду',
+        created_at: '2026-11-15T18:51:00Z',
+        state: null,
+        reason: null,
+      },
+      {
+        id: 'bd-3',
+        mine: false,
+        author: { kind: 'person', city: 'rich', name: 'Ричард' },
+        text: 'напиши, как вольёшь',
+        created_at: '2026-11-15T18:51:30Z',
+        state: null,
+        reason: null,
+      },
+      {
+        id: 'bd-4',
+        mine: false,
+        author: { kind: 'agent', city: 'rich', name: 'deputy', agent: 'deputy' },
+        text: 'Тесты схемы зелёные',
+        created_at: '2026-11-15T18:52:00Z',
+        state: null,
+        reason: null,
+      },
+      {
+        id: 'xc-00000000000000000002',
+        mine: true,
+        author: 'Артём',
+        text: 'Спасибо, напишу сразу, как волью',
+        created_at: '2026-11-15T18:53:00Z',
+        state: 'queued',
+        reason: null,
+      },
+    ],
+  };
+}
+
+const RICH_MAYOR = { kind: 'mayor', city: 'rich', name: 'mayor' };
+const MY_MAYOR = { kind: 'mayor', city: 'me', name: 'mayor' };
+
+/** Topics (Revision 2): one open with unread, one paused, one resolved. */
+export function peerTopics() {
+  return [
+    {
+      topic_id: 'tp-aaaaaaaaaaaaaaaaaaaa',
+      city: 'rich',
+      title: 'Перезагрузка общего CI в 22:00',
+      status: 'open',
+      opened_by: RICH_MAYOR,
+      opened_at: '2026-11-15T18:35:00Z',
+      opened_because: { kind: 'owner_request', message_id: 'm-0' },
+      resolution: null,
+      ticket: null,
+      unread_count: 1,
+      reactions: [{ message_id: 'm-1', kind: 'ack', by: MY_MAYOR, at: '2026-11-15T18:36:30Z' }],
+      messages: [
+        {
+          id: 'm-1',
+          author: RICH_MAYOR,
+          text: 'Ричард хочет в 22:00 перезагрузить общий CI. Вашему городу подходит?',
+          summary: 'Можно ли в 22:00 перезагрузить CI?',
+          created_at: '2026-11-15T18:35:00Z',
+          state: null,
+        },
+        {
+          id: 'm-2',
+          author: MY_MAYOR,
+          text: 'Уточняю у Артёма.',
+          summary: 'Уточняю у Артёма',
+          created_at: '2026-11-15T18:40:00Z',
+          state: 'delivered',
+        },
+      ],
+    },
+    {
+      topic_id: 'tp-bbbbbbbbbbbbbbbbbbbb',
+      city: 'me',
+      title: 'Кто обновляет Node 24',
+      status: 'needs_human',
+      opened_by: MY_MAYOR,
+      opened_at: '2026-11-15T17:00:00Z',
+      resolution: null,
+      unread_count: 0,
+      messages: [
+        { id: 'n-1', author: MY_MAYOR, text: 'Кто обновит Node?', summary: 'Кто обновит Node?', created_at: '2026-11-15T17:00:00Z', state: 'delivered' },
+      ],
+    },
+    {
+      topic_id: 'tp-cccccccccccccccccccc',
+      city: 'rich',
+      title: 'Ключ Clerk',
+      status: 'resolved',
+      opened_by: RICH_MAYOR,
+      opened_at: '2026-11-14T10:00:00Z',
+      resolution: {
+        reason: 'resolved',
+        by: { kind: 'person', city: 'rich', name: 'Ричард' },
+        at: '2026-11-14T11:00:00Z',
+        deciding_message_id: 'c-2',
+        summary: 'договорились, решено без задачи',
+      },
+      unread_count: 0,
+      messages: [
+        { id: 'c-1', author: RICH_MAYOR, text: 'Чей ключ Clerk?', created_at: '2026-11-14T10:00:00Z', state: null },
+        { id: 'c-2', author: { kind: 'person', city: 'rich', name: 'Ричард' }, text: 'Мой, оставляем.', created_at: '2026-11-14T10:30:00Z', state: null },
+      ],
+    },
+  ];
+}
+
+export function peerBody(
+  overrides: { snapshotAt?: string; cards?: unknown[]; threads?: unknown[]; topics?: unknown[] } = {},
+) {
   const at = overrides.snapshotAt ?? PEER_SNAPSHOT_AT;
   return {
     schema: 'devwork.peer-boards/1',
@@ -14,7 +154,7 @@ export function peerBody(overrides: { snapshotAt?: string; cards?: unknown[] } =
     peers: [
       {
         login: 'rich',
-        person: { name: 'Ричард', genitive: 'Ричарда', initial: 'Р' },
+        person: { name: 'Ричард', genitive: 'Ричарда', initial: 'Р', dative: 'Ричарду' },
         city: 'devwork-platform',
         board_schema: 'devwork.board/2',
         rigs: ['crm-api', 'devwork'],
@@ -26,6 +166,8 @@ export function peerBody(overrides: { snapshotAt?: string; cards?: unknown[] } =
         fetch_error: null,
         fetch_failed_at: null,
         dropped_cards: 0,
+        threads: overrides.threads ?? [],
+        topics: overrides.topics ?? [],
         cards: overrides.cards ?? [
           {
             id: 'dw-ab12',

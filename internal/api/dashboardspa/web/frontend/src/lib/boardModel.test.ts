@@ -238,6 +238,7 @@ describe('buildBoardModel with a peer board', () => {
     login: 'rich',
     label: 'Ричарда',
     name: 'Ричард',
+    dative: null,
     avatar: 'Р',
     available: true,
     asOf: '2026-11-15T18:52:00Z',

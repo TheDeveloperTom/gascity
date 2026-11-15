@@ -9,9 +9,10 @@ import { NowProvider } from '../contexts/NowContext';
 import { OperatorConfigProvider } from '../contexts/OperatorConfigContext';
 import { collectMissing, resetMissing, setLocale } from '../i18n';
 import { LocaleProvider } from '../i18n/LocaleProvider';
+import { resetPeerBoardsForTests } from '../hooks/usePeerBoards';
 import { useNeedsFromMeCount } from '../lib/needsFromMe';
 import type { SupervisorBead } from '../supervisor/beadReads';
-import { peerBody } from '../test/fixtures/peerBoards';
+import { peerBody, peerThread } from '../test/fixtures/peerBoards';
 
 // vk-final part 3 (SYNC-PLAN Task 5): Richard's board is a second, read-only
 // source. Review focus 1 and 2: the same id on both boards stays two cards,
@@ -57,7 +58,7 @@ beforeEach(() => {
   invalidate('sessions');
   invalidate('agents');
   invalidate('rigs');
-  invalidate('peer-boards');
+  resetPeerBoardsForTests();
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
     configurable: true,
     value: vi.fn(),
@@ -195,6 +196,51 @@ describe('BeadsPage with Richard’s board', () => {
     renderPage();
     await screen.findByText('Изменение схемы users');
     expect(screen.queryByText(/не на связи/)).toBeNull();
+  });
+
+  // ---- part 4: comments on his cards ----------------------------------
+
+  it('a peer card with a thread carries «💬 N»', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), threads: [peerThread()] }));
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    expect(within(peerCard()!).getByLabelText('Комментарии: 6').textContent).toBe('6');
+  });
+
+  it('the peer window shows «Комментарии» and sends «Написать Ричарду…» through the city service', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), threads: [peerThread()] }));
+    const posts: { url: string; init: RequestInit }[] = [];
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/svc/peer-boards/v1/comments')) {
+        posts.push({ url, init: init! });
+        return json({ comment: { id: 'xc-new', text: 'Готово?', created_at: new Date().toISOString(), state: 'queued' } }, 201);
+      }
+      return base(input, init);
+    });
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    fireEvent.click(within(peerCard()!).getByRole('button', { name: /Изменение схемы users/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /Комментарии/ })).toBeTruthy();
+    expect(within(dialog).getByText('Тесты схемы зелёные')).toBeTruthy();
+    const box = within(dialog).getByRole('textbox', { name: 'Комментарий для Ричарда' }) as HTMLTextAreaElement;
+    expect(box.placeholder).toBe('Написать Ричарду…');
+    fireEvent.change(box, { target: { value: 'Готово?' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+    });
+    expect(posts).toHaveLength(1);
+    expect((posts[0]!.init.headers as Record<string, string>)['X-GC-Request']).toBe('1');
+    expect(JSON.parse(String(posts[0]!.init.body))).toEqual({
+      target: { kind: 'card', city: 'rich', rig: 'crm-api', id: 'dw-ab12' },
+      text: 'Готово?',
+    });
+    const sent = await within(dialog).findByText('Готово?', { selector: 'p' });
+    const row = sent.closest('[data-testid="comment"]') as HTMLElement;
+    expect(within(row).queryByText('ждёт доставки') ?? within(dialog).getAllByText('ждёт доставки').at(-1)).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
   });
 
   it('no peer service: the owner chips stay off and nothing breaks', async () => {

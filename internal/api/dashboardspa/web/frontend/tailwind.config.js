@@ -51,6 +51,9 @@ export default {
         // vk integration: VK `error` / `success` as aliases of accent / ok.
         'vk-error': 'oklch(var(--vk-error) / <alpha-value>)',
         'vk-success': 'oklch(var(--vk-success) / <alpha-value>)',
+        // vk-final: the two cities' side colours (2 px rule, avatar ring).
+        'vk-mine': 'oklch(var(--vk-mine) / <alpha-value>)',
+        'vk-peer': 'oklch(var(--vk-peer) / <alpha-value>)',
       },
       // VK's running dots (packages/local-web/tailwind.new.config.js):
       // animate-running-dot-1/2/3, staggered 0.2 s.

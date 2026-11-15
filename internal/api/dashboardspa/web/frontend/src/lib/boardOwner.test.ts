@@ -14,11 +14,13 @@ const RESULT: PeerBoardsResult = {
   peers: [
     {
       login: 'rich',
-      person: { name: 'Ричард', genitive: 'Ричарда', initial: 'Р' },
+      person: { name: 'Ричард', genitive: 'Ричарда', initial: 'Р', dative: null },
       city: 'devwork-platform',
       asOf: '2026-11-15T14:05:00Z',
       rigs: ['crm-api'],
       fetchError: null,
+      threads: [],
+      topics: [],
       cards: [{ rig: 'crm-api', bead: { id: 'dw-1', title: 't', status: 'open', issue_type: 'task', created_at: '2026-11-15T10:00:00Z' } }],
     },
   ],

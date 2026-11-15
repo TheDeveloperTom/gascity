@@ -20,6 +20,8 @@ export interface PeerBoardSource extends BoardSource {
   login: string;
   /** The person's name («Ричард»); `label` is the genitive («Ричарда»). */
   name: string;
+  /** The dative («Ричарду») when people.json carries it; else null. */
+  dative: string | null;
   /** One-letter avatar («Р»). */
   avatar: string;
   /** ISO time of the snapshot (`generated_at`, else `snapshot_at`). */
@@ -45,6 +47,7 @@ export function peerSourcesOf(result: PeerBoardsResult, nowMs: number): PeerBoar
       login: peer.login,
       label: peer.person.genitive,
       name: peer.person.name,
+      dative: peer.person.dative,
       avatar: peer.person.initial,
       available: true,
       asOf: peer.asOf,

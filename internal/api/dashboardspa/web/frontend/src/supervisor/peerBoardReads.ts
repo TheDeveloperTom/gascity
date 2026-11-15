@@ -42,7 +42,7 @@ const CardSchema = z.looseObject({
 
 const PeerSchema = z.looseObject({
   login: z.string().regex(LOGIN_RE),
-  person: z.looseObject({ name: z.string(), genitive: z.string(), initial: z.string() }),
+  person: z.looseObject({ name: z.string(), genitive: z.string(), initial: z.string(), dative: optString }),
   city: optString,
   snapshot_at: z.string(),
   generated_at: optString,
@@ -55,7 +55,225 @@ const PeerSchema = z.looseObject({
   skipped_rigs: z.array(z.looseObject({ rig: z.string() })).nullish(),
   dropped_cards: z.number().nullish(),
   cards: z.array(CardSchema),
+  // vk-final part 4 (COMMENTS-PLAN «Dashboard contract» + Revision 2): each
+  // entry is checked on its own, so one malformed thread or topic is skipped
+  // and never costs the board.
+  threads: z.array(z.unknown()).nullish(),
+  topics: z.array(z.unknown()).nullish(),
 });
+
+// ---- comments and topics (vk-final part 4) --------------------------------
+
+const AuthorObject = z.looseObject({
+  kind: z.string().nullish(),
+  city: optString,
+  name: z.string(),
+  agent: optString,
+});
+
+const CommentSchema = z.looseObject({
+  id: z.string().min(1),
+  mine: z.boolean().nullish(),
+  // Revision 1 sent the name only; Revision 2 sends {kind, city, name, agent?}.
+  author: z.union([z.string(), AuthorObject]),
+  text: z.string(),
+  summary: optString,
+  created_at: z.string(),
+  state: optString,
+  reason: optString,
+  reopened: z.boolean().nullish(),
+});
+
+const ThreadSchema = z.looseObject({
+  rig: z.string().regex(RIG_RE).nullish(),
+  card: z.string().regex(ID_RE),
+  comments: z.array(z.unknown()),
+});
+
+const ResolutionSchema = z.looseObject({
+  reason: z.string(),
+  by: z.union([z.string(), AuthorObject]).nullish(),
+  at: optString,
+  deciding_message_id: optString,
+  summary: optString,
+});
+
+const ReactionSchema = z.looseObject({
+  message_id: z.string(),
+  kind: z.string(),
+  by: z.union([z.string(), AuthorObject]).nullish(),
+  at: optString,
+});
+
+const TopicSchema = z.looseObject({
+  topic_id: z.string().min(1),
+  city: optString,
+  title: z.string(),
+  status: z.string(),
+  opened_by: z.union([z.string(), AuthorObject]).nullish(),
+  opened_at: optString,
+  resolution: ResolutionSchema.nullish(),
+  resolved_at: optString,
+  ticket: optString,
+  messages: z.array(z.unknown()).nullish(),
+  reactions: z.array(z.unknown()).nullish(),
+  unread_count: z.number().nullish(),
+});
+
+export type AuthorKind = 'person' | 'mayor' | 'agent';
+
+export interface CommentAuthor {
+  kind: AuthorKind;
+  /** The author's city (a people.json login); null when the service did not say. */
+  city: string | null;
+  name: string;
+  agent: string | null;
+}
+
+export type CommentState = 'queued' | 'queued_local' | 'delivered' | 'rejected';
+
+export interface PeerComment {
+  id: string;
+  /** Written in this city (our outbox; `state` is ours). */
+  mine: boolean;
+  author: CommentAuthor;
+  text: string;
+  /** ≤ 80 characters, for list previews (topics). */
+  summary: string | null;
+  createdAt: string;
+  state: CommentState | null;
+  reason: string | null;
+  reopened: boolean;
+}
+
+export interface PeerThread {
+  rig: string;
+  card: string;
+  comments: readonly PeerComment[];
+}
+
+export interface TopicResolution {
+  reason: string;
+  by: CommentAuthor | null;
+  at: string | null;
+  decidingMessageId: string | null;
+  summary: string | null;
+}
+
+export interface TopicReaction {
+  messageId: string;
+  kind: string;
+  by: CommentAuthor | null;
+}
+
+export type TopicStatus = 'open' | 'needs_human' | 'resolved';
+
+export interface PeerTopic {
+  topicId: string;
+  /** The city that owns the topic (its opener's login). */
+  city: string;
+  title: string;
+  status: TopicStatus;
+  openedBy: CommentAuthor | null;
+  openedAt: string | null;
+  resolution: TopicResolution | null;
+  resolvedAt: string | null;
+  ticket: string | null;
+  messages: readonly PeerComment[];
+  reactions: readonly TopicReaction[];
+  unreadCount: number;
+}
+
+const STATES: ReadonlySet<string> = new Set(['queued', 'queued_local', 'delivered', 'rejected']);
+
+function toAuthor(raw: string | z.infer<typeof AuthorObject>, fallbackCity: string | null): CommentAuthor {
+  if (typeof raw === 'string') return { kind: 'person', city: fallbackCity, name: raw, agent: null };
+  const kind: AuthorKind = raw.kind === 'mayor' || raw.kind === 'agent' ? raw.kind : 'person';
+  return { kind, city: raw.city ?? fallbackCity, name: raw.name, agent: raw.agent ?? null };
+}
+
+function toComments(raw: readonly unknown[], peerLogin: string): PeerComment[] {
+  const out: PeerComment[] = [];
+  for (const entry of raw) {
+    const parsed = CommentSchema.safeParse(entry);
+    if (!parsed.success) continue;
+    const c = parsed.data;
+    const mine = c.mine ?? false;
+    const author = toAuthor(c.author, mine ? null : peerLogin);
+    out.push({
+      id: c.id,
+      mine: c.mine ?? (author.city !== null && author.city !== peerLogin),
+      author,
+      text: c.text,
+      summary: c.summary ?? null,
+      createdAt: c.created_at,
+      state: c.state != null && STATES.has(c.state) ? (c.state as CommentState) : null,
+      reason: c.reason ?? null,
+      reopened: c.reopened ?? false,
+    });
+  }
+  return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+function toThreads(raw: readonly unknown[] | null | undefined, peerLogin: string): PeerThread[] {
+  const out: PeerThread[] = [];
+  for (const entry of raw ?? []) {
+    const parsed = ThreadSchema.safeParse(entry);
+    if (!parsed.success) continue;
+    out.push({
+      rig: parsed.data.rig ?? PEER_DEFAULT_RIG,
+      card: parsed.data.card,
+      comments: toComments(parsed.data.comments, peerLogin),
+    });
+  }
+  return out;
+}
+
+function toTopics(raw: readonly unknown[] | null | undefined, peerLogin: string): PeerTopic[] {
+  const out: PeerTopic[] = [];
+  for (const entry of raw ?? []) {
+    const parsed = TopicSchema.safeParse(entry);
+    if (!parsed.success) continue;
+    const tp = parsed.data;
+    const status: TopicStatus =
+      tp.status === 'needs_human' || tp.status === 'resolved' ? tp.status : 'open';
+    const reactions: TopicReaction[] = [];
+    for (const r of tp.reactions ?? []) {
+      const pr = ReactionSchema.safeParse(r);
+      if (!pr.success) continue;
+      reactions.push({
+        messageId: pr.data.message_id,
+        kind: pr.data.kind,
+        by: pr.data.by == null ? null : toAuthor(pr.data.by, null),
+      });
+    }
+    const res = tp.resolution;
+    out.push({
+      topicId: tp.topic_id,
+      city: tp.city ?? peerLogin,
+      title: tp.title,
+      status,
+      openedBy: tp.opened_by == null ? null : toAuthor(tp.opened_by, null),
+      openedAt: tp.opened_at ?? null,
+      resolution:
+        res == null
+          ? null
+          : {
+              reason: res.reason,
+              by: res.by == null ? null : toAuthor(res.by, null),
+              at: res.at ?? null,
+              decidingMessageId: res.deciding_message_id ?? null,
+              summary: res.summary ?? null,
+            },
+      resolvedAt: tp.resolved_at ?? res?.at ?? null,
+      ticket: tp.ticket ?? null,
+      messages: toComments(tp.messages ?? [], peerLogin),
+      reactions,
+      unreadCount: Math.max(0, Math.floor(tp.unread_count ?? 0)),
+    });
+  }
+  return out;
+}
 
 const ResponseSchema = z.looseObject({
   schema: optString,
@@ -71,13 +289,17 @@ export interface PeerCard {
 
 export interface PeerBoard {
   login: string;
-  person: { name: string; genitive: string; initial: string };
+  person: { name: string; genitive: string; initial: string; dative: string | null };
   city: string | null;
   /** The snapshot's time: `generated_at`, else `snapshot_at`. */
   asOf: string;
   rigs: readonly string[] | null;
   fetchError: string | null;
   cards: readonly PeerCard[];
+  /** Card comment threads, one per (rig, card) (vk-final part 4). */
+  threads: readonly PeerThread[];
+  /** Mayor-to-Mayor topics with this peer (COMMENTS-PLAN Revision 2). */
+  topics: readonly PeerTopic[];
 }
 
 export interface PeerBoardsResult {
@@ -133,12 +355,14 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
       const asOf = p.generated_at ?? p.snapshot_at;
       return {
         login: p.login,
-        person: { name: p.person.name, genitive: p.person.genitive, initial: p.person.initial },
+        person: { name: p.person.name, genitive: p.person.genitive, initial: p.person.initial, dative: p.person.dative ?? null },
         city: p.city ?? null,
         asOf,
         rigs: p.rigs ?? null,
         fetchError: p.fetch_error ?? null,
         cards: p.cards.map((c) => ({ rig: c.rig ?? PEER_DEFAULT_RIG, bead: toBead(c, asOf) })),
+        threads: toThreads(p.threads, p.login),
+        topics: toTopics(p.topics, p.login),
       };
     }),
   };
