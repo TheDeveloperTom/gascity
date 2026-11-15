@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
+import { setLocale } from '../i18n';
 import { selectBeadsNeedingAttention } from './beadsNeedingAttention';
 
 const NOW = Date.parse('2026-06-05T12:00:00.000Z');
@@ -87,6 +88,16 @@ describe('selectBeadsNeedingAttention, owner pass', () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ beadId: 'dw-404', title: 'A task outside this view' });
+    setLocale('ru');
+    try {
+      const ru = selectBeadsNeedingAttention(
+        { beads: [], escalations: [], sessions: [], routeItems: [root, a, b] },
+        NOW,
+      );
+      expect(ru[0]?.title).toBe('Задача вне окна');
+    } finally {
+      setLocale('en');
+    }
   });
 
   it('waiting row names its actor', () => {

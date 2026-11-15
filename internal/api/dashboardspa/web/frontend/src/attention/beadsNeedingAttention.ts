@@ -1,4 +1,5 @@
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
+import { t } from '../i18n';
 import { isRouteRoot, routeTaskId } from '../lib/stageBoard';
 import { elapsedSince, formatElapsed, formatElapsedFine } from './elapsed';
 
@@ -198,7 +199,7 @@ function stalledRouteRows(inputs: BeadAttentionInputs, nowMs: number): BeadAtten
     byTask.set(taskId, {
       ...stalled,
       beadId: taskId,
-      title: inputs.taskTitles?.get(taskId) ?? TASK_OUTSIDE_VIEW,
+      title: inputs.taskTitles?.get(taskId) ?? t(TASK_OUTSIDE_VIEW),
       summary: `${step.title}: ${stalled.summary}`,
     });
   }
