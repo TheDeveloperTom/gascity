@@ -16,6 +16,11 @@ vi.mock('../hooks/useEntityLinks', () => ({
   })),
 }));
 
+// The task panel reads the shared board (links, agents); no network in this test.
+vi.mock('../hooks/useBoardData', () => ({
+  useBoardData: vi.fn(() => ({ data: undefined, sessions: [], rigs: [], loading: true, error: null })),
+}));
+
 const mockUseBeadDetail = useBeadDetail as unknown as Mock;
 const mockUseEntityLinks = useEntityLinks as unknown as Mock;
 
