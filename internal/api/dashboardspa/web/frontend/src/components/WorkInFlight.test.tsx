@@ -106,7 +106,7 @@ describe('WorkInFlight (Workers active)', () => {
       session({ id: 'gc-m', template: 'mayor', rig: '' }),
     ];
     renderSection([], sessions);
-    expect(screen.getByText('Workers active')).toBeTruthy();
+    expect(screen.getByText('Working now')).toBeTruthy();
     expect(
       screen.getByText(
         '9 workers active across gascity (3), scix_experiments (3), gascity-packs (2), zeldascension (1).',

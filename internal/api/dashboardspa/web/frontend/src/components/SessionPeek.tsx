@@ -1,3 +1,4 @@
+import { StatusShape } from './icons';
 import { AnsiUp } from 'ansi_up';
 import { useMemo, type ReactNode } from 'react';
 import type { OutputTurn } from 'gas-city-dashboard-shared/gc-supervisor';
@@ -60,7 +61,7 @@ interface SessionPeekContentProps {
 
 export function SessionPeekContent({ loading, error, result, caption }: SessionPeekContentProps) {
   if (loading && result === null) {
-    return <p className="text-fg-muted italic">Fetching transcript.</p>;
+    return <p className="text-fg-muted">Fetching transcript.</p>;
   }
   if (error) {
     return (
@@ -71,7 +72,7 @@ export function SessionPeekContent({ loading, error, result, caption }: SessionP
   }
   if (!result) return null;
   if (result.turns.length === 0) {
-    return <p className="text-fg-muted italic">No turns in this session yet.</p>;
+    return <p className="text-fg-muted">No turns in this session yet.</p>;
   }
 
   // One `now` per render keeps every turn's relative timestamp consistent
@@ -86,14 +87,16 @@ export function SessionPeekContent({ loading, error, result, caption }: SessionP
             standalone captured-date line would be a duplicate timestamp; render
             it only when there is no caption (e.g. the run-node panel). */}
         {caption === undefined && (
-          <p
-            className="text-label uppercase tracking-wider text-fg-faint tnum"
-            title={result.captured_at}
-          >
+          <p className="text-label text-fg-faint tnum" title={result.captured_at}>
             {formatShortDate(result.captured_at)}
           </p>
         )}
-        <p className="text-label uppercase tracking-wider text-warn">▲ {PROMPT_INJECTION_NOTICE}</p>
+        <p className="flex items-start gap-2 text-label text-warn">
+          <span className="mt-[5px] flex">
+            <StatusShape tone="warn" />
+          </span>
+          <span>{PROMPT_INJECTION_NOTICE}</span>
+        </p>
         <ol className="space-y-5">
           {result.turns.map((turn, idx) => (
             <TurnBlock
@@ -105,7 +108,7 @@ export function SessionPeekContent({ loading, error, result, caption }: SessionP
           ))}
         </ol>
         {result.truncated && (
-          <p className="text-label uppercase tracking-wider text-fg-faint italic">
+          <p className="text-label text-fg-faint">
             Some turns truncated at the per-turn or total cap. Run{' '}
             <code className="text-fg-muted">gc session peek</code> in a terminal for the full
             transcript.
@@ -124,18 +127,16 @@ function TurnBlock({ turn, index, now }: { turn: OutputTurn; index: number; now:
   return (
     <li>
       <header className="flex items-start justify-between gap-3 pb-2 border-b border-rule mb-2">
-        <span className="text-label uppercase tracking-wider text-fg-faint tnum">
+        <span className="text-label text-fg-faint tnum">
           #{(index + 1).toString().padStart(2, '0')}
         </span>
         <div className="flex flex-col items-end leading-tight" title={timestamp ?? undefined}>
           <span className="text-body text-fg tnum">{formatClockTime(timestamp)}</span>
-          <span className="text-label uppercase tracking-wider text-fg-faint tnum">
-            {formatRelative(timestamp, now)}
-          </span>
+          <span className="text-label text-fg-faint tnum">{formatRelative(timestamp, now)}</span>
           <RoleLabel role={turn.role} />
         </div>
       </header>
-      <pre className="text-body whitespace-pre-wrap leading-relaxed overflow-x-auto text-fg">
+      <pre className="whitespace-pre-wrap overflow-x-auto font-sans text-reading text-fg">
         {renderedText}
       </pre>
     </li>
@@ -183,11 +184,7 @@ function htmlNodeToReact(node: ChildNode, key: string): ReactNode {
 
 function RoleLabel({ role }: { role: string }) {
   const tone = roleTone(role);
-  return (
-    <span className={`text-label uppercase tracking-wider font-medium ${tone}`}>
-      {role.replace(/_/g, ' ')}
-    </span>
-  );
+  return <span className={`text-label font-medium ${tone}`}>{role.replace(/_/g, ' ')}</span>;
 }
 
 function roleTone(role: string): string {
