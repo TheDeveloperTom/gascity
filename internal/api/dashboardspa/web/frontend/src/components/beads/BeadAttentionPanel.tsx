@@ -1,4 +1,5 @@
 import type { AttentionItem } from '../../attention/compose';
+import { t } from '../../i18n';
 import { FoldList } from '../FoldList';
 
 // gascity-dashboard-2j8e.3: the /beads "Needs you" section — the on-page
@@ -57,15 +58,19 @@ export function BeadAttentionPanel({ items, onOpen }: BeadAttentionPanelProps) {
           id="beads-attention-title"
           className="font-display text-headline font-bold text-on-plate"
         >
-          Needs you <span className="tnum text-on-plate-muted">({needsYou})</span>
+          {t('Needs you')} <span className="tnum text-on-plate-muted">({needsYou})</span>
         </h2>
-        {toWatch > 0 && <p className="text-body text-on-plate-muted tnum">{toWatch} to watch</p>}
+        {toWatch > 0 && (
+          <p className="text-body text-on-plate-muted tnum">{t('{n} to watch', { n: toWatch })}</p>
+        )}
       </div>
       <FoldList
         items={counted}
         limit={FOLD_LIMIT}
         itemKey={(item) => item.id}
         className="divide-y divide-on-plate/25"
+        showLabel={(total) => t('Show all {n}', { n: total })}
+        hideLabel={t('Show fewer')}
         renderItem={(item) => {
           const beadId = beadIdFromHref(item.href);
           return (
@@ -87,7 +92,7 @@ export function BeadAttentionPanel({ items, onOpen }: BeadAttentionPanelProps) {
                   onClick={() => onOpen(beadId)}
                   className="focus-mark inline-flex h-8 shrink-0 items-center rounded border border-on-plate/80 px-3 text-label font-semibold text-on-plate hover:bg-on-plate/10"
                 >
-                  Open
+                  {t('Open')}
                 </button>
               )}
             </li>

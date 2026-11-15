@@ -261,6 +261,24 @@ describe('BeadsPage one board', () => {
     expect(collectMissing()).toEqual([]);
   });
 
+  it('the Needs-you panel speaks Russian', async () => {
+    setLocale('ru');
+    resetMissing();
+    const item: AttentionItem = {
+      id: 'beads:decision:dw-d1',
+      audience: 'owner',
+      domain: 'beads',
+      severity: 'attention',
+      title: 'Choose the window',
+      href: '/beads?bead=dw-d1',
+    };
+    renderPage([{ id: 'beads:test', domain: 'beads', getItems: () => [item] }]);
+    const panel = await screen.findByRole('region', { name: /Вас ждёт/ });
+    expect(within(panel).getByRole('button', { name: 'Открыть' })).toBeTruthy();
+    await screen.findByText('Приёмка города: часть B');
+    expect(collectMissing()).toEqual([]);
+  });
+
   it('the Needs-you panel is a plate', async () => {
     const item: AttentionItem = {
       id: 'beads:decision:dw-d1',

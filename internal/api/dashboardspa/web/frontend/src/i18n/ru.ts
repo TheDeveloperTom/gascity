@@ -263,6 +263,8 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   'all rigs': 'все риги',
 
   // Needs-you panels (Task 11).
+  'Needs you': 'Вас ждёт',
+  '{n} to watch': 'Присмотреть: {n}',
   '{n} task issues are on Health': {
     one: 'Неполадки задач: {n}',
     few: 'Неполадки задач: {n}',

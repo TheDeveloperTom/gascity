@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { m04Idle } from '../../src/test/fixtures/m04Idle';
 
 // Stage-board fixtures for the Beads e2e and its screenshots. They are layered
 // onto the seeded fake supervisor's real /beads responses with page.route, so
@@ -22,7 +23,9 @@ interface FixtureBead {
   is_blocked?: boolean;
   close_reason?: string;
   assignee?: string;
+  labels?: string[];
   metadata?: Record<string, string>;
+  dependencies?: Array<{ issue_id: string; depends_on_id: string; type: string }>;
 }
 
 const T0 = '2026-11-15T06:00:00Z';
@@ -96,9 +99,13 @@ function steps(rootId: string, from: string, firstStatus: 'open' | 'in_progress'
 }
 
 export const STAGE_TASKS = {
-  waiting: task('dw-wait1', 'Runs page: rig filter for history', 'open'),
+  waiting: task('dw-wait1', 'Runs page: rig filter for history', 'open', {
+    labels: ['milestone:M04'],
+  }),
   blocked: task('dw-wait2', 'Archyl drift stage for review gates', 'blocked', { priority: 1 }),
-  queued: task('dw-queue', 'Embeddings gateway executor (after M04 #1)', 'open'),
+  queued: task('dw-queue', 'Embeddings gateway executor (after M04 #1)', 'open', {
+    labels: ['milestone:M04'],
+  }),
   working: task('dw-work', 'Bead read: split route beads off the board', 'in_progress'),
   review: task('dw-review', 'Mail: thread view keeps the reply draft', 'in_progress'),
   pr: task('dw-pr', 'Health: dolt-noms trend uses local time', 'in_progress'),
@@ -154,23 +161,88 @@ const ROUTE_BEADS: FixtureBead[] = [
   ...steps('gcg-t', 'verify-test-fails', 'open'),
 ];
 
-const TASK_BEADS: FixtureBead[] = [...Object.values(STAGE_TASKS), STOP_CARD];
+// Board checkpoint (B8): a city task, an order-tracking bead that must never
+// become a card, and a closed drill card labelled kind:test.
+export const CITY_TASK = task('dp-dh6', 'Приёмка города: часть B', 'open');
+export const ORDER_BEAD = task('gcg-ord1', 'order:archyl-drift-stage', 'open', {
+  labels: ['order-run:archyl-drift-stage', 'order-tracking'],
+});
+export const DRILL_TASK = task(
+  'dw-drill1',
+  'drill27-r28: отказ рекордера на verify-test-passes',
+  'closed',
+  { labels: ['kind:test'], updated_at: '2026-11-15T09:50:00Z' },
+);
+
+const TASK_BEADS: FixtureBead[] = [
+  ...Object.values(STAGE_TASKS),
+  STOP_CARD,
+  CITY_TASK,
+  ORDER_BEAD,
+  DRILL_TASK,
+];
 const ALL: FixtureBead[] = [...TASK_BEADS, ...ROUTE_BEADS];
 
 /** Ids of every route bead the board must fold (never render as a card). */
 export const ROUTE_BEAD_IDS: readonly string[] = ROUTE_BEADS.map((b) => b.id);
 
-function matches(bead: FixtureBead, query: URLSearchParams): boolean {
+function matches(
+  bead: FixtureBead,
+  query: URLSearchParams,
+  tasks: readonly FixtureBead[],
+): boolean {
   // Route beads live in the city store; a rig-scoped read sees only the tasks.
-  if (query.has('rig') && !TASK_BEADS.includes(bead)) return false;
+  if (query.has('rig') && !tasks.includes(bead)) return false;
+  // A label read (the decision queue) sees only beads carrying that label.
+  const label = query.get('label');
+  if (label !== null && !(bead.labels ?? []).includes(label)) return false;
   const status = query.get('status');
   if (status !== null) return bead.status === status;
   if (query.get('all') === 'true') return true;
   return bead.status !== 'closed';
 }
 
+// The devwork rig as the API reports it, with its bead id prefix (RB1).
+const DEVWORK_RIG = {
+  name: 'devwork',
+  prefix: 'dw',
+  path: '/r/devwork',
+  agent_count: 0,
+  running_count: 0,
+  suspended: false,
+};
+
 /** Layer the fixtures onto the fake supervisor's bead list and detail reads. */
 export async function injectStageBoard(page: Page): Promise<void> {
+  await injectBeads(page, ALL, TASK_BEADS);
+}
+
+/** B8: the live-shaped idle board of 15.11 10:27Z (B3's m04Idle). */
+export async function injectIdleBoard(page: Page): Promise<void> {
+  const idle = m04Idle();
+  const tasks = idle.tasks as unknown as FixtureBead[];
+  const all = [...tasks, ...idle.routeItems, ...idle.serviceItems] as unknown as FixtureBead[];
+  await injectBeads(page, all, tasks);
+}
+
+async function injectBeads(
+  page: Page,
+  all: readonly FixtureBead[],
+  tasks: readonly FixtureBead[],
+): Promise<void> {
+  await page.route('**/v0/city/*/rigs*', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    let body: { items?: Array<{ name?: string }>; total?: number } = {};
+    const response = await route.fetch().catch(() => null);
+    if (response?.ok() === true) body = (await response.json()) as typeof body;
+    const items = (body.items ?? []).filter((rig) => rig.name !== DEVWORK_RIG.name);
+    await route.fulfill({
+      json: { ...body, items: [...items, DEVWORK_RIG], total: items.length + 1 },
+    });
+  });
   await page.route('**/v0/city/*/beads?*', async (route: Route) => {
     const url = new URL(route.request().url());
     if (route.request().method() !== 'GET') {
@@ -179,7 +251,7 @@ export async function injectStageBoard(page: Page): Promise<void> {
     }
     const response = await route.fetch();
     const body = (await response.json()) as { items?: unknown[]; total?: number };
-    const extra = ALL.filter((b) => matches(b, url.searchParams));
+    const extra = all.filter((b) => matches(b, url.searchParams, tasks));
     const items = [...(body.items ?? []), ...extra];
     await route.fulfill({
       response,
@@ -188,7 +260,7 @@ export async function injectStageBoard(page: Page): Promise<void> {
   });
   await page.route('**/v0/city/*/bead/*', async (route: Route) => {
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
-    const hit = ALL.find((b) => b.id === id);
+    const hit = all.find((b) => b.id === id);
     if (hit === undefined || route.request().method() !== 'GET') {
       await route.fallback();
       return;
