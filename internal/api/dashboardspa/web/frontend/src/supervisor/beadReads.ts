@@ -18,6 +18,8 @@ export interface SupervisorBeadList extends Omit<ListBodyBead, 'items' | 'total'
   fetch_limit: number;
   /** With `withRoutes`: workflow roots and their members (any type), split off `items`. */
   route_items?: SupervisorBead[];
+  /** With `withRoutes`: false when the leg that supplied the routes was truncated. */
+  routes_complete?: boolean;
   /** With `recentClosed`: beads the rig-scoped closed legs returned. */
   recent_closed_fetched?: number;
 }
@@ -106,10 +108,19 @@ export async function listSupervisorBeads(
           ),
         )
       : Promise.resolve(null);
-  const [list, inProgress, closedLegs] = await Promise.all([
+  // Run roots and steps live in the city graph store. A rig-scoped read hits
+  // the rig's work store alone (engine storeref.WorkScope), so with a rig
+  // filter the routes come from one unscoped open leg, used for route_items
+  // only (review I1).
+  const wantsRouteLeg = options.withRoutes === true && rigFilter.length > 0;
+  // Best-effort: a failed route leg leaves cards on their status fallback and
+  // reports routes as incomplete, so nothing is read as a stopped run.
+  const routeLeg = wantsRouteLeg ? listWith({ limit }).catch(() => null) : Promise.resolve(null);
+  const [list, inProgress, closedLegs, routeList] = await Promise.all([
     listWith(baseQuery),
     listWith(inProgressQuery).catch(() => null),
     recentClosedLegs.catch(() => null),
+    routeLeg,
   ]);
   const windowItems = uniqueById(list.items ?? []);
   const items = uniqueById([...windowItems, ...(inProgress?.items ?? [])]);
@@ -118,14 +129,25 @@ export async function listSupervisorBeads(
     (bead) => bead.status === 'closed' && !items.some((item) => item.id === bead.id),
   );
   const scoped = [...statusFiltered, ...recentClosed];
-  const routeItems = options.withRoutes ? scoped.filter(isRouteBead) : undefined;
+  const routeItems = options.withRoutes
+    ? uniqueById([...scoped, ...(routeList?.items ?? [])].filter(isRouteBead))
+    : undefined;
   const boardScoped = options.withRoutes ? scoped.filter((bead) => !isRouteBead(bead)) : scoped;
   const filtered = includeBookkeeping ? boardScoped : boardScoped.filter(defaultBeadFilter);
   const upstreamTotal = countAsNumber(list.total);
+  // Whether the leg that supplied the routes held every bead it matched: only
+  // then may the board read "no live run" as "its run stopped".
+  const routeSource = wantsRouteLeg ? routeList : list;
+  const routeSourceTotal = routeSource === null ? undefined : countAsNumber(routeSource.total);
+  const routesComplete =
+    routeSource !== null &&
+    (routeSourceTotal === undefined || (routeSource.items ?? []).length >= routeSourceTotal);
   return {
     items: filtered,
     total: filtered.length,
-    ...(routeItems === undefined ? {} : { route_items: routeItems }),
+    ...(routeItems === undefined
+      ? {}
+      : { route_items: routeItems, routes_complete: routesComplete }),
     ...(closedLegs === null ? {} : { recent_closed_fetched: recentClosed.length }),
     ...(upstreamTotal === undefined ? {} : { upstream_total: upstreamTotal }),
     // Counted from the WINDOW leg alone, against which `upstream_total` is

@@ -206,14 +206,22 @@ describe('BeadsPage', () => {
       target: { value: 'east' },
     });
 
-    // 4 initial reads, then window + in-progress + the one rig's closed leg.
-    await waitFor(() => expect(beadQueries.length).toBe(7));
-    // Every leg of the fresh read carries the rig filter.
-    const latestQuery = beadQueries.at(-1);
-    expect(latestQuery?.get('rig')).toBe('east');
-    expect(latestQuery?.has('all')).toBe(false);
-    expect(latestQuery?.has('type')).toBe(false);
-    expect(beadQueries.at(-2)?.get('rig')).toBe('east');
+    // 4 initial reads, then window + in-progress + the one rig's closed leg,
+    // plus one unscoped open leg that only feeds the run routes (review I1:
+    // runs live in the city store, which a rig-scoped read never reaches).
+    await waitFor(() => expect(beadQueries.length).toBe(8));
+    const fresh = beadQueries.slice(4);
+    const scoped = fresh.filter((q) => q.has('rig'));
+    expect(scoped).toHaveLength(3);
+    for (const query of scoped) {
+      expect(query.get('rig')).toBe('east');
+      expect(query.has('all')).toBe(false);
+      expect(query.has('type')).toBe(false);
+    }
+    const routeLeg = fresh.filter((q) => !q.has('rig'));
+    expect(routeLeg).toHaveLength(1);
+    expect(routeLeg[0]?.has('status')).toBe(false);
+    expect(routeLeg[0]?.has('all')).toBe(false);
   });
 
   it('lists only real rig names in the rig dropdown — no filesystem paths or non-rig dirs', async () => {

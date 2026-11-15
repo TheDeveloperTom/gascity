@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeadsPage } from './Beads';
@@ -81,6 +81,9 @@ beforeEach(() => {
         beadQueries.push(url.searchParams);
         const status = url.searchParams.get('status');
         if (status === 'closed') return json({ items: [MERGED], total: 1 });
+        // Like the engine: a rig-scoped read hits the rig's work store alone,
+        // which holds tasks but no run roots or steps.
+        if (url.searchParams.has('rig')) return json({ items: [TASK], total: 1 });
         if (status === 'in_progress') return json({ items: [TASK, ROOT, STEP, ORPHAN], total: 4 });
         const items = [TASK, ROOT, STEP, NEXT, ORPHAN, ...windowExtra];
         return json({ items, total: windowTotal ?? items.length });
@@ -92,8 +95,9 @@ beforeEach(() => {
         return json({
           items: [
             { name: 'east', path: '/r/east', agent_count: 0, running_count: 0, suspended: false },
+            { name: 'west', path: '/r/west', agent_count: 0, running_count: 0, suspended: false },
           ],
-          total: 1,
+          total: 2,
         });
       }
       throw new Error(`unexpected fetch: ${url.pathname}${url.search}`);
@@ -125,6 +129,22 @@ describe('BeadsPage stopped runs (review I6)', () => {
     await screen.findByText('Run ended under me');
     const card = screen.getByTitle('Select dw-5').closest('li');
     expect(card?.getAttribute('data-route-attention')).toBeNull();
+  });
+});
+
+describe('BeadsPage rig filter keeps stages (review I1)', () => {
+  it('still folds routes and shows the step when a rig is selected', async () => {
+    renderPage();
+    await screen.findByText('Ship the stage board');
+    fireEvent.change(screen.getByLabelText(/rig filter/i), { target: { value: 'west' } });
+    await waitFor(() =>
+      expect(beadQueries.some((q) => q.get('rig') === 'west' && !q.has('status'))).toBe(true),
+    );
+    const working = await screen.findByRole('region', { name: 'Working' });
+    await waitFor(() =>
+      expect(within(working).getByTitle('Open step gcg-2 in its run')).toBeTruthy(),
+    );
+    expect(screen.queryByTitle('Select gcg-2')).toBeNull();
   });
 });
 

@@ -311,10 +311,7 @@ export function deriveTaskStage(
         label: 'route failed',
         title: `Run ${route.root.id} ended failed; the task is still open.`,
       });
-    } else if (
-      task.status === 'in_progress' &&
-      (route !== null || index.routesComplete)
-    ) {
+    } else if (task.status === 'in_progress' && (route !== null || index.routesComplete)) {
       // Our route marks the task in progress (mark-in-progress) and closes it
       // at the end; a scope abort closes the root and every step. So an
       // in-progress task that no live run names had its run stop under it.

@@ -123,10 +123,7 @@ export function BeadsPage() {
   const routeBeads = useMemo(() => data?.route_items ?? EMPTY_BEADS, [data]);
   // A truncated window may hide a live run, so only a complete one lets the
   // board read "no live run" as "its run stopped" (review I6).
-  const routesComplete =
-    data === undefined ||
-    typeof data.upstream_total !== 'number' ||
-    data.upstream_fetched >= data.upstream_total;
+  const routesComplete = data?.routes_complete ?? false;
   const routeIndex = useMemo(
     () => buildRouteIndex(routeBeads, { routesComplete }),
     [routeBeads, routesComplete],

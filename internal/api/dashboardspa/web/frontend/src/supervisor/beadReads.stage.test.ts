@@ -113,6 +113,47 @@ describe('listSupervisorBeads stage-board options', () => {
     expect(api.listBeads).toHaveBeenCalledTimes(2);
   });
 
+  // Review I1: a rig-scoped read hits the rig's work store alone, which holds
+  // no run roots or steps (they live in the city graph store). The routes
+  // must come from an unscoped open leg, used for route_items only.
+  it('keeps route beads under a rig filter from an unscoped open leg', async () => {
+    const HQ_TASK = bead('dp-1');
+    const api = install(async (_city, query) => {
+      if (query['rig'] === 'devwork') {
+        if (query['status'] === 'closed') return { items: [], total: 0 };
+        return { items: [TASK], total: 1 };
+      }
+      return { items: [HQ_TASK, ROOT, STEP, GATE], total: 4 };
+    });
+    const list = await listSupervisorBeads({ rigFilter: 'devwork', withRoutes: true });
+    const queries = api.listBeads.mock.calls.map((call) => call[1] as Query);
+    expect(queries).toContainEqual({ limit: 1000 });
+    expect(list.route_items?.map((b) => b.id)).toEqual(['gcg-1', 'gcg-2', 'gcg-3']);
+    // The unscoped leg feeds routes only: another store's task stays out.
+    expect(list.items.map((b) => b.id)).toEqual(['dw-1']);
+    expect(list.routes_complete).toBe(true);
+  });
+
+  it('reports routes as incomplete when the leg that supplied them was truncated', async () => {
+    install(async (_city, query) => {
+      if (query['rig'] === 'devwork') return { items: [TASK], total: 1 };
+      return { items: [ROOT, STEP], total: 5000 };
+    });
+    const list = await listSupervisorBeads({ rigFilter: 'devwork', withRoutes: true });
+    expect(list.routes_complete).toBe(false);
+  });
+
+  it('treats a failed route leg as incomplete routes, not as an error', async () => {
+    install(async (_city, query) => {
+      if (query['rig'] === 'devwork') return { items: [TASK], total: 1 };
+      throw new Error('503');
+    });
+    const list = await listSupervisorBeads({ rigFilter: 'devwork', withRoutes: true });
+    expect(list.items.map((b) => b.id)).toEqual(['dw-1']);
+    expect(list.route_items).toEqual([]);
+    expect(list.routes_complete).toBe(false);
+  });
+
   it('treats the recent closed leg as best-effort', async () => {
     install(async (_city, query) => {
       if (query['status'] === 'closed') throw new Error('503 invalid issue type');
