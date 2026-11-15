@@ -197,6 +197,34 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
     'Доска прочитала не все задачи, поэтому не может сказать, кто работает.',
   'Open the run': 'Открыть прогон',
 
+  // Cards in plain Russian (B6).
+  'ready to take': 'можно брать',
+  Queued: 'в очереди',
+  'waits for {n} tasks': {
+    one: 'ждёт {n} задачу',
+    few: 'ждёт {n} задачи',
+    many: 'ждёт {n} задач',
+  },
+  'waits for a decision: «{title}»': 'ждёт решения: «{title}»',
+  'waits for another task': 'ждёт другую задачу',
+  'holds {n} tasks': {
+    one: 'держит {n} задачу',
+    few: 'держит {n} задачи',
+    many: 'держит {n} задач',
+  },
+  blocked: 'заблокирована',
+  stopped: 'остановлена',
+  'route failed': 'прогон упал',
+  'route stopped': 'прогон остановился',
+  'TDD refused': 'нет красного теста',
+  'closed, not merged': 'закрыта без вливания',
+  'merged {when}': 'влито {when}',
+  'today at {time}': 'сегодня в {time}',
+  'yesterday at {time}': 'вчера в {time}',
+  'Select {id}': 'Открыть задачу {id}',
+  'Open run {id}': 'Открыть прогон {id}',
+  'Open step {id} in its run': 'Открыть шаг {id} в прогоне',
+
   // Needs-you panels (Task 11).
   '{n} task issues are on Health': {
     one: 'Неполадки задач: {n}',

@@ -83,7 +83,6 @@ export function BeadBoard({
   showAllHistory,
   onToggleHistory,
 }: BeadBoardProps) {
-  void nowMs;
   const { columns } = model;
   const counts: Record<StageId, number> = {
     waiting: columns.waiting.length,
@@ -98,8 +97,8 @@ export function BeadBoard({
   const renderCard = (card: BoardCard) => (
     <BeadBoardRow
       key={card.node.bead.id}
-      node={card.node}
-      stage={card.stage}
+      card={card}
+      nowMs={nowMs}
       selected={card.node.bead.id === selectedId}
       attentionSeverity={attentionSeverity?.(card.node.bead.id) ?? null}
       note={noteOf?.(card.node.bead.id) ?? null}

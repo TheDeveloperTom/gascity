@@ -62,13 +62,11 @@ describe('BeadBoard', () => {
     expect(onSelect).toHaveBeenCalledWith('A');
   });
 
-  it('annotates a row with its dependency neighbourhood (full tree lives in the modal)', () => {
-    // B needs A: B carries a `needs 1` annotation; A (downstream) carries
-    // `blocks 1`. The navigable tree itself moved to BeadDependencies — see
-    // BeadDependencies.test — so the row only summarises the counts.
+  // B6 supersedes the graph counts (BE-12): plain words, never `needs N` or `blocks M`.
+  it('a card says plain words, not graph counts', () => {
     renderBoard([bead('A', 'closed'), bead('B', 'open', { needs: ['A'] })]);
-    expect(screen.getByText(/needs 1/)).toBeTruthy();
-    expect(screen.getByText(/blocks 1/)).toBeTruthy();
+    expect(screen.getByText('ready to take')).toBeTruthy();
+    expect(screen.queryByText(/needs \d|blocks \d/)).toBeNull();
   });
 
   it('scrolls the selected bead row into view on initial deep-link selection', () => {
@@ -88,17 +86,10 @@ describe('BeadBoard', () => {
     // summary; the full navigable dependency tree lives in the bead detail modal.
     renderBoard([bead('A', 'closed'), bead('B', 'open', { needs: ['A'] })], 'B', onSelect);
     const waiting = screen.getByRole('region', { name: 'Waiting' });
-    expect(within(waiting).getByText(/needs 1/)).toBeTruthy();
-    expect(within(waiting).getByText('ready')).toBeTruthy();
+    expect(within(waiting).getByText('ready to take')).toBeTruthy();
     expect(within(waiting).queryByTitle('Select A')).toBeNull();
     fireEvent.click(within(waiting).getByTitle('Select B'));
     expect(onSelect).toHaveBeenCalledWith('B');
-  });
-
-  it('flags an unresolved upstream edge on the row summary', () => {
-    renderBoard([bead('B', 'open', { needs: ['GHOST'] })], 'B');
-    expect(screen.queryByTitle('Select GHOST')).toBeNull();
-    expect(screen.getAllByText('unresolved').length).toBeGreaterThan(0);
   });
 
   it('keeps the board to at most one maroon mark', () => {

@@ -180,6 +180,11 @@ describe('cardWait', () => {
     });
   });
 
+  it('a blocked-status task is never ready', () => {
+    const task = bead('dw-s', { status: 'blocked' });
+    expect(cardWait(task, stage(), byId([task]))).toEqual({ kind: 'held' });
+  });
+
   it('held', () => {
     const task = bead('dw-h', { is_blocked: true });
     expect(cardWait(task, stage(), byId([task]))).toEqual({ kind: 'held' });

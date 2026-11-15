@@ -193,7 +193,7 @@ export function cardWait(
 ): CardWait | null {
   if (stage.stage !== 'waiting') return null;
   if (stage.stepLabel === 'Queued' && stage.root !== null) return { kind: 'queued' };
-  if (task.is_blocked !== true) return { kind: 'ready' };
+  if (task.is_blocked !== true && task.status !== 'blocked') return { kind: 'ready' };
   const ids = blockerIds(task);
   const decisions = ids
     .map((id) => byId.get(id))
