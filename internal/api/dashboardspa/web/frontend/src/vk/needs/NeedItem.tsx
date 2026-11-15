@@ -5,6 +5,7 @@ import { t, tn } from '../../i18n';
 import type { DiscussContext } from '../../lib/discussWithMayor';
 import type { MilestoneCount, NeedItem as Need, StallItem } from '../../lib/needsFromMe';
 import { DiscussButton } from '../DiscussButton';
+import { canWrite } from '../../embed/activitySession';
 import { ExternalLink } from '../ExternalLink';
 
 // One «Нужно от меня» card (vk lane 3, Attention / Phone-Needs frames). The
@@ -67,7 +68,8 @@ function CardLink({
       </Link>
     );
   }
-  if (need.externalHref !== undefined) {
+  // Task 6: an Activity reader (Richard) gets no chat (answer) link.
+  if (need.externalHref !== undefined && canWrite()) {
     return (
       <ExternalLink href={need.externalHref} aria-labelledby={labelledBy} className={CARD}>
         {children}
@@ -138,12 +140,14 @@ export function NeedItem({ need }: { need: Need }) {
         </div>
         <CaretRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-vk-text-low" />
       </CardLink>
-      <div className="px-4 pb-3">
-        <DiscussButton
-          ctx={ctx}
-          className="focus-mark inline-flex min-h-11 items-center rounded border border-vk-border px-3 text-label font-medium text-vk-text-high hover:bg-vk-bg-secondary disabled:opacity-50"
-        />
-      </div>
+      {canWrite() && (
+        <div className="px-4 pb-3">
+          <DiscussButton
+            ctx={ctx}
+            className="focus-mark inline-flex min-h-11 items-center rounded border border-vk-border px-3 text-label font-medium text-vk-text-high hover:bg-vk-bg-secondary disabled:opacity-50"
+          />
+        </div>
+      )}
     </li>
   );
 }

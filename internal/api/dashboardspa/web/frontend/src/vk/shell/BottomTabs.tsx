@@ -82,7 +82,7 @@ export function NeedsBadge({ count, className }: { count: number; className?: st
       data-testid="needs-badge"
       aria-hidden="true"
       className={cn(
-        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-[5px] text-[11px] font-semibold leading-[18px] text-on-primary tnum',
+        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-vk-error px-[5px] text-[11px] font-semibold leading-[18px] text-on-primary tnum',
         className,
       )}
     >

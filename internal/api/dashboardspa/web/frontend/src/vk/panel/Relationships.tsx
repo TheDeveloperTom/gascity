@@ -69,7 +69,7 @@ function RelationshipBadge({
   const label = row.displayType === 'blocks' ? t('blocks') : t('waits on');
   const body = (
     <>
-      <span className="flex shrink-0 text-accent">
+      <span className="flex shrink-0 text-vk-error">
         <Icon size={15} weight="bold" aria-hidden="true" />
       </span>
       <span className="shrink-0 whitespace-nowrap text-vk-text-low">{label}</span>

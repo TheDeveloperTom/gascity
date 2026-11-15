@@ -86,6 +86,16 @@ describe('BoardFilterBar (vk)', () => {
     expect(screen.getByRole('option', { name: 'Все задачи' })).toBeTruthy();
   });
 
+  it('the epic list notes planned milestones with no tasks («M05–M13 плана ещё нет»)', () => {
+    renderBar({ epics: EPICS, plannedEmpty: 'M05–M13' });
+    fireEvent.click(screen.getByRole('button', { name: /Эпик:/ }));
+    const note = screen.getByText('M05–M13').parentElement as HTMLElement;
+    expect(note.getAttribute('aria-disabled')).toBe('true');
+    expect(note.textContent).toContain('плана ещё нет');
+    expect(note.getAttribute('role')).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
   it('«Новая задача» is a link to newTaskUrl', () => {
     renderBar({ newTaskUrl: 'https://discord.com/channels/1/2' });
     const link = screen.getByRole('link', { name: /Новая задача/ });

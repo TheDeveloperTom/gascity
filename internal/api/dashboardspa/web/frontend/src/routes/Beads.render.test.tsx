@@ -84,18 +84,20 @@ describe('BeadsPage supervisor reads', () => {
     ).toBeTruthy();
     expect(await within(dialog).findByText('Dependencies')).toBeTruthy();
     expect(within(dialog).getByText('td-parent-1')).toBeTruthy();
-    expect(within(dialog).getByText(/parent bead/)).toBeTruthy();
+    // vk integration: the parent shows twice, in lane 2's «Связи» and in the
+    // old Dependencies tree under «Подробности».
+    expect(within(dialog).getAllByText(/parent bead/).length).toBeGreaterThan(0);
     expect(within(dialog).getByRole('button', { name: /view live run/i })).toBeTruthy();
   });
 
-  it('disables the New bead control and surfaces a read-only affordance in read-only mode', async () => {
+  // vk integration: the header create-and-sling «New bead» button is gone;
+  // «New task» is the filter bar's one button and opens the Mayor's channel.
+  it('surfaces a read-only affordance in read-only mode', async () => {
     renderPage('/beads', [], { readOnly: true });
 
     await screen.findByText('direct supervisor bead');
 
-    const newBead = screen.getByRole('button', { name: 'New bead' }) as HTMLButtonElement;
-    expect(newBead.disabled).toBe(true);
-    expect(newBead.getAttribute('title')).toBe('Read-only mode: mutations are disabled');
+    expect(screen.queryByRole('button', { name: 'New bead' })).toBeNull();
     // The affordance carries words, not just a dimmed control (DESIGN.md §States).
     expect(screen.getByText('Read-only')).toBeTruthy();
   });
@@ -123,14 +125,16 @@ describe('BeadsPage supervisor reads', () => {
     expect(within(actions as HTMLElement).getByText('Read-only')).toBeTruthy();
   });
 
-  it('keeps the New bead control active when the dashboard is writable', async () => {
+  it('has exactly one New task control, the Mayor-channel one, when writable', async () => {
     renderPage('/beads');
 
     await screen.findByText('direct supervisor bead');
 
-    expect((screen.getByRole('button', { name: 'New bead' }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect(screen.queryByRole('button', { name: 'New bead' })).toBeNull();
+    // No VITE_MAYOR_DISCORD_URL in tests: the one control is disabled and says why.
+    const newTask = screen.getAllByRole('button', { name: 'New task' });
+    expect(newTask).toHaveLength(1);
+    expect(newTask[0]?.getAttribute('title')).toBe('The Mayor channel is not configured');
     expect(screen.queryByText('Read-only')).toBeNull();
   });
 

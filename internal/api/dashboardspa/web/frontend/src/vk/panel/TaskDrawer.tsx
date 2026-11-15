@@ -1,12 +1,17 @@
 import { CaretRightIcon, XIcon } from '@phosphor-icons/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { t } from '../../i18n';
-import { answerQuestion } from '../../lib/answerQuestion';
+import { isEmbedded } from '../../lib/apiBase';
 import { openExternal } from '../../lib/openExternal';
 import type { OwnerQuestion } from '../../lib/ownerQuestions';
 import type { SupervisorBead } from '../../supervisor/beadReads';
+import { canWrite } from '../../embed/activitySession';
 import { cn } from '../cn';
-import type { DiscussContext } from '../../lib/discussWithMayor';
+import {
+  answerErrorText,
+  answerQuestion as recordAnswer,
+  type DiscussContext,
+} from '../../lib/discussWithMayor';
 import { DiscussButton } from '../DiscussButton';
 
 // The VK task panel (vk lane 2): a right-side drawer from `md` up, a
@@ -15,19 +20,11 @@ import { DiscussButton } from '../DiscussButton';
 // compact question block, «Обсудить с Мэром» under the title on every task,
 // the answered question folds into one «История» row).
 
-/**
- * Embed mode (Discord Activity). Controller ruling 15.11: the option buttons
- * answer in place ONLY inside the Activity, where the gateway proves the
- * owner's Discord identity; in the browser they open the Mayor's Discord
- * message, because on localhost any process could post as the owner.
- * Lane 6 has no `isEmbedded()` seam on vk/base yet; this reads the build
- * flag the research names (VITE_EMBED) and defaults to the safe browser
- * branch. Replace with lane 6's `isEmbedded()` when it lands.
- */
-export function isEmbedded(): boolean {
-  const env = import.meta.env as unknown as Record<string, unknown>;
-  return env['VITE_EMBED'] === '1' || env['VITE_EMBED'] === 'true';
-}
+// Embed mode (Discord Activity) is lane 6's `isEmbedded()` (lib/apiBase).
+// Controller ruling 15.11: the option buttons answer in place ONLY inside the
+// Activity, where the gateway proves the owner's Discord identity (act6's
+// wired `answerQuestion(qid, choice)`); in the browser they open the Mayor's
+// Discord message, because on localhost any process could post as the owner.
 
 export const SUMMARY_LIMIT = 280;
 
@@ -185,14 +182,27 @@ export interface QuestionCardProps {
 
 /** The open question, compact: title, «Что случилось», options, «Другое». */
 export function QuestionCard({ q, discussCtx, onAnswered }: QuestionCardProps) {
-  const pick = (choice: number | null) => {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const embedded = isEmbedded();
+  // Task 6: an Activity reader (Richard) sees the question, not the choices.
+  const writable = canWrite();
+  const pick = (choice: number) => {
     // Ruling 15.11: in place only inside the Activity; the browser opens the message.
-    if (!isEmbedded()) {
+    if (!embedded) {
       openExternal(q.chatUrl);
       return;
     }
-    answerQuestion(q, choice);
-    if (choice !== null) onAnswered({ choice });
+    if (!writable || sending) return;
+    setSending(true);
+    setError(null);
+    recordAnswer(q.questionId, choice).then(
+      () => onAnswered({ choice }),
+      (err: unknown) => {
+        setError(answerErrorText(err));
+        setSending(false);
+      },
+    );
   };
 
   return (
@@ -207,21 +217,29 @@ export function QuestionCard({ q, discussCtx, onAnswered }: QuestionCardProps) {
           <p className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">{q.why}</p>
         </div>
       )}
-      <div data-testid="question-choices" className="flex flex-col gap-2">
-        {q.choices.length === 0 ? (
-          <ChoiceButton label={t('Answer in Discord')} then="" primary onClick={() => openExternal(q.chatUrl)} />
-        ) : (
-          q.choices.map((c, i) => (
-            <ChoiceButton
-              key={`${i}:${c.label}`}
-              label={c.label}
-              then={c.then}
-              primary={i === 0}
-              onClick={() => pick(i)}
-            />
-          ))
-        )}
-      </div>
+      {writable && (
+        <div data-testid="question-choices" className="flex flex-col gap-2">
+          {q.choices.length === 0 ? (
+            <ChoiceButton label={t('Answer in Discord')} then="" primary onClick={() => openExternal(q.chatUrl)} />
+          ) : (
+            q.choices.map((c, i) => (
+              <ChoiceButton
+                key={`${i}:${c.label}`}
+                label={c.label}
+                then={c.then}
+                primary={i === 0}
+                disabled={sending}
+                onClick={() => pick(i)}
+              />
+            ))
+          )}
+        </div>
+      )}
+      {error !== null && (
+        <p role="alert" className="text-sm text-vk-error">
+          {error}
+        </p>
+      )}
       <DiscussButton ctx={discussCtx} label={t('Other — discuss in Discord')} />
     </section>
   );

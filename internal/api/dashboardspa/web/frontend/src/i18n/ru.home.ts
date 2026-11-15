@@ -17,9 +17,5 @@ export const RU_HOME: Readonly<Record<string, string | RuPlural>> = {
   'stuck for {time}': 'стоит {time}',
   'Options from the Mayor': 'Варианты из вопроса Мэра',
   'What waits for this': 'Что ждёт этот ответ',
-  'holds {n} tasks': {
-    one: 'держит {n} задачу',
-    few: 'держит {n} задачи',
-    many: 'держит {n} задач',
-  },
+  // 'holds {n} tasks' lives in the core ru.ts (same forms); no lane override.
 };

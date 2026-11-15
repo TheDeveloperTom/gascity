@@ -32,6 +32,8 @@ interface BoardFilterBarProps {
   ownerFilter?: OwnerFilter;
   onOwnerFilter?: (f: OwnerFilter) => void;
   newTaskUrl?: string | null;
+  /** «M05–M13»: milestones with an epic bead but no tasks yet («плана ещё нет»). */
+  plannedEmpty?: string | null;
 }
 
 const NO_EPICS: readonly EpicSummary[] = [];
@@ -99,10 +101,12 @@ function EpicSelect({
   epics,
   value,
   onChange,
+  plannedEmpty,
 }: {
   epics: readonly EpicSummary[];
   value: string;
   onChange?: (key: string) => void;
+  plannedEmpty?: string | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -225,6 +229,16 @@ function EpicSelect({
               </>,
             ),
           )}
+          {typeof plannedEmpty === 'string' && plannedEmpty.length > 0 && (
+            <div
+              aria-disabled="true"
+              className="flex min-h-9 items-center gap-2 border-t border-vk-border px-2 text-[15px] text-vk-text-low"
+            >
+              <span className="w-3.5" aria-hidden="true" />
+              <span className="font-vk-mono text-[13px]">{plannedEmpty}</span>
+              <span>{t('no plan yet')}</span>
+            </div>
+          )}
           {noEpic !== undefined &&
             option(
               NO_EPIC,
@@ -290,6 +304,7 @@ export function BoardFilterBar({
   ownerFilter = 'all',
   onOwnerFilter,
   newTaskUrl,
+  plannedEmpty,
 }: BoardFilterBarProps) {
   const testsId = useId();
   // `all` plus at least two projects with cards.
@@ -297,7 +312,12 @@ export function BoardFilterBar({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <OwnerChips sources={sources} value={ownerFilter} {...(onOwnerFilter ? { onChange: onOwnerFilter } : {})} />
-      <EpicSelect epics={epics} value={epic} {...(onEpic ? { onChange: onEpic } : {})} />
+      <EpicSelect
+        epics={epics}
+        value={epic}
+        plannedEmpty={plannedEmpty}
+        {...(onEpic ? { onChange: onEpic } : {})}
+      />
       <div className="min-w-0 basis-full md:basis-[220px]">
         <ListSearchBar
           value={search}

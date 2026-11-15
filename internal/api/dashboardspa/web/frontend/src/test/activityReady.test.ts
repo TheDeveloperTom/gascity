@@ -13,11 +13,8 @@ const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const indexHtml = join(srcDir, '..', 'index.html');
 
 /** Files other lanes still have to convert. The controller empties this at integration. */
-const PENDING_OTHER_LANES: string[] = [
-  'components/beads/BeadBoardRow.tsx',
-  'components/home/OwnerPlate.tsx',
-  'components/Header.tsx',
-];
+// vk integration: every lane has landed; nothing is exempt any more.
+const PENDING_OTHER_LANES: string[] = [];
 
 function walk(dir: string): string[] {
   const out: string[] = [];

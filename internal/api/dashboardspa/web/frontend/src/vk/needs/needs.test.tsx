@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router';
 import type { TaskStages } from '../../hooks/useTaskStages';
 import { setLocale } from '../../i18n';
 import { needsFromBoard } from '../../lib/needsFromMe';
+import { setActivityRole } from '../../embed/activitySession';
+import { resetActivityPlumbingForTests } from '../../lib/apiBase';
 import {
   NOW_MS,
   OWNER_ITEMS,
@@ -94,6 +96,24 @@ describe('«Нужно от меня» shelves', () => {
     expect(itemOf(UNLINKED_ID).getAttribute('data-for-owner')).toBe('true');
     expect(itemOf(STALLED_ID).getAttribute('data-for-owner')).toBe('false');
     expect(within(itemOf(UNLINKED_ID)).queryByRole('list')).toBeNull();
+  });
+
+  it('an Activity reader (Richard) sees the needs but no discuss or chat-answer action', () => {
+    vi.stubEnv('VITE_EMBED', '1');
+    setActivityRole('reader');
+    try {
+      show();
+      expect(screen.queryByRole('button', { name: 'Обсудить в Discord' })).toBeNull();
+      expect(within(itemOf(STALLED_ID)).getByText('Миграция 0425')).toBeTruthy();
+      // The question still opens the drawer (where its choices are hidden too).
+      expect(within(itemOf(QUESTION_ID)).getByRole('link').getAttribute('href')).toContain('bead=');
+      for (const a of document.querySelectorAll('a')) {
+        expect(a.getAttribute('href') ?? '').not.toMatch(/^https:\/\/discord\.com/);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+      resetActivityPlumbingForTests();
+    }
   });
 
   it('a stall shows «Обсудить» and no «Ответить»', () => {

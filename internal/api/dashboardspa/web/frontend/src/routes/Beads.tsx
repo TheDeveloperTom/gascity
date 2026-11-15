@@ -13,10 +13,14 @@ import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
 import { useBoardSources, type OwnerFilter } from '../lib/boardOwner';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
-import { ALL_EPICS, epicSummaries } from '../lib/epics';
+import {
+  ALL_EPICS,
+  epicSummaries,
+  milestoneRangeLabel,
+  plannedEmptyMilestones,
+} from '../lib/epics';
 import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
-import { Field } from '../components/Field';
 import { Modal } from '../components/Modal';
 import { PageAlerts } from '../components/PageAlerts';
 import { PageHeader } from '../components/PageHeader';
@@ -24,7 +28,6 @@ import { useNow } from '../contexts/NowContext';
 import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel } from '../lib/boardModel';
-import { resolveRigName, rigNameOptions } from '../lib/rigNames';
 import {
   BOARD_RECENT_CLOSED_LIMIT,
   BOARD_REFRESH_COALESCE_MS,
@@ -36,27 +39,23 @@ import {
 } from '../hooks/useBoardData';
 import { useCachedData } from '../hooks/useCachedData';
 import { useGcEventRefresh } from '../hooks/useGcEvents';
-import { listSupervisorAgents, type SupervisorAgent } from '../supervisor/agentReads';
 import { listSupervisorBeads, type SupervisorBead } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
-import { closeSupervisorBead, createAndSlingSupervisorBead } from '../supervisor/beadWrites';
+import { closeSupervisorBead } from '../supervisor/beadWrites';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
 
 // The Beads page (OWNER-HOME-PLAN B7): one board for every project, in the
 // owner's words. The route line carries the counts (RB12), so there is no
 // synopsis, scope label, status chips or rig select. The project and test
-// filters are client-side and never remembered; open Waiting groups are.
+// filters are client-side and never remembered.
+// vk integration: «Новая задача» is the filter bar's one button (it opens the
+// Mayor's Discord channel); the old header create-and-sling form is gone.
+// `?epic=<key>` (⌘K epic rows) preselects the epic filter.
 
 // The board's refresh is a full list refetch (~1.3MB on a busy city); its
 // coalesce window and closed window live with the shared read
 // (hooks/useBoardData: BOARD_REFRESH_COALESCE_MS, BOARD_RECENT_CLOSED_LIMIT).
 const EMPTY_BEADS: readonly SupervisorBead[] = [];
-
-// Form controls per the Signal & Pavement input recipe (DESIGN-PLAN §7).
-const INPUT_CLASS =
-  'h-9 w-full rounded border border-rule bg-surface-raised px-3 text-body text-fg placeholder:text-fg-faint focus-mark';
-const TEXTAREA_CLASS =
-  'w-full rounded border border-rule bg-surface-raised px-3 py-2 text-body text-fg placeholder:text-fg-faint focus-mark';
 
 interface ActionMessage {
   tone: 'ok' | 'error';
@@ -76,20 +75,14 @@ export function BeadsPage() {
   const [project, setProject] = useState<string>(ALL_PROJECTS);
   const [search, setSearch] = useState('');
   const [showTests, setShowTests] = useState(false);
-  const [epic, setEpic] = useState<string>(ALL_EPICS);
+  const epicParam = normalizeSelectedBeadParam(searchParams.get('epic'));
+  const [epic, setEpic] = useState<string>(epicParam ?? ALL_EPICS);
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
   const boardSources = useBoardSources();
   const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [createInFlight, setCreateInFlight] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [newTitle, setNewTitle] = useState('');
-  const [newBody, setNewBody] = useState('');
-  const [newRig, setNewRig] = useState('');
-  const [newAgent, setNewAgent] = useState('');
 
   // Dashboard v3: the open board is the one shared read (useBoardData), so
   // Главная and «Задачи» count from the same window. «Вся история» keeps its
@@ -139,37 +132,9 @@ export function BeadsPage() {
     sharedRead(sessionsKey, listSupervisorSessions),
   );
   const sessionItems = useMemo(() => sessions.data?.items ?? [], [sessions.data]);
-  const agents = useCachedData(`agents:${cityCacheKey}`, listSupervisorAgents);
-  const agentItems = useMemo(() => agents.data?.items ?? [], [agents.data]);
   const rigsKey = rigsCacheKey(cityName);
   const rigs = useCachedData(rigsKey, () => sharedRead(rigsKey, listSupervisorRigs));
   const rigItems = useMemo(() => rigs.data?.items ?? [], [rigs.data]);
-
-  // The New bead form lists the supervisor's authoritative rig names, never
-  // the raw `agent.rig` values — those are sometimes filesystem paths.
-  const dispatchRigOptions = useMemo(() => rigNameOptions(rigItems), [rigItems]);
-  const agentRigName = useCallback(
-    (agent: SupervisorAgent) => resolveRigName(agent.rig, rigItems),
-    [rigItems],
-  );
-  const filteredDispatchAgents = useMemo(
-    () =>
-      newRig.length === 0
-        ? agentItems
-        : agentItems.filter((agent) => agentRigName(agent) === newRig),
-    [agentItems, agentRigName, newRig],
-  );
-
-  useEffect(() => {
-    if (!creating) return;
-    if (filteredDispatchAgents.length === 0) {
-      if (newAgent.length > 0) setNewAgent('');
-      return;
-    }
-    if (!filteredDispatchAgents.some((agent) => agent.name === newAgent)) {
-      setNewAgent(filteredDispatchAgents[0]?.name ?? '');
-    }
-  }, [creating, filteredDispatchAgents, newAgent]);
 
   // useBoardData refreshes the open board on bead events; the history read
   // refreshes here, only while it is shown.
@@ -184,6 +149,10 @@ export function BeadsPage() {
   useEffect(() => {
     if (selectedBeadParam !== null) setSelectedId(selectedBeadParam);
   }, [selectedBeadParam]);
+
+  useEffect(() => {
+    if (epicParam !== null) setEpic(epicParam);
+  }, [epicParam]);
 
   const runClose = useCallback(
     async (bead: SupervisorBead) => {
@@ -205,62 +174,6 @@ export function BeadsPage() {
     },
     [readOnly, refresh],
   );
-
-  const openCreateBead = useCallback(() => {
-    const defaultRig = dispatchRigOptions[0] ?? '';
-    const defaultAgent = agentItems.find(
-      (agent) => defaultRig.length === 0 || agentRigName(agent) === defaultRig,
-    );
-    setNewTitle('');
-    setNewBody('');
-    setNewRig(defaultRig);
-    setNewAgent(defaultAgent?.name ?? '');
-    setCreateError(null);
-    setActionMessage(null);
-    setCreating(true);
-  }, [agentItems, agentRigName, dispatchRigOptions]);
-
-  const handleDispatchRigChange = useCallback(
-    (rig: string) => {
-      setNewRig(rig);
-      const currentAgentStillVisible = agentItems.some(
-        (agent) => agent.name === newAgent && (rig.length === 0 || agentRigName(agent) === rig),
-      );
-      if (!currentAgentStillVisible) {
-        const defaultAgent = agentItems.find(
-          (agent) => rig.length === 0 || agentRigName(agent) === rig,
-        );
-        setNewAgent(defaultAgent?.name ?? '');
-      }
-    },
-    [agentItems, agentRigName, newAgent],
-  );
-
-  const createAndSling = useCallback(async () => {
-    // Defense-in-depth: a form Enter-submit can fire even with the submit
-    // button disabled, so guard the write itself in read-only mode.
-    if (readOnly) return;
-    setCreateInFlight(true);
-    setCreateError(null);
-    try {
-      const result = await createAndSlingSupervisorBead({
-        title: newTitle,
-        description: newBody,
-        rig: newRig,
-        target: newAgent,
-      });
-      setActionMessage({
-        tone: 'ok',
-        text: t('Created {id} and slung to {agent}.', { id: result.bead.id, agent: newAgent }),
-      });
-      setCreating(false);
-      await refresh();
-    } catch (err) {
-      setCreateError(formatApiError(err, t('create and sling failed')));
-    } finally {
-      setCreateInFlight(false);
-    }
-  }, [newAgent, newBody, newRig, newTitle, readOnly, refresh]);
 
   // One board model for every project (B4); filters never refetch.
   const boardModel = useMemo(
@@ -293,6 +206,7 @@ export function BeadsPage() {
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
     [rows, showAllHistory],
   );
+  const plannedEmpty = useMemo(() => milestoneRangeLabel(plannedEmptyMilestones(rows)), [rows]);
   const boardSessions = board.sessions;
 
   // The dialog graph also holds the route and service beads, so a step or a
@@ -383,16 +297,6 @@ export function BeadsPage() {
         meta={
           <>
             {readOnly && <ReadOnlyBadge />}
-            <Button
-              type="button"
-              size="sm"
-              tone="accent"
-              title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
-              onClick={openCreateBead}
-              disabled={readOnly || agents.loading || agentItems.length === 0}
-            >
-              {t('New bead')}
-            </Button>
             <Button size="sm" onClick={() => void refresh()} disabled={loading}>
               {loading && !hasLoadedBoard ? t('Loading') : loading ? t('Refreshing') : t('Refresh')}
             </Button>
@@ -400,7 +304,7 @@ export function BeadsPage() {
         }
       />
 
-      <PageAlerts messages={[error, sessions.error, agents.error, rigs.error]} />
+      <PageAlerts messages={[error, sessions.error, rigs.error]} />
 
       {(isTruncated || actionMessage) && (
         <div className="mb-6 max-w-prose space-y-2 text-body text-fg-muted">
@@ -458,6 +362,7 @@ export function BeadsPage() {
           ownerFilter={ownerFilter}
           onOwnerFilter={setOwnerFilter}
           newTaskUrl={mayorChannelUrl()}
+          plannedEmpty={plannedEmpty}
         />
       </div>
 
@@ -555,108 +460,6 @@ export function BeadsPage() {
         <p className="text-body text-fg-muted">
           {t('Close this bead? It will be marked closed and drop out of the open queue.')}
         </p>
-      </Modal>
-
-      <Modal
-        open={creating}
-        onClose={() => {
-          if (!createInFlight) setCreating(false);
-        }}
-        title={t('New bead')}
-        caption={t('Create and sling')}
-        widthClass="max-w-2xl"
-        footer={
-          <>
-            <Button
-              type="button"
-              size="sm"
-              tone="quiet"
-              disabled={createInFlight}
-              onClick={() => setCreating(false)}
-            >
-              {t('Cancel')}
-            </Button>
-            <Button
-              type="submit"
-              form="new-bead-form"
-              size="sm"
-              tone="accent"
-              title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
-              disabled={
-                readOnly ||
-                createInFlight ||
-                newTitle.trim().length === 0 ||
-                newAgent.trim().length === 0
-              }
-            >
-              {createInFlight ? t('Creating') : t('Create and sling')}
-            </Button>
-          </>
-        }
-      >
-        <form
-          id="new-bead-form"
-          className="space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void createAndSling();
-          }}
-        >
-          {createError && (
-            <p className="text-body text-accent" role="alert">
-              {createError}
-            </p>
-          )}
-          <Field label={t('Title')} variant="form">
-            <input
-              value={newTitle}
-              onChange={(event) => setNewTitle(event.target.value)}
-              required
-              className={INPUT_CLASS}
-            />
-          </Field>
-          <Field label={t('Body')} variant="form">
-            <textarea
-              value={newBody}
-              onChange={(event) => setNewBody(event.target.value)}
-              rows={5}
-              className={TEXTAREA_CLASS}
-            />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('Rig')} variant="form">
-              <select
-                value={newRig}
-                onChange={(event) => handleDispatchRigChange(event.target.value)}
-                className={INPUT_CLASS}
-              >
-                {dispatchRigOptions.length === 0 && <option value="">{t('all rigs')}</option>}
-                {dispatchRigOptions.map((rig) => (
-                  <option key={rig} value={rig}>
-                    {rig}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('Agent')} variant="form">
-              <select
-                value={newAgent}
-                onChange={(event) => setNewAgent(event.target.value)}
-                required
-                className={INPUT_CLASS}
-              >
-                {filteredDispatchAgents.map((agent) => (
-                  <option key={agent.name} value={agent.name}>
-                    {/* display_name is the provider's label (e.g. "Claude Code"), not the agent's. */}
-                    {agent.display_name && agent.display_name !== agent.name
-                      ? `${agent.name} (${agent.display_name})`
-                      : agent.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </form>
       </Modal>
     </section>
   );

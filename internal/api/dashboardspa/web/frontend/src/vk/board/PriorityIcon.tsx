@@ -39,10 +39,10 @@ export interface PriorityIconProps {
 }
 
 const priorityConfig: Record<PriorityLevel, { icon: typeof ArrowUpIcon; colorClass: string }> = {
-  urgent: { icon: ArrowFatLineUpIcon, colorClass: 'text-accent' },
+  urgent: { icon: ArrowFatLineUpIcon, colorClass: 'text-vk-error' },
   high: { icon: ArrowUpIcon, colorClass: 'text-vk-brand' },
   medium: { icon: MinusIcon, colorClass: 'text-vk-text-low' },
-  low: { icon: ArrowDownIcon, colorClass: 'text-ok' },
+  low: { icon: ArrowDownIcon, colorClass: 'text-vk-success' },
 };
 
 /** A bead's numeric priority (0 = most urgent) as a VK level; null when unset. */

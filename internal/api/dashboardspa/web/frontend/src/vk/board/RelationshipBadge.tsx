@@ -96,7 +96,7 @@ export function RelationshipBadge({
         'rounded-sm',
         'text-sm font-medium',
         'whitespace-nowrap',
-        isBlocking ? 'bg-accent/10 text-accent' : 'bg-vk-bg-panel text-vk-text-low',
+        isBlocking ? 'bg-vk-error/10 text-vk-error' : 'bg-vk-bg-panel text-vk-text-low',
         className,
       )}
     >

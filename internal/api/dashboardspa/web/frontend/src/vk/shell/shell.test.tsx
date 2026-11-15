@@ -158,7 +158,8 @@ describe('TopNav (desktop)', () => {
     const link = screen.getByRole('link', { name: 'Нужно от меня, 4' });
     const badge = within(link).getByTestId('needs-badge');
     expect(badge.textContent).toBe('4');
-    expect(badge.className).toContain('bg-accent');
+    // vk integration: the VK `error` alias (= our accent) replaces lane 5's bg-accent.
+    expect(badge.className).toContain('bg-vk-error');
     expect(link.getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Доска' })).toBeTruthy();
   });

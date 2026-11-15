@@ -45,7 +45,7 @@ export const KanbanBadge = ({ name, color, tone = 'default', className, title }:
       className={cn(
         'inline-flex items-center justify-center',
         'h-5 gap-1',
-        tone === 'error' ? 'bg-accent/10 px-1.5 text-accent' : 'bg-vk-bg-panel px-2 text-vk-text-low',
+        tone === 'error' ? 'bg-vk-error/10 px-1.5 text-vk-error' : 'bg-vk-bg-panel px-2 text-vk-text-low',
         'rounded-sm',
         'text-sm font-medium',
         'whitespace-nowrap',

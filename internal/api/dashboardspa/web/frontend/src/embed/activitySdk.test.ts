@@ -3,6 +3,7 @@
 import { createElement } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../i18n';
 
 const m = vi.hoisted(() => ({
   constructed: [] as string[],
@@ -232,6 +233,11 @@ describe('bootActivity', () => {
 });
 
 describe('roles', () => {
+  // vk integration: lane 2's DiscussButton translates its label (the 0b stub
+  // hard-coded «Обсудить в Discord»), so these tests read the Russian UI.
+  beforeEach(() => setLocale('ru'));
+  afterEach(() => setLocale('en'));
+
   it('reader role hides answer and discuss', async () => {
     vi.stubEnv('VITE_MAYOR_DISCORD_URL', 'https://discord.com/channels/1/2');
     const gw = gateway({ tokens: [tokenOk('S1', 'reader')] });

@@ -21,9 +21,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Modified for the Gas City dashboard: VK tokens mapped to the --vk-* aliases;
- * the running-dot keyframes (not in our Tailwind config) become a pulse with
- * the design's 1 / 0.6 / 0.3 opacity steps; an aria-label names the state.
+ * Modified for the Gas City dashboard: VK tokens mapped to the --vk-* aliases
+ * (the running-dot keyframes are VK's, in our tailwind.config.js); an
+ * aria-label names the state.
  */
 // Source: vibe-kanban packages/ui/src/components/RunningDots.tsx
 
@@ -37,9 +37,9 @@ export function RunningDots() {
       data-running-dots=""
       className="flex shrink-0 items-center gap-[3px]"
     >
-      <span className="h-1 w-1 animate-pulse rounded-full bg-vk-brand" />
-      <span className="h-1 w-1 animate-pulse rounded-full bg-vk-brand opacity-60" />
-      <span className="h-1 w-1 animate-pulse rounded-full bg-vk-brand opacity-30" />
+      <span className="h-1 w-1 animate-running-dot-1 rounded-full bg-vk-brand" />
+      <span className="h-1 w-1 animate-running-dot-2 rounded-full bg-vk-brand" />
+      <span className="h-1 w-1 animate-running-dot-3 rounded-full bg-vk-brand" />
     </span>
   );
 }

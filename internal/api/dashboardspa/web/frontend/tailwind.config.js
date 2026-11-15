@@ -48,6 +48,22 @@ export default {
         'vk-text-normal': 'oklch(var(--vk-text-normal) / <alpha-value>)',
         'vk-text-low': 'oklch(var(--vk-text-low) / <alpha-value>)',
         'vk-border': 'oklch(var(--vk-border) / <alpha-value>)',
+        // vk integration: VK `error` / `success` as aliases of accent / ok.
+        'vk-error': 'oklch(var(--vk-error) / <alpha-value>)',
+        'vk-success': 'oklch(var(--vk-success) / <alpha-value>)',
+      },
+      // VK's running dots (packages/local-web/tailwind.new.config.js):
+      // animate-running-dot-1/2/3, staggered 0.2 s.
+      keyframes: {
+        'running-dot': {
+          '0%, 100%': { opacity: '0.3' },
+          '50%': { opacity: '1' },
+        },
+      },
+      animation: {
+        'running-dot-1': 'running-dot 1.4s ease-in-out infinite',
+        'running-dot-2': 'running-dot 1.4s ease-in-out 0.2s infinite',
+        'running-dot-3': 'running-dot 1.4s ease-in-out 0.4s infinite',
       },
       fontFamily: {
         // Golos Text Variable, self-hosted (styles/index.css @font-face).

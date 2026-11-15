@@ -136,6 +136,8 @@
     --vk-text-low: var(--fg-faint);
     --vk-border: var(--rule);
     --vk-on-brand: var(--on-plate);
+    --vk-error: var(--accent);
+    --vk-success: var(--ok);
     /* IBM Plex, self-hosted from @fontsource (imported in main.tsx); never Google Fonts. */
     --vk-font-sans: 'IBM Plex Sans', 'Golos Text Variable', system-ui, sans-serif;
     --vk-font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;

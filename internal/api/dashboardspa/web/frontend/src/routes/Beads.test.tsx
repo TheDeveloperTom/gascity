@@ -142,7 +142,10 @@ describe('BeadsPage', () => {
     expect(board).not.toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByRole('radiogroup', { name: /view/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /new bead/i })).toBeTruthy();
+    // vk integration: «New task» is the filter bar's Mayor-channel button; the
+    // header create-and-sling «New bead» button is gone.
+    expect(screen.getAllByRole('button', { name: 'New task' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /new bead/i })).toBeNull();
   });
 
   it('requests direct supervisor current engineering beads without type fan-out or closed history', async () => {
@@ -234,22 +237,21 @@ describe('BeadsPage', () => {
     }
   });
 
-  it('labels sling agents by agent name, with the provider label as context', async () => {
-    renderPage();
+  // vk integration: the create-and-sling form left the page with its header
+  // button (lane 4: «Новая задача» goes to the Mayor's channel). Its two page
+  // tests (sling agent labels, create and sling) were removed with it; the
+  // write itself stays covered in supervisor/beadWrites.test.ts.
 
-    await screen.findByText('Sample bead');
-    fireEvent.click(screen.getByRole('button', { name: /new bead/i }));
+  it('preselects the epic from ?epic= (⌘K epic rows link here)', async () => {
+    extraBeads = [
+      { ...sampleBead(), id: 'ea-1', title: 'M04 work', labels: ['milestone:M04'] },
+      { ...sampleBead(), id: 'ea-2', title: 'Other work', labels: [] },
+    ];
+    renderPage('/beads?epic=M04');
 
-    const dialog = await screen.findByRole('dialog');
-    const agentSelect = within(dialog).getByLabelText(/agent/i) as HTMLSelectElement;
-    const agentLabels = () =>
-      Array.from(agentSelect.options).map((option) => option.textContent ?? '');
-
-    // display_name is the provider's label ("Claude Code"), shared by every
-    // agent on that provider, so it cannot be what tells the options apart.
-    expect(agentLabels()).toEqual(['mayor (Claude Code)']);
-    fireEvent.change(within(dialog).getByLabelText(/^rig$/i), { target: { value: 'west' } });
-    expect(agentLabels()).toEqual(['west/mechanic (Claude Code)']);
+    await screen.findByText('M04 work');
+    expect(screen.queryByText('Other work')).toBeNull();
+    expect(screen.queryByText('Sample bead')).toBeNull();
   });
 
   it('deep-links to and selects a bead from the bead query param', async () => {
@@ -259,44 +261,6 @@ describe('BeadsPage', () => {
     expect(selected.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('heading', { name: 'Sample bead' })).toBeTruthy();
     expect(within(screen.getByRole('dialog')).getByText('gascity-0001')).toBeTruthy();
-  });
-
-  it('creates and slings a bead directly through the supervisor API', async () => {
-    renderPage();
-
-    await screen.findByText('Sample bead');
-    fireEvent.click(screen.getByRole('button', { name: /new bead/i }));
-
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText(/title/i), {
-      target: { value: 'Route failing work' },
-    });
-    fireEvent.change(within(dialog).getByLabelText(/body/i), {
-      target: { value: 'Please investigate the failed deployment.' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: /create and sling/i }));
-
-    expect(await screen.findByText(/created gascity-0002 and slung to mayor/i)).toBeTruthy();
-    expect(supervisorWrites).toEqual([
-      {
-        method: 'POST',
-        path: '/v0/city/test-city/beads',
-        body: {
-          title: 'Route failing work',
-          description: 'Please investigate the failed deployment.',
-          rig: 'east',
-        },
-      },
-      {
-        method: 'POST',
-        path: '/v0/city/test-city/sling',
-        body: {
-          bead: 'gascity-0002',
-          rig: 'east',
-          target: 'mayor',
-        },
-      },
-    ]);
   });
 
   it('closes beads directly through the supervisor API', async () => {
