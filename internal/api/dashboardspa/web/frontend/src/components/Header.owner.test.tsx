@@ -5,7 +5,7 @@ import { AttentionProvider } from '../attention/context';
 import type { AttentionContributor, AttentionItem } from '../attention/compose';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { ViewingAsProvider } from '../contexts/ViewingAsContext';
-import { LOCALE_STORAGE_KEY, setLocale } from '../i18n';
+import { LOCALE_STORAGE_KEY, setLocale, t } from '../i18n';
 import { LocaleProvider } from '../i18n/LocaleProvider';
 import { Header } from './Header';
 
@@ -76,7 +76,7 @@ describe('Header language toggle', () => {
     const { container } = renderHeader();
     expect(navText(container)).toContain('Beads');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Switch language to Russian' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch language to Russian (RU)' }));
     const nav = container.querySelector('header nav') as HTMLElement;
     expect(within(nav).getByText('Задачи')).toBeTruthy();
     expect(within(nav).getByText('Прогоны')).toBeTruthy();
@@ -84,13 +84,57 @@ describe('Header language toggle', () => {
     expect(document.documentElement.lang).toBe('ru');
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('ru');
 
-    const back = screen.getByRole('button', { name: 'Switch language to English' });
+    const back = screen.getByRole('button', { name: 'Переключить язык на английский (EN)' });
     expect(back.textContent).toContain('EN');
     fireEvent.click(back);
     expect(navText(container)).toContain('Beads');
     expect(
-      screen.getByRole('button', { name: 'Switch language to Russian' }).textContent,
+      screen.getByRole('button', { name: 'Switch language to Russian (RU)' }).textContent,
     ).toContain('RU');
+  });
+
+  // Review M-4: the visible code is inside the accessible name (label in
+  // name), and the button carries no lang that would mismatch its name.
+  it('toggle name contains its visible code and no mismatched lang', () => {
+    renderHeader();
+    const toggle = screen.getByRole('button', { name: /\(RU\)$/ });
+    expect(toggle.textContent).toBe('RU');
+    expect(toggle.hasAttribute('lang')).toBe(false);
+  });
+
+  // Review M-5: the tree remounts on a language change; keyboard focus stays
+  // on the toggle instead of dropping to <body>.
+  it('switching language keeps keyboard focus on the toggle', () => {
+    renderHeader();
+    const toggle = screen.getByRole('button', { name: 'Switch language to Russian (RU)' });
+    toggle.focus();
+    fireEvent.click(toggle);
+    const after = screen.getByRole('button', { name: 'Переключить язык на английский (EN)' });
+    expect(document.activeElement).toBe(after);
+  });
+
+  // Review M-1: the chip has a subject, the same noun as the pill aria.
+  it('phone chip names what waits', async () => {
+    setLocale('ru');
+    renderHeader([
+      contributor('mail', [
+        item('m1', 'mail', 'attention', 'owner'),
+        item('m2', 'mail', 'attention', 'owner'),
+        item('m3', 'mail', 'attention', 'owner'),
+      ]),
+    ]);
+    expect(await screen.findByRole('link', { name: '3 дела ждут вас' })).toBeTruthy();
+  });
+
+  // Review M-2: natural Russian for "Reading as" (another mailbox's view).
+  it('reading-as line reads naturally in Russian', () => {
+    setLocale('ru');
+    expect(t('Reading as {name}', { name: 'mayor' })).toBe('Вы смотрите почту как mayor');
+  });
+
+  it('english chip is grammatical in the singular', async () => {
+    renderHeader([contributor('mail', [item('m1', 'mail', 'attention', 'owner')])]);
+    expect(await screen.findByRole('link', { name: '1 needs you' })).toBeTruthy();
   });
 
   it('theme toggle speaks Russian too', () => {

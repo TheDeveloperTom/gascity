@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { api } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
@@ -54,6 +54,10 @@ function navGroups(routes: ReadonlyArray<NavRoute>): ReadonlyArray<ReadonlyArray
     routes.filter((r) => r.order >= 55),
   ].filter((group) => group.length > 0);
 }
+
+// Set by the language toggle just before the remount it causes; the next
+// Header mount takes focus back to the toggle and clears it.
+let refocusLocaleToggle = false;
 
 const NAV_ICONS: Readonly<Record<string, IconName>> = {
   '/': 'home',
@@ -140,6 +144,13 @@ export function Header() {
   // On phones the nav is one scrolling row; bring the active item into view
   // by moving only the row's scrollLeft (never the page). A no-op whenever the
   // row does not overflow, which includes the desktop rail.
+  const localeToggleRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!refocusLocaleToggle) return;
+    refocusLocaleToggle = false;
+    localeToggleRef.current?.focus();
+  }, []);
+
   const navRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const nav = navRef.current;
@@ -199,7 +210,7 @@ export function Header() {
               to="/"
               className="focus-mark ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-accent px-2.5 text-label font-semibold text-on-primary tnum lg:hidden"
             >
-              {tn(needsYou, { one: '{n} need you', other: '{n} need you' })}
+              {tn(needsYou, { one: '{n} needs you', other: '{n} need you' })}
             </Link>
           )}
         </div>
@@ -296,14 +307,22 @@ export function Header() {
             <span className="hidden lg:inline">{resolved === 'dark' ? t('Light') : t('Dark')}</span>
           </button>
           {/* Language toggle (SH-18, ruling R2): the label names the language
-              it switches TO; the choice persists in gascity:locale. */}
+              it switches TO; the choice persists in gascity:locale. The
+              accessible name, in the current language, contains the visible
+              code (label in name). The tree remounts on a change, so focus is
+              handed back to the new toggle (review M-5). */}
           <button
+            ref={localeToggleRef}
             type="button"
-            onClick={() => setLocale(locale === 'ru' ? 'en' : 'ru')}
+            onClick={() => {
+              refocusLocaleToggle = true;
+              setLocale(locale === 'ru' ? 'en' : 'ru');
+            }}
             aria-label={
-              locale === 'ru' ? 'Switch language to English' : 'Switch language to Russian'
+              locale === 'ru'
+                ? t('Switch language to English (EN)')
+                : t('Switch language to Russian (RU)')
             }
-            lang={locale === 'ru' ? 'en' : 'ru'}
             className="inline-flex h-8 items-center rounded px-1.5 text-label font-semibold text-fg-muted transition-colors duration-150 ease-out-quart hover:bg-surface-tint hover:text-fg focus-mark"
           >
             {locale === 'ru' ? 'EN' : 'RU'}

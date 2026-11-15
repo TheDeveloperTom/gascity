@@ -43,12 +43,18 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   '{city} (unknown)': '{city} (не найден)',
   '{city} (stopped)': '{city} (остановлен)',
   city: 'город',
-  'Reading as {name}': 'Читаете как {name}',
+  'Reading as {name}': 'Вы смотрите почту как {name}',
+  'Switch language to Russian (RU)': 'Переключить язык на русский (RU)',
+  'Switch language to English (EN)': 'Переключить язык на английский (EN)',
   'Switch to light theme': 'Переключить на светлую тему',
   'Switch to dark theme': 'Переключить на тёмную тему',
   Light: 'Светлая',
   Dark: 'Тёмная',
-  '{n} need you': { one: '{n} ждёт вас', few: '{n} ждут вас', many: '{n} ждут вас' },
+  '{n} need you': {
+    one: '{n} дело ждёт вас',
+    few: '{n} дела ждут вас',
+    many: '{n} дел ждут вас',
+  },
   // The owner pill keeps the old English aria form (Mail pin); in Russian it
   // says what it means.
   '{label}: {n} attention items': {
