@@ -8,6 +8,7 @@ import { setLocale } from '../../i18n';
 import { setActivityRole } from '../../embed/activitySession';
 import { resetActivityPlumbingForTests } from '../../lib/apiBase';
 import { AnswerRefusedError, answerQuestion } from '../../lib/discussWithMayor';
+import type * as DiscussModule from '../../lib/discussWithMayor';
 import { transitiveWaiters } from '../../lib/holds';
 import { openExternal } from '../../lib/openExternal';
 import type { SupervisorBead } from '../../supervisor/beadReads';
@@ -23,7 +24,7 @@ vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }));
 // vk integration: the drawer's options call act6's wired answer seam
 // (lib/discussWithMayor answerQuestion(qid, choice)) when embedded.
 vi.mock('../../lib/discussWithMayor', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../../lib/discussWithMayor')>();
+  const real = await importOriginal<typeof DiscussModule>();
   return {
     AnswerRefusedError: real.AnswerRefusedError,
     answerErrorText: real.answerErrorText,
