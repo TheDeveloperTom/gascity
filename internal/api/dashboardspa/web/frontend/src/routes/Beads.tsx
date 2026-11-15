@@ -7,7 +7,6 @@ import { t, tn } from '../i18n';
 import { useAttentionModel } from '../attention/context';
 import { inProgressCardNote } from '../attention/beadsNeedingAttention';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
-import { BeadAttentionPanel } from '../components/beads/BeadAttentionPanel';
 import { BeadBoard } from '../components/beads/BeadBoard';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
@@ -327,11 +326,8 @@ export function BeadsPage() {
         </div>
       )}
 
-      {/* Task 11: only what waits for the owner; city issues are on Health. */}
-      <BeadAttentionPanel
-        items={attention.owner.items.filter((item) => item.domain === 'beads')}
-        onOpen={setSelectedId}
-      />
+      {/* vk-final: what waits for the owner is «Нужно от меня» in the top bar
+          (with its badge); city issues are on Health. */}
       {attention.city.byDomain.beads > 0 && (
         <p className="mb-6 text-body text-fg-muted">
           <Link to="/health" className="text-fg underline underline-offset-2 focus-mark">

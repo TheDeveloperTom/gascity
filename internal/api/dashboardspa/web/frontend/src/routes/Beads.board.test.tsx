@@ -243,7 +243,9 @@ describe('BeadsPage one board', () => {
     expect(collectMissing()).toEqual([]);
   });
 
-  it('the Needs-you panel speaks Russian', async () => {
+  // vk-final: «Нужно от меня» lives in the top bar with its badge, so the
+  // board no longer repeats it as the old navy «Вас ждёт (N)» plate.
+  it('an owner item shows no «Вас ждёт» plate on the board (ru, no missing keys)', async () => {
     setLocale('ru');
     resetMissing();
     const item: AttentionItem = {
@@ -255,23 +257,10 @@ describe('BeadsPage one board', () => {
       href: '/beads?bead=dw-d1',
     };
     renderPage([{ id: 'beads:test', domain: 'beads', getItems: () => [item] }]);
-    const panel = await screen.findByRole('region', { name: /Вас ждёт/ });
-    expect(within(panel).getByRole('button', { name: 'Открыть' })).toBeTruthy();
     await screen.findByText('Приёмка города: часть B');
+    expect(screen.queryByRole('region', { name: /Вас ждёт/ })).toBeNull();
+    expect(screen.queryByText('Choose the window')).toBeNull();
+    expect(document.querySelector('.bg-plate')).toBeNull();
     expect(collectMissing()).toEqual([]);
-  });
-
-  it('the Needs-you panel is a plate', async () => {
-    const item: AttentionItem = {
-      id: 'beads:decision:dw-d1',
-      audience: 'owner',
-      domain: 'beads',
-      severity: 'attention',
-      title: 'Choose the window',
-      href: '/beads?bead=dw-d1',
-    };
-    renderPage([{ id: 'beads:test', domain: 'beads', getItems: () => [item] }]);
-    const panel = await screen.findByRole('region', { name: /Needs you/ });
-    expect(panel.className).toContain('bg-plate');
   });
 });

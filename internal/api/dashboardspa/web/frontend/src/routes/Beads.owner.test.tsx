@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeadsPage } from './Beads';
@@ -9,9 +9,9 @@ import type { AttentionContributor, AttentionItem } from '../attention/compose';
 import { NowProvider } from '../contexts/NowContext';
 import { OperatorConfigProvider } from '../contexts/OperatorConfigContext';
 
-// Task 11: the Beads "Needs you" panel reads the owner slice. City items (a
-// stalled step, an unclaimed ready task) are counted in one line that links
-// to Health, where they are listed.
+// Task 11 + vk-final: owner items live in «Нужно от меня» (top bar badge),
+// so the board shows no Needs-you plate. City items (a stalled step, an
+// unclaimed ready task) are counted in one line that links to Health.
 
 const DECISION: AttentionItem = {
   id: 'beads:decision:dw-d1',
@@ -78,24 +78,17 @@ function renderPage(items: AttentionItem[]) {
   );
 }
 
-describe('BeadsPage Needs you (owner slice)', () => {
-  it('stalled steps are not in the Beads Needs-you panel', async () => {
+describe('BeadsPage owner slice (vk-final: no Needs-you plate on the board)', () => {
+  it('an owner decision does not render the old «Вас ждёт» plate on the board', async () => {
     renderPage([DECISION, STALLED]);
-    const panel = await screen.findByRole('region', { name: /Needs you/ });
-    expect(within(panel).queryByText('Stalled step under Ship the board')).toBeNull();
-    const link = screen.getByRole('link', { name: '1 task issue is on Health' });
-    expect(link.getAttribute('href')).toBe('/health');
-  });
-
-  it('decision bead is', async () => {
-    renderPage([DECISION, STALLED]);
-    const panel = await screen.findByRole('region', { name: /Needs you/ });
-    expect(within(panel).getByText('Choose the mailbox window')).toBeTruthy();
-  });
-
-  it('no panel when only city items exist', async () => {
-    renderPage([STALLED]);
     await screen.findByRole('link', { name: '1 task issue is on Health' });
     expect(screen.queryByRole('region', { name: /Needs you/ })).toBeNull();
+    expect(screen.queryByText('Choose the mailbox window')).toBeNull();
+  });
+
+  it('city items still count in one line that links to Health', async () => {
+    renderPage([DECISION, STALLED]);
+    const link = await screen.findByRole('link', { name: '1 task issue is on Health' });
+    expect(link.getAttribute('href')).toBe('/health');
   });
 });

@@ -4,7 +4,6 @@ import type { RunSummary, SourceState } from 'gas-city-dashboard-shared';
 import type { Bead } from 'gas-city-dashboard-shared/gc-supervisor';
 import { invalidate } from '../api/cache';
 import { setActiveCity } from '../api/cityBase';
-import { BeadAttentionPanel } from '../components/beads/BeadAttentionPanel';
 import type { OperatorConfig } from '../contexts/OperatorConfigContext';
 import type * as SupervisorClient from '../supervisor/client';
 import { SupervisorApiError } from '../supervisor/client';
@@ -717,7 +716,20 @@ describe('useLiveAttentionContributors', () => {
   function LiveBeadAttentionPanel() {
     const { contributors } = useLiveAttentionContributors(testOperator, undefined);
     const items = composeAttention(contributors).byDomain.beads.items;
-    return <BeadAttentionPanel items={items} onOpen={() => undefined} />;
+    // vk-final: the board's plate is gone; this harness prints the same
+    // beads-domain items so the city-switch race is still observable.
+    return (
+      <section>
+        <h2>
+          Needs you <span>({items.length})</span>
+        </h2>
+        <ul>
+          {items.map((item) => (
+            <li key={item.id}>{item.title}</li>
+          ))}
+        </ul>
+      </section>
+    );
   }
 });
 
