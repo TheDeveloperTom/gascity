@@ -181,6 +181,40 @@ describe('Merged means closed (coordinator ruling I4)', () => {
   });
 });
 
+describe('columns move forward only (coordinator ruling I5)', () => {
+  it('a task with a PR stays in PR while a pr-accept run reviews it', () => {
+    const accept = root({}, { 'gc.formula_name': 'devwork-pr-accept' });
+    const review = step('accept-evidence', 'review', {
+      title: 'review of the fix',
+      status: 'in_progress',
+      is_blocked: false,
+    });
+    const result = stageOf(
+      task({ status: 'in_progress', metadata: { 'devwork.pr_number': '475' } }),
+      [accept, review],
+    );
+    expect(result.stage).toBe('pr');
+    expect(result.stepLabel).toBe('review of the fix');
+  });
+
+  it('a PR on the route gate also holds the card in PR during a repair review', () => {
+    const gate = step('await-merge', null, { issue_type: 'gate' }, { 'devwork.pr_number': '9' });
+    const reviewing = step('task-review', 'review', { status: 'in_progress', is_blocked: false });
+    expect(stageOf(task({ status: 'in_progress' }), [root(), gate, reviewing]).stage).toBe('pr');
+  });
+
+  it('an open task with a PR and no live run is in PR, not Waiting', () => {
+    const result = stageOf(task({ metadata: { 'devwork.pr_number': '12' } }), []);
+    expect(result.stage).toBe('pr');
+  });
+
+  it('a task without a PR still shows Review during its first review', () => {
+    expect(stageOf(task({ status: 'in_progress' }), [root(), ...routeFrom(5)]).stage).toBe(
+      'review',
+    );
+  });
+});
+
 describe('fallbacks', () => {
   it('an open task with no route waits', () => {
     expect(stageOf(task(), []).stage).toBe('waiting');

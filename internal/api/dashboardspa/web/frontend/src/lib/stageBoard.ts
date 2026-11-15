@@ -306,6 +306,12 @@ export function deriveTaskStage(
     stepLabel = position.label;
   }
 
+  // Columns move forward only (ruling I5): once the task has a PR, the card
+  // stays in PR while repair, accept or review-again runs work on it; the step
+  // line says what is happening (for example the review of the fix).
+  const pr = prOf(task, route);
+  if (task.status !== 'closed' && pr !== null && STAGE_RANK[stage] < STAGE_RANK.pr) stage = 'pr';
+
   if (task.status === 'blocked') marks.push({ kind: 'blocked', tone: 'warn', label: 'blocked' });
   // `ready` (every need closed) only helps a task no run has picked up yet; a
   // queued run already says where the task stands.
@@ -337,7 +343,7 @@ export function deriveTaskStage(
 
   if (stepLabel === null && step !== null) stepLabel = step.title;
 
-  return { stage, root: route?.root ?? null, step, stepLabel, pr: prOf(task, route), marks };
+  return { stage, root: route?.root ?? null, step, stepLabel, pr, marks };
 }
 
 function emptyStageColumns(): Record<StageId, StageCard[]> {
