@@ -90,6 +90,26 @@ function hexClose(actual: string, expected: string): boolean {
   return [0, 1, 2].every((i) => Math.abs(ch(actual, i) - ch(expected, i)) <= 1);
 }
 
+const encode = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+const decode = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
+/**
+ * Contrast of `fg` text on a Tailwind fill class such as `bg-surface-tint` or
+ * `bg-primary/[0.08]`, painted over `ground`. Alpha fills blend the way the
+ * browser does, in gamma-encoded sRGB.
+ */
+function contrastOnFill(block: string, fg: string, fill: string, ground: string): number {
+  const m = fill.match(/^bg-([\w-]+?)(?:\/(?:\[([\d.]+)\]|(\d+)))?$/);
+  if (!m) throw new Error(`not a bg fill class: ${fill}`);
+  const alpha = m[2] !== undefined ? Number(m[2]) : m[3] !== undefined ? Number(m[3]) / 100 : 1;
+  const top = tokenLinear(block, m[1] ?? '').map(encode);
+  const under = tokenLinear(block, ground).map(encode);
+  const mixed = top.map((c, i) => decode(alpha * c + (1 - alpha) * (under[i] ?? 0))) as Rgb;
+  const a = luminance(tokenLinear(block, fg));
+  const b = luminance(mixed);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
 // Review §4 "Measured contrast": every text role on every ground it is drawn
 // on (page, panel, hover row), and the two plate texts on the plate.
 const TEXT_ON_GROUND = ['fg', 'fg-muted', 'fg-faint', 'warn', 'accent', 'ok', 'primary'];
@@ -160,6 +180,25 @@ describe('«Табличка» tokens', () => {
       expect(low).toEqual([]);
     });
   }
+
+  // Review I2: with primary turned ink, a primary/alpha wash is a grey veil,
+  // and the selected bead row's quiet note fell to 4.40:1 in dark. The board
+  // row's selected fill is read from source and measured under its note tones
+  // (BeadBoardRow noteTone) on the raised column it sits in.
+  it('the selected bead row keeps its note text at 4.5:1', () => {
+    const row = readFileSync(join(here, '..', 'components', 'beads', 'BeadBoardRow.tsx'), 'utf8');
+    const selected = row.match(/selected\s*\?\s*'([^']*)'/)?.[1] ?? '';
+    const fill = selected.split(/\s+/).find((cls) => cls.startsWith('bg-'));
+    expect(fill, 'selected row has a bg fill').toBeDefined();
+    const low: string[] = [];
+    for (const [theme, block] of Object.entries(BLOCKS)) {
+      for (const fg of ['fg', 'fg-muted', 'fg-faint', 'accent', 'warn']) {
+        const ratio = contrastOnFill(block, fg, fill ?? '', 'surface-raised');
+        if (ratio < 4.5) low.push(`${theme} ${fg} on ${fill}: ${ratio.toFixed(2)}`);
+      }
+    }
+    expect(low).toEqual([]);
+  });
 
   it('ink links carry an underline at rest (review §5: blue stays on the plate)', () => {
     // primary is ink now, so colour alone no longer tells a link from text.

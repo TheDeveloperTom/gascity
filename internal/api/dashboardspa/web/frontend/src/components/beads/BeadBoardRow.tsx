@@ -148,7 +148,7 @@ export function BeadBoardRow({
       {...attentionProps}
       {...(routeAttention === null ? {} : { 'data-route-attention': routeAttention.kind })}
       className={`rounded-md transition-colors duration-150 ease-out-quart ${
-        selected ? 'bg-primary/[0.08] ring-1 ring-inset ring-primary/40' : 'hover:bg-surface-tint'
+        selected ? 'bg-surface-tint ring-1 ring-inset ring-primary/40' : 'hover:bg-surface-tint'
       } ${attentionClassName} ${routeTint}`}
     >
       <button
