@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HealthOutputBody } from 'gas-city-dashboard-shared/gc-supervisor';
 import type { SystemHealth } from 'gas-city-dashboard-shared';
 import { invalidate } from '../api/cache';
-import type { AttentionContributor, AttentionItem } from '../attention/compose';
+import type { AttentionContributor, AttentionItem, CityReadiness } from '../attention/compose';
 import { AttentionProvider } from '../attention/context';
 import { createAttentionContributors } from '../attention/registry';
 import { HealthPage } from './Health';
@@ -66,14 +66,22 @@ function cityItem(id: string, title: string): AttentionItem {
   return { id, domain: 'runs', severity: 'watch', title, href: '/runs' };
 }
 
-function renderPage(extra: readonly AttentionContributor[] = []) {
+function renderPage(
+  extra: readonly AttentionContributor[] = [],
+  options: { cityReadiness?: CityReadiness; withHealthFacts?: boolean } = {},
+) {
   const contributors = [
-    ...createAttentionContributors({ health: { system: lowMemoryHealth() } }),
+    ...(options.withHealthFacts === false
+      ? []
+      : createAttentionContributors({ health: { system: lowMemoryHealth() } })),
     ...extra,
   ];
   return render(
     <MemoryRouter initialEntries={['/health']}>
-      <AttentionProvider contributors={contributors}>
+      <AttentionProvider
+        contributors={contributors}
+        {...(options.cityReadiness ? { cityReadiness: options.cityReadiness } : {})}
+      >
         <HealthPage />
       </AttentionProvider>
     </MemoryRouter>,
@@ -106,5 +114,13 @@ describe('Health city issues', () => {
     expect(sectionFor('Host')?.getAttribute('data-attention-severity')).toBe('attention');
     const city = screen.getByRole('heading', { level: 2, name: 'City issues' }).closest('section')!;
     expect(city.textContent).toContain('Host memory critical');
+  });
+
+  // Review I-1: a cold load of /health is not an all-clear.
+  it('while the city reads load, City issues is not an all-clear', async () => {
+    renderPage([], { cityReadiness: { state: 'loading' }, withHealthFacts: false });
+    await screen.findByRole('heading', { name: 'Supervisor' });
+    expect(screen.queryByText('No city issues')).toBeNull();
+    expect(screen.getByText('Reading the state of the city…')).toBeTruthy();
   });
 });

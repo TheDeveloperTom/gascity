@@ -4,6 +4,7 @@ import {
   type AttentionDomain,
   type AttentionItem,
   type AudienceSlice,
+  type CityReadiness,
 } from '../../attention/compose';
 import { t } from '../../i18n';
 import { FoldList } from '../FoldList';
@@ -28,16 +29,20 @@ const DOMAIN_LABEL: Readonly<Record<AttentionDomain, string>> = {
 export function CityIssues({
   slice,
   unreadable,
+  readiness,
 }: {
   slice: AudienceSlice;
   unreadable: readonly AttentionItem[];
+  /** Review I-1: «Неполадок нет» only once every city source was read. */
+  readiness: CityReadiness;
 }) {
+  const reasons = readiness.state === 'degraded' ? readiness.reasons : [];
   const issues = slice.items.filter((item) => item.severity !== 'unavailable');
   const groups = ATTENTION_DOMAINS.map((domain) => ({
     domain,
     items: issues.filter((item) => item.domain === domain),
   })).filter((group) => group.items.length > 0);
-  const empty = groups.length === 0 && unreadable.length === 0;
+  const empty = readiness.state === 'ready' && groups.length === 0 && unreadable.length === 0;
 
   return (
     <section
@@ -56,10 +61,20 @@ export function CityIssues({
       </div>
       <div className="space-y-5 px-4 py-4">
         {empty && <p className="text-body text-fg-muted">{t('No city issues')}</p>}
-        {unreadable.length > 0 && (
+        {readiness.state === 'loading' && (
+          <p role="status" className="text-body text-fg-muted">
+            {t('Reading the state of the city…')}
+          </p>
+        )}
+        {(unreadable.length > 0 || reasons.length > 0) && (
           <div className="min-w-0">
             <h3 className="mb-1.5 text-label font-semibold text-fg-muted">{t('Could not read')}</h3>
             <ul className="space-y-1">
+              {reasons.map((reason) => (
+                <li key={reason} className="text-body text-fg-muted [overflow-wrap:anywhere]">
+                  {t(reason)}
+                </li>
+              ))}
               {unreadable.map((item) => (
                 <li key={item.id} className="text-body text-fg-muted [overflow-wrap:anywhere]">
                   {item.title}

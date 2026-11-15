@@ -71,6 +71,7 @@ export const RU: Readonly<Record<string, string | RuPlural>> = {
   // Health: city issues (Task 10).
   'City issues': 'Неполадки города',
   'No city issues': 'Неполадок нет',
+  'Reading the state of the city…': 'Читаю состояние города…',
   'Could not read': 'Не удалось прочитать',
 
   // Page titles (Task 9; PageHeader translates a known title).

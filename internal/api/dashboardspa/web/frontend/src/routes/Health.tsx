@@ -149,7 +149,11 @@ export function HealthPage() {
 
       {/* HE-12: city trouble first, in its own section, never wrapping an
           existing Health h2. Reads the attention model's city slice. */}
-      <CityIssues slice={attention.city} unreadable={unreadable} />
+      <CityIssues
+        slice={attention.city}
+        unreadable={unreadable}
+        readiness={attention.cityReadiness}
+      />
 
       {hasAnyData ? (
         <>

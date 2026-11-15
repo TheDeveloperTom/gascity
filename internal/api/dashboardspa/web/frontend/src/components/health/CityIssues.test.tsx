@@ -1,14 +1,14 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AttentionDomain, AttentionItem } from '../../attention/compose';
+import type { AttentionDomain, AttentionItem, CityReadiness } from '../../attention/compose';
 import { setLocale } from '../../i18n';
 import { CityIssues } from './CityIssues';
 
 function item(
   id: string,
   domain: AttentionDomain,
-  extra: Partial<AttentionItem> & { ref?: string } = {},
+  extra: Partial<AttentionItem> = {},
 ): AttentionItem {
   return {
     id,
@@ -17,7 +17,7 @@ function item(
     title: `Title ${id}`,
     href: `/${domain}`,
     ...extra,
-  } as AttentionItem;
+  };
 }
 
 function slice(items: readonly AttentionItem[]) {
@@ -26,10 +26,14 @@ function slice(items: readonly AttentionItem[]) {
   return { items, total: items.length, byDomain };
 }
 
-function renderIssues(items: readonly AttentionItem[], unreadable: readonly AttentionItem[] = []) {
+function renderIssues(
+  items: readonly AttentionItem[],
+  unreadable: readonly AttentionItem[] = [],
+  readiness: CityReadiness = { state: 'ready' },
+) {
   return render(
     <MemoryRouter>
-      <CityIssues slice={slice(items)} unreadable={unreadable} />
+      <CityIssues slice={slice(items)} unreadable={unreadable} readiness={readiness} />
     </MemoryRouter>,
   );
 }
@@ -90,5 +94,32 @@ describe('CityIssues', () => {
     );
     expect(screen.getByText('Runs could not be read')).toBeTruthy();
     expect(screen.queryByText('No city issues')).toBeNull();
+  });
+
+  // Review I-1: while the city's reads are loading, the empty list is not an
+  // all-clear.
+  it('loading is never all-clear', () => {
+    renderIssues([], [], { state: 'loading' });
+    expect(screen.queryByText('No city issues')).toBeNull();
+    expect(screen.getByText('Reading the state of the city…')).toBeTruthy();
+  });
+
+  it('loading in Russian', () => {
+    setLocale('ru');
+    renderIssues([], [], { state: 'loading' });
+    expect(screen.queryByText('Неполадок нет')).toBeNull();
+    expect(screen.getByText('Читаю состояние города…')).toBeTruthy();
+  });
+
+  it('loading still lists the issues already known', () => {
+    renderIssues([item('b1', 'beads')], [], { state: 'loading' });
+    expect(screen.getByText('Title b1')).toBeTruthy();
+    expect(screen.getByText('Reading the state of the city…')).toBeTruthy();
+  });
+
+  it('degraded says which reads failed and is never all-clear', () => {
+    renderIssues([], [], { state: 'degraded', reasons: ['Runs could not be read'] });
+    expect(screen.queryByText('No city issues')).toBeNull();
+    expect(screen.getByText('Runs could not be read')).toBeTruthy();
   });
 });
