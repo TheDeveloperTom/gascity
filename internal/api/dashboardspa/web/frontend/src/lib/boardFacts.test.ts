@@ -11,6 +11,7 @@ import {
   lastProgressMs,
   mayorMentionsFrom,
   mergedToday,
+  mergedWithin,
   oldUntaken,
   projectLabel,
   STUCK_AFTER_MS,
@@ -337,6 +338,27 @@ describe('mergedToday', () => {
       ],
     });
     expect(mergedToday(model, now).map((c) => c.node.bead.id)).toEqual(['dw-t2', 'dw-t1']);
+  });
+});
+
+describe('mergedWithin', () => {
+  it('mergedWithin keeps closed ≤7 days, drops 8 days, sorts newest first', () => {
+    const DAY = 86_400_000;
+    const at = (ago: number) => new Date(NOW - ago).toISOString();
+    const model = modelOf({
+      items: [
+        bead('dw-8d', { status: 'closed', updated_at: at(8 * DAY) }),
+        bead('dw-7d', { status: 'closed', updated_at: at(7 * DAY) }),
+        bead('dw-1h', { status: 'closed', updated_at: at(60 * MIN) }),
+        bead('dw-2d', { status: 'closed', updated_at: at(2 * DAY) }),
+      ],
+    });
+    expect(mergedWithin(model, NOW).map((c) => c.node.bead.id)).toEqual([
+      'dw-1h',
+      'dw-2d',
+      'dw-7d',
+    ]);
+    expect(mergedWithin(model, NOW, 1).map((c) => c.node.bead.id)).toEqual(['dw-1h']);
   });
 });
 

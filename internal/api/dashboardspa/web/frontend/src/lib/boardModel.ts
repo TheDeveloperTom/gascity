@@ -1,6 +1,8 @@
 import { t } from '../i18n';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { buildBeadGraph } from './beadGraph';
+import { DEFAULT_OWNER, type CardOwner, type OwnerFilter } from './boardOwner';
+import { ALL_EPICS, NO_EPIC } from './epics';
 import { beadRole } from './boardRoles';
 import {
   buildRouteIndex,
@@ -47,6 +49,8 @@ export interface ProjectRef {
 
 export interface BoardCard extends StageCard {
   project: ProjectRef;
+  /** Whose board the card came from (lib/boardOwner seam; today always DEFAULT_OWNER). */
+  owner: CardOwner;
   tag: string | null;
   wait: CardWait | null;
   holds: number;
@@ -75,6 +79,10 @@ export interface BoardFilters {
   project: string;
   search: string;
   showTests: boolean;
+  /** Milestone key, `ALL_EPICS` (default) or `NO_EPIC` (cards without a milestone). */
+  epic?: string;
+  /** Whose cards: `'all'` (default) or one owner. */
+  owner?: OwnerFilter;
 }
 
 export interface BoardModel {
@@ -300,6 +308,7 @@ export function buildBoardModel(
     return {
       ...card,
       project: prefixComplete ? projectOf(bead, rigs) : cityRef(),
+      owner: DEFAULT_OWNER,
       tag: null,
       wait: cardWait(bead, card.stage, byId),
       holds: waitersOf.get(bead.id)?.length ?? 0,
@@ -345,9 +354,18 @@ export function buildBoardModel(
   };
 
   const needle = filters.search.trim().toLowerCase();
+  const epic = filters.epic ?? ALL_EPICS;
+  const owner = filters.owner ?? 'all';
+  const matchesEpic = (bead: SupervisorBead) => {
+    if (epic === ALL_EPICS) return true;
+    const milestone = milestoneOf(bead);
+    return epic === NO_EPIC ? milestone === null : milestone === epic;
+  };
   const keep = (card: BoardCard) =>
     (filters.showTests || !card.isTest) &&
     (filters.project === ALL_PROJECTS || card.project.key === filters.project) &&
+    (owner === 'all' || card.owner === owner) &&
+    matchesEpic(card.node.bead) &&
     matchesSearch(card.node.bead, needle);
 
   const columns: Record<StageId, BoardCard[]> = {

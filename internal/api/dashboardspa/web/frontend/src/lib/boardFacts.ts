@@ -162,7 +162,18 @@ export function mergedToday(model: BoardModel, nowMs: number): BoardCard[] {
     .sort((a, b) => (closedAtMs(b) ?? 0) - (closedAtMs(a) ?? 0));
 }
 
-const ID_IN_TEXT = /(?:stall:)?\b([a-z][a-z0-9]{1,7}-[a-z0-9][a-z0-9-]*(?:\.\d+)*)\b/g;
+/** «Влито · за 7 дней»: merged cards closed within `days` of now, newest first. */
+export function mergedWithin(model: BoardModel, nowMs: number, days = 7): BoardCard[] {
+  const windowMs = days * 86_400_000;
+  return model.columns.merged
+    .filter((card) => {
+      const closed = closedAtMs(card);
+      return closed !== null && nowMs - closed <= windowMs;
+    })
+    .sort((a, b) => (closedAtMs(b) ?? 0) - (closedAtMs(a) ?? 0));
+}
+
+const ID_IN_TEXT =/(?:stall:)?\b([a-z][a-z0-9]{1,7}-[a-z0-9][a-z0-9-]*(?:\.\d+)*)\b/g;
 
 /** V2: the ids the Mayor's mail of the last 48 h names, each → the mail's subject. */
 export function mayorMentionsFrom(
