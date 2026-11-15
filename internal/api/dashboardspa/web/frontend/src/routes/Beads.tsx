@@ -15,8 +15,9 @@ import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
 import { asOfClock, boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
 import { usePeerBoards } from '../hooks/usePeerBoards';
-import type { PeerCard, PeerThread } from '../supervisor/peerBoardReads';
-import { PeerComments, threadSize } from '../vk/comments/PeerComments';
+import type { PeerCard } from '../supervisor/peerBoardReads';
+import { ownLoginOf, topicsForCard } from '../lib/peerTopics';
+import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
 import type { BoardCard } from '../lib/boardModel';
@@ -239,11 +240,18 @@ export function BeadsPage() {
   // A peer card is selected by its board key (`peer:<login>:<rig>:<id>`);
   // it opens the read-only peer window, never the bead panel.
   const selectedPeer = useMemo(() => peerCardOf(peerSources, selectedId), [peerSources, selectedId]);
-  // Part 4: each peer card's comment thread, by its board key.
-  const peerThreads = useMemo(() => {
-    const byKey = new Map<string, PeerThread>();
+  // Part 4 (owner, 15.11): a card conversation is a Mayor topic linked to the
+  // card (`topic.card`); there are no human comments on cards.
+  const peerTopicCount = useMemo(() => {
+    const byKey = new Map<string, number>();
+    const peers = new Set((peerBoards.result?.peers ?? []).map((p) => p.login));
     for (const peer of peerBoards.result?.peers ?? []) {
-      for (const thread of peer.threads) byKey.set(`peer:${peer.login}:${thread.rig}:${thread.card}`, thread);
+      for (const topic of peer.topics) {
+        const ref = topic.card;
+        if (ref === null || !peers.has(ref.city)) continue;
+        const key = `peer:${ref.city}:${ref.rig}:${ref.id}`;
+        byKey.set(key, (byKey.get(key) ?? 0) + topic.messages.length);
+      }
     }
     return byKey;
   }, [peerBoards.result]);
@@ -276,8 +284,31 @@ export function BeadsPage() {
     [peerBoards.result],
   );
   const commentCountOf = useCallback(
-    (card: BoardCard) => (card.peer === null ? 0 : threadSize(peerThreads.get(card.key))),
-    [peerThreads],
+    (card: BoardCard) => (card.peer === null ? 0 : (peerTopicCount.get(card.key) ?? 0)),
+    [peerTopicCount],
+  );
+  // OUR card: its rig (the rig whose prefix starts the id), the topics that
+  // reference it, our own login (learnt from the topics) and the peer the
+  // box writes to (the topic's peer, else the first peer board).
+  const ownCard = useMemo(() => {
+    const none = { rig: null, topics: [], city: null, peer: null } as const;
+    const id = selectedId;
+    if (id === null || isPeerKey(id)) return none;
+    const rig = rigItems.find((r) => {
+      const prefix = r.prefix?.trim() ?? '';
+      return prefix.length > 0 && id.startsWith(`${prefix}-`);
+    });
+    if (rig === undefined) return none;
+    const topics = topicsForCard(peerBoards.result, { peerLogin: null, rig: rig.name, id });
+    const peer = peerSources.find((p) => p.login === topics[0]?.login) ?? peerSources[0] ?? null;
+    return { rig: rig.name, topics, city: ownLoginOf(peerBoards.result), peer };
+  }, [selectedId, rigItems, peerBoards.result, peerSources]);
+  const openTopicFromCard = useCallback(
+    (login: string, topicId: string) => {
+      setSelectedId(null);
+      setTopicsParams(login, topicId);
+    },
+    [setTopicsParams],
   );
   // Part 5: the Activity was launched for a card (LaunchCardOpener). Until
   // the id is found on the board or read directly, the bead panel stays
@@ -587,37 +618,67 @@ export function BeadsPage() {
       )}
 
       {selectedPeer !== null && (
-        <PeerTaskDrawer
-          open
-          onClose={() => setSelectedId(null)}
-          bead={selectedPeer.card.bead}
-          rig={selectedPeer.card.rig}
-          name={selectedPeer.peer.name}
-          label={selectedPeer.peer.label}
-          avatar={selectedPeer.peer.avatar}
-          asOf={selectedPeer.peer.asOf}
-          stale={selectedPeer.peer.stale}
+        <CardConversation
+          key={selectedId ?? ''}
+          topics={topicsForCard(peerBoards.result, {
+            peerLogin: selectedPeer.peer.login,
+            rig: selectedPeer.card.rig,
+            id: selectedPeer.card.bead.id,
+          })}
+          peer={selectedPeer.peer}
+          card={{
+            city: selectedPeer.peer.login,
+            rig: selectedPeer.card.rig,
+            id: selectedPeer.card.bead.id,
+            title: selectedPeer.card.bead.title,
+          }}
+          ours={false}
+          nowMs={nowMs}
+          onOpenTopic={openTopicFromCard}
         >
-          <PeerComments
-            peer={selectedPeer.peer}
-            rig={selectedPeer.card.rig}
-            cardId={selectedPeer.card.bead.id}
-            thread={peerThreads.get(selectedId ?? '')}
-            nowMs={nowMs}
-          />
-        </PeerTaskDrawer>
+          {({ thread, composer }) => (
+            <PeerTaskDrawer
+              open
+              onClose={() => setSelectedId(null)}
+              bead={selectedPeer.card.bead}
+              rig={selectedPeer.card.rig}
+              name={selectedPeer.peer.name}
+              label={selectedPeer.peer.label}
+              avatar={selectedPeer.peer.avatar}
+              asOf={selectedPeer.peer.asOf}
+              stale={selectedPeer.peer.stale}
+              footer={composer}
+            >
+              {thread}
+            </PeerTaskDrawer>
+          )}
+        </CardConversation>
       )}
 
-      <BeadDetailModal
-        open={ownSelectedId !== null}
-        onClose={() => setSelectedId(null)}
-        beadId={ownSelectedId}
-        initialBead={selectedBead}
-        depNode={selectedNode}
-        sessions={sessionItems}
-        onOpenBead={setSelectedId}
-        renderActions={renderBeadActions}
-      />
+      <CardConversation
+        key={`own:${ownSelectedId ?? ''}`}
+        topics={ownCard.topics}
+        peer={ownCard.peer}
+        card={{ city: ownCard.city ?? '', rig: ownCard.rig ?? '', id: ownSelectedId ?? '', title: selectedBead?.title ?? '' }}
+        ours
+        nowMs={nowMs}
+        onOpenTopic={openTopicFromCard}
+      >
+        {({ thread, composer }) => (
+          <BeadDetailModal
+            open={ownSelectedId !== null}
+            onClose={() => setSelectedId(null)}
+            beadId={ownSelectedId}
+            initialBead={selectedBead}
+            extra={ownCard.rig !== null && ownCard.peer !== null ? thread : null}
+            footer={ownCard.rig !== null ? composer : null}
+            depNode={selectedNode}
+            sessions={sessionItems}
+            onOpenBead={setSelectedId}
+            renderActions={renderBeadActions}
+          />
+        )}
+      </CardConversation>
 
       <Modal
         open={closing !== null}

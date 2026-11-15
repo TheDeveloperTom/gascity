@@ -2,17 +2,17 @@ import { getActiveCity } from '../api/cityBase';
 import { t } from '../i18n';
 import { authHeaders, withApiBase } from '../lib/apiBase';
 
-// vk-final part 4: writes to the other city go through our own city service
-// `peer-boards` with `X-GC-Request: 1` (the engine refuses a /svc mutation
-// without it); the service also checks a loopback Origin and
-// `Sec-Fetch-Site: same-origin`, which the browser sends itself. The service
-// queues the entry in our store; the board sync carries it over. The
-// dashboard always writes as our person. Inside the Activity the same routes
-// are used with the session headers (the gateway must pass them).
+// vk-final part 4: the person's writes to the other city — Mayor topics only
+// (owner 15.11: no human comments on cards; a card conversation is a topic
+// linked to the card). They go through our own city service `peer-boards`
+// with `X-GC-Request: 1` (the engine refuses a /svc mutation without it); the
+// service also checks a loopback Origin and `Sec-Fetch-Site: same-origin`,
+// which the browser sends itself. The dashboard always writes as our person.
+// Inside the Activity the same routes are used with the session headers (the
+// gateway must pass them).
 //
-// Routes (all POST, body ≤ 16 KiB, answers `{"error": code}` on refusal):
-// - comments (COMMENTS-PLAN «Write»): `/v1/comments` {target:{kind:'card',city,rig,id},text}
-// - topics (topics-report.md «Final dashboard contract»):
+// Routes (all POST, body ≤ 16 KiB, answers `{"error": code}` on refusal),
+// topics-report.md «Final dashboard contract»:
 //   `/v1/topics` {to,title,text}; `/v1/topics/message` {city,topic_id,text};
 //   `/v1/topics/react` {city,topic_id,message_id};
 //   `/v1/topics/resolve` {city,topic_id,reason,summary,deciding_message_id?};
@@ -74,13 +74,6 @@ const KNOWN: ReadonlySet<string> = new Set<CommentErrorCode>([
   'people_unreadable',
 ]);
 
-export interface CardTarget {
-  /** The peer's people.json login. */
-  city: string;
-  rig: string;
-  id: string;
-}
-
 export interface TopicTarget {
   /** The city that owns the topic (`topic.city`). */
   city: string;
@@ -96,13 +89,6 @@ export type TopicAction =
   | { action: 'continue' }
   | { action: 'reopen' }
   | { action: 'react'; messageId: string };
-
-export interface QueuedComment {
-  id: string;
-  text: string;
-  createdAt: string;
-  state: string;
-}
 
 function serviceUrl(route: string): string {
   const city = getActiveCity();
@@ -145,35 +131,40 @@ function clean(text: string): string {
   return out;
 }
 
-/** Queues a comment on a peer's card; resolves to the queued entry. */
-export async function postCardComment(target: CardTarget, text: string): Promise<QueuedComment> {
-  const body = clean(text);
-  let payload: unknown;
-  try {
-    payload = await post('comments', {
-      target: { kind: 'card', city: target.city, rig: target.rig, id: target.id },
-      text: body,
-    });
-  } catch (err) {
-    // the comments route names a missing card `card_not_found`; a bare 404 means the same here
-    if (err instanceof CommentWriteError && err.code === 'not_found') throw new CommentWriteError('card_not_found');
-    throw err;
-  }
-  const raw =
-    typeof payload === 'object' && payload !== null
-      ? ((payload as Record<string, unknown>).comment as Record<string, unknown> | undefined)
-      : undefined;
-  return {
-    id: typeof raw?.id === 'string' ? raw.id : `local-${Date.now()}`,
-    text: typeof raw?.text === 'string' ? raw.text : body,
-    createdAt: typeof raw?.created_at === 'string' ? raw.created_at : new Date().toISOString(),
-    state: typeof raw?.state === 'string' ? raw.state : 'queued',
-  };
-}
-
 /** Opens a topic with a peer city (`to` is its people.json login). */
 export async function openTopic(to: string, title: string, text: string): Promise<void> {
   await post('topics', { to, title: clean(title), text: clean(text) });
+}
+
+export interface CardRefBody {
+  /** The card's city (its people.json login). */
+  city: string;
+  rig: string;
+  id: string;
+}
+
+const TITLE_MAX = 120;
+
+function oneLineTitle(raw: string): string {
+  const line = raw.replace(/\s+/g, ' ').trim();
+  return line.length <= TITLE_MAX ? line : `${line.slice(0, TITLE_MAX - 1)}…`;
+}
+
+/**
+ * A person's first comment on a card with no thread yet: it opens a Mayor
+ * topic linked to the card, and the message becomes its first post (owner,
+ * 15.11). PROVISIONAL: the city lane is adding this call; until its exact
+ * shape lands this sends `/v1/topics` {to, title, text, card}, with the
+ * card's title as the topic title (one line, ≤ 120). Only this function
+ * changes when the final shape arrives.
+ */
+export async function openCardTopic(to: string, card: CardRefBody, title: string, text: string): Promise<void> {
+  await post('topics', {
+    to,
+    title: oneLineTitle(clean(title)),
+    text: clean(text),
+    card: { city: card.city, rig: card.rig, id: card.id },
+  });
 }
 
 /** One action on a topic: message, resolve, pause, continue, reopen or react. */

@@ -4,13 +4,13 @@ import {
   CommentWriteError,
   commentErrorText,
   markTopicRead,
+  openCardTopic,
   openTopic,
-  postCardComment,
   postTopicAction,
 } from './peerCommentWrites';
 
-// vk-final part 4: the one write path, the city service's
-// `POST /v0/city/<city>/svc/peer-boards/v1/comments` (COMMENTS-PLAN «Write»).
+// vk-final part 4: the person's writes are Mayor-topic actions only (owner
+// 15.11: no human comments on cards), through the city service's /svc route.
 // The engine refuses a /svc mutation without `X-GC-Request`.
 
 const fetchMock = vi.fn();
@@ -30,22 +30,7 @@ function lastCall(): { url: string; init: RequestInit; body: Record<string, unkn
   return { url, init, body: JSON.parse(String(init.body)) as Record<string, unknown> };
 }
 
-describe('peer comment writes', () => {
-  it('a card comment POSTs the target and text with X-GC-Request', async () => {
-    fetchMock.mockResolvedValue(
-      json({ comment: { id: 'xc-1', text: 'привет', created_at: '2026-11-15T19:00:00Z', state: 'queued' } }),
-    );
-    const out = await postCardComment({ city: 'rich', rig: 'crm-api', id: 'dw-ab12' }, 'привет');
-    const { url, init, body } = lastCall();
-    expect(url).toBe('/v0/city/test-city/svc/peer-boards/v1/comments');
-    expect(init.method).toBe('POST');
-    const headers = init.headers as Record<string, string>;
-    expect(headers['X-GC-Request']).toBe('1');
-    expect(headers['Content-Type']).toBe('application/json');
-    expect(body).toEqual({ target: { kind: 'card', city: 'rich', rig: 'crm-api', id: 'dw-ab12' }, text: 'привет' });
-    expect(out).toMatchObject({ id: 'xc-1', state: 'queued' });
-  });
-
+describe('peer topic writes', () => {
   // The city's final contract (topics-report.md «Final dashboard contract»):
   // one route per action under /v1/topics, the same header gate as comments.
   const BASE = '/v0/city/test-city/svc/peer-boards/v1/topics';
@@ -57,6 +42,27 @@ describe('peer comment writes', () => {
     expect(url).toBe(BASE);
     expect((init.headers as Record<string, string>)['X-GC-Request']).toBe('1');
     expect(body).toEqual({ to: 'rich', title: 'Тема', text: 'Первое' });
+  });
+
+  it('a card comment with no thread opens a card topic (provisional shape)', async () => {
+    fetchMock.mockResolvedValue(json({ topic: { topic_id: 'tp-2' } }));
+    await openCardTopic('rich', { city: 'rich', rig: 'crm-api', id: 'dw-ab12' }, 'Изменение схемы users', 'Когда?');
+    expect(lastCall().url).toBe(BASE);
+    expect(lastCall().body).toEqual({
+      to: 'rich',
+      title: 'Изменение схемы users',
+      text: 'Когда?',
+      card: { city: 'rich', rig: 'crm-api', id: 'dw-ab12' },
+    });
+  });
+
+  it('a card title longer than 120 is cut to one 120-character line', async () => {
+    fetchMock.mockResolvedValue(json({ topic: {} }));
+    await openCardTopic('rich', { city: 'rich', rig: 'devwork', id: 'dw-1' }, `${'а'.repeat(130)}\nвторая`, 'x');
+    const title = lastCall().body.title as string;
+    expect(title.length).toBe(120);
+    expect(title.endsWith('…')).toBe(true);
+    expect(title.includes('\n')).toBe(false);
   });
 
   it('each action has its own route and body', async () => {
@@ -114,25 +120,25 @@ describe('peer comment writes', () => {
     }
   });
 
-  it('errors carry the service code; 403/405 mean comments are switched off', async () => {
-    fetchMock.mockResolvedValueOnce(json({ error: 'rate_limited' }, 429));
-    const limited = await postCardComment({ city: 'rich', rig: 'devwork', id: 'dw-1' }, 'x').catch((e: unknown) => e);
-    expect(limited).toBeInstanceOf(CommentWriteError);
-    expect((limited as CommentWriteError).code).toBe('rate_limited');
+  it('403 forbidden / 405 mean writes are switched off; a bare 404 is not_found', async () => {
+    const target = { city: 'rich', topicId: 'tp-1' };
     fetchMock.mockResolvedValueOnce(json({ error: 'forbidden' }, 403));
-    const off = await postCardComment({ city: 'rich', rig: 'devwork', id: 'dw-1' }, 'x').catch((e: unknown) => e);
+    const off = await postTopicAction(target, { action: 'pause' }).catch((e: unknown) => e);
+    expect(off).toBeInstanceOf(CommentWriteError);
     expect((off as CommentWriteError).code).toBe('disabled');
     fetchMock.mockResolvedValueOnce(new Response('nope', { status: 405 }));
-    const off2 = await postCardComment({ city: 'rich', rig: 'devwork', id: 'dw-1' }, 'x').catch((e: unknown) => e);
+    const off2 = await postTopicAction(target, { action: 'pause' }).catch((e: unknown) => e);
     expect((off2 as CommentWriteError).code).toBe('disabled');
-    fetchMock.mockResolvedValueOnce(json({ error: 'card_not_found' }, 404));
-    const gone = await postCardComment({ city: 'rich', rig: 'devwork', id: 'dw-1' }, 'x').catch((e: unknown) => e);
-    expect((gone as CommentWriteError).code).toBe('card_not_found');
-    expect(commentErrorText(new CommentWriteError('rate_limited'))).toBe('Too many messages — try again in a minute.');
+    fetchMock.mockResolvedValueOnce(json({ error: 'not_found' }, 404));
+    const gone = await postTopicAction(target, { action: 'pause' }).catch((e: unknown) => e);
+    expect((gone as CommentWriteError).code).toBe('not_found');
+    expect(commentErrorText(new CommentWriteError('topic_cap'))).toBe('Too many messages — try again in a minute.');
   });
 
   it('an empty text never reaches the network', async () => {
-    const out = await postCardComment({ city: 'rich', rig: 'devwork', id: 'dw-1' }, '   ').catch((e: unknown) => e);
+    const out = await postTopicAction({ city: 'rich', topicId: 'tp-1' }, { action: 'message', text: '   ' }).catch(
+      (e: unknown) => e,
+    );
     expect((out as CommentWriteError).code).toBe('empty');
     expect(fetchMock).not.toHaveBeenCalled();
   });

@@ -65,9 +65,24 @@ export interface TaskDrawerProps {
    * composer sits directly on it (vk-final, design Phone-Peer-Card).
    */
   aboveTabs?: boolean;
+  /**
+   * Pinned to the drawer's bottom edge, outside the scrolling body (vk-final:
+   * the card's comment box, vibe-kanban style). The body scrolls above it.
+   */
+  footer?: ReactNode;
 }
 
-export function TaskDrawer({ open, onClose, chips, top, title, actions, children, aboveTabs = false }: TaskDrawerProps) {
+export function TaskDrawer({
+  open,
+  onClose,
+  chips,
+  top,
+  title,
+  actions,
+  children,
+  aboveTabs = false,
+  footer = null,
+}: TaskDrawerProps) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
@@ -128,6 +143,18 @@ export function TaskDrawer({ open, onClose, chips, top, title, actions, children
           )}
           {children}
         </div>
+        {footer !== null && (
+          <div
+            data-testid="task-drawer-footer"
+            className="flex-none border-t border-vk-border bg-vk-bg-primary px-4 pt-2"
+            // above the tab bar the safe area is already the tab bar's
+            style={{
+              paddingBottom: aboveTabs ? '0.5rem' : 'calc(0.5rem + var(--saib, env(safe-area-inset-bottom)))',
+            }}
+          >
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -59,6 +59,10 @@ interface BeadDetailModalProps {
   sessions?: readonly SupervisorSession[];
   /** Optional caller-owned action slot, used by Beads for direct supervisor writes. */
   renderActions?: (bead: SupervisorBead) => ReactNode;
+  /** Extra section under the agents' work (vk-final: the card's conversation thread). */
+  extra?: ReactNode;
+  /** Pinned at the drawer's bottom (vk-final: the card's comment box). */
+  footer?: ReactNode;
 }
 
 export function BeadDetailModal({
@@ -70,6 +74,8 @@ export function BeadDetailModal({
   depNode = null,
   sessions,
   renderActions,
+  extra = null,
+  footer = null,
 }: BeadDetailModalProps) {
   const { bead, loading, error, notFound, now } = useBeadDetail(open, beadId, initialBead);
   const links = useEntityLinks(open ? beadId : null);
@@ -136,6 +142,7 @@ export function BeadDetailModal({
           ) : undefined
         }
         actions={actions}
+        footer={footer}
       >
         {notFound ? (
           <div className="space-y-2">
@@ -170,6 +177,7 @@ export function BeadDetailModal({
               sessions={board.sessions}
               {...(liveRunnable ? { onWatch: () => setRunOpen(true) } : {})}
             />
+            {extra}
             {question !== null && answer !== null && (
               <QuestionHistory q={question} answer={answer} />
             )}

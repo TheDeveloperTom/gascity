@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parsePeerBoards } from '../supervisor/peerBoardReads';
 import { peerBody, peerTopics } from '../test/fixtures/peerBoards';
-import { RESOLVED_WINDOW_MS, topicNeedsOf, topicSections, unreadIdsOf, waitingOn } from './peerTopics';
+import {
+  ownLoginOf,
+  RESOLVED_WINDOW_MS,
+  topicNeedsOf,
+  topicSections,
+  topicsForCard,
+  unreadIdsOf,
+  waitingOn,
+} from './peerTopics';
 
 // vk-final part 4, topics (COMMENTS-PLAN Revision 2 + coordinator 15.11).
 
@@ -48,6 +56,32 @@ describe('unread', () => {
   it('the last unread_count messages from the other side are new', () => {
     const [open] = result().peers[0]!.topics;
     expect([...unreadIdsOf(open!)]).toEqual(['m-1']);
+  });
+});
+
+describe('topics linked to a card', () => {
+  it('his card: topics whose card is {his login, rig, id}', () => {
+    const found = topicsForCard(result(), { peerLogin: 'rich', rig: 'crm-api', id: 'dw-ab12' });
+    expect(found.map((f) => [f.login, f.topic.title])).toEqual([['rich', 'Перезагрузка общего CI в 22:00']]);
+    expect(topicsForCard(result(), { peerLogin: 'rich', rig: 'devwork', id: 'dw-ab12' })).toEqual([]);
+  });
+
+  it('my card: topics whose card is in a city that is not a peer, same rig and id', () => {
+    const found = topicsForCard(result(), { peerLogin: null, rig: 'devwork', id: 'dw-ab12' });
+    expect(found.map((f) => [f.login, f.topic.title])).toEqual([['rich', 'Кто обновляет Node 24']]);
+  });
+});
+
+describe('ownLoginOf', () => {
+  it('learns our login from the topics: our topic’s city, or a peer topic’s `peer`', () => {
+    expect(ownLoginOf(result())).toBe('me');
+    const theirsOnly = peerTopics().filter((tp) => tp.mine === false);
+    expect(ownLoginOf(result(theirsOnly))).toBe('me');
+  });
+
+  it('no topics: unknown', () => {
+    expect(ownLoginOf(result([]))).toBeNull();
+    expect(ownLoginOf(null)).toBeNull();
   });
 });
 

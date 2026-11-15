@@ -87,6 +87,8 @@ export function peerTopics() {
       title: 'Перезагрузка общего CI в 22:00',
       status: 'open',
       paused_reason: null,
+      // a card conversation is a Mayor topic linked to that card (owner, 15.11)
+      card: { city: 'rich', rig: 'crm-api', id: 'dw-ab12' },
       last_activity_at: '2026-11-15T18:40:00Z',
       duplicate_resolutions: [],
       opened_by: RICH_MAYOR,
@@ -133,6 +135,8 @@ export function peerTopics() {
       title: 'Кто обновляет Node 24',
       status: 'paused',
       paused_reason: 'needs_human',
+      // a topic about one of OUR cards
+      card: { city: 'me', rig: 'devwork', id: 'dw-ab12' },
       last_activity_at: '2026-11-15T17:00:00Z',
       opened_by: MY_MAYOR,
       opened_at: '2026-11-15T17:00:00Z',

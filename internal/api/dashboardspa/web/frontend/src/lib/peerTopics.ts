@@ -82,6 +82,50 @@ export function topicHref(login: string, topicId: string): string {
   return `/beads?${new URLSearchParams({ topics: login, topic: topicId }).toString()}`;
 }
 
+export interface CardRef {
+  /** His login for his card; null for my card (its city is mine, never a peer's). */
+  peerLogin: string | null;
+  rig: string;
+  id: string;
+}
+
+export interface CardTopic {
+  /** The peer the topic is with (whose panel opens it). */
+  login: string;
+  topic: PeerTopic;
+}
+
+/** The Mayor topics linked to one card (`topic.card`), newest activity first. */
+export function topicsForCard(result: PeerBoardsResult | null, card: CardRef): CardTopic[] {
+  if (result === null) return [];
+  const peers = new Set(result.peers.map((p) => p.login));
+  const out: CardTopic[] = [];
+  for (const peer of result.peers) {
+    for (const topic of peer.topics) {
+      const ref = topic.card;
+      if (ref === null || ref.rig !== card.rig || ref.id !== card.id) continue;
+      const cityMatches = card.peerLogin === null ? !peers.has(ref.city) : ref.city === card.peerLogin;
+      if (cityMatches) out.push({ login: peer.login, topic });
+    }
+  }
+  return out.sort((a, b) => lastActivity(b.topic) - lastActivity(a.topic));
+}
+
+/**
+ * Our own people.json login, learnt from the topics: a topic we opened has
+ * `city` = us; a topic the peer opened has `peer` = us. Null until one exists
+ * (the dashboard has no other source for it).
+ */
+export function ownLoginOf(result: PeerBoardsResult | null): string | null {
+  for (const peer of result?.peers ?? []) {
+    for (const topic of peer.topics) {
+      if (topic.mine) return topic.city;
+      if (topic.peerCity !== null) return topic.peerCity;
+    }
+  }
+  return null;
+}
+
 export interface TopicNeed {
   key: string;
   login: string;

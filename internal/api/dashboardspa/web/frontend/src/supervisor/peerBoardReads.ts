@@ -117,6 +117,8 @@ const TopicSchema = z.looseObject({
   status: z.string(),
   paused_reason: optString,
   last_activity_at: optString,
+  // owner 15.11: a card conversation is a topic linked to that card
+  card: z.looseObject({ city: z.string(), rig: z.string(), id: z.string() }).nullish(),
   opened_by: z.union([z.string(), AuthorObject]).nullish(),
   opened_at: optString,
   resolution: ResolutionSchema.nullish(),
@@ -183,9 +185,13 @@ export interface PeerTopic {
   city: string;
   /** Opened in this city. */
   mine: boolean;
+  /** The other city of the topic (`peer`: on his topics, that is us). */
+  peerCity: string | null;
   title: string;
   pausedReason: PausedReason | null;
   lastActivityAt: string | null;
+  /** The card this topic is about: `{city: login, rig, id}`; null for a general topic. */
+  card: { city: string; rig: string; id: string } | null;
   status: TopicStatus;
   openedBy: CommentAuthor | null;
   openedAt: string | null;
@@ -277,10 +283,12 @@ function toTopics(raw: readonly unknown[] | null | undefined, peerLogin: string)
       topicId: tp.topic_id,
       city: tp.city ?? peerLogin,
       mine: tp.mine ?? (tp.city != null && tp.city !== peerLogin),
+      peerCity: tp.peer ?? null,
       title: tp.title,
       status,
       pausedReason,
       lastActivityAt: tp.last_activity_at ?? null,
+      card: tp.card == null ? null : { city: tp.card.city, rig: tp.card.rig, id: tp.card.id },
       openedBy: tp.opened_by == null ? null : toAuthor(tp.opened_by, null),
       openedAt: tp.opened_at ?? null,
       resolution:

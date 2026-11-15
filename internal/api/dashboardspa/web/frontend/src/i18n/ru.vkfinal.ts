@@ -14,8 +14,7 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'read only': 'только чтение',
   'A task from {owner} city, read only. Only {name} can change it.':
     'Задача из города {owner}, только для чтения. Менять её может {name}.',
-  '{n} comments': 'Комментарии: {n}',
-  // part 4: comments
+  // part 4: the comment row look (Mayor topics)
   'Mayor of {owner}': 'Мэр {owner}',
   'My Mayor': 'Мой Мэр',
   'just now': 'только что',
@@ -40,23 +39,12 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'The topic changed meanwhile — refresh and try again.': 'Обсуждение уже изменилось — обнови и попробуй снова.',
   'Only the opener or a person may do this.': 'Это может только тот, кто открыл, или человек.',
   'The city service is not ready yet.': 'Сервис города ещё не готов.',
-  'goes to {owner} city; their Mayor will show it': 'уйдёт в город {owner}; его Мэр покажет ему',
   Pause: 'Пауза',
   'Topic paused': 'Обсуждение на паузе',
   'One-line outcome': 'Итог в одну строку',
   'Close the topic': 'Закрыть обсуждение',
   'paused by a person': 'на паузе по решению человека',
   'rejected by the other city': 'другой город не принял',
-  Comments: 'Комментарии',
-  'your city': 'твой город',
-  '{owner} city': 'город {owner}',
-  'another agent': 'другой агент',
-  'No comments yet.': 'Комментариев пока нет.',
-  'Comment for {owner}': 'Комментарий для {owner}',
-  'Write to {name}…': 'Написать {name}…',
-  'Write to {owner} city…': 'Написать в город {owner}…',
-  'A task from {owner} city, read only. Only {name} can change it; you can leave a comment.':
-    'Задача из города {owner}, только для чтения. Менять её может {name}; ты можешь оставить комментарий.',
   // part 4: Mayor topics
   'Mayor topics': 'Обсуждения Мэров',
   Topics: 'Обсуждения',
@@ -97,6 +85,23 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'First message': 'Первое сообщение',
   'Open the topic': 'Открыть обсуждение',
   'Topics with {owner} city': 'Обсуждения с городом {owner}',
+  // owner 15.11: a card conversation is a Mayor topic linked to the card
+  'Mayor topics about this card': 'Обсуждения Мэров по этой карточке',
+  'No Mayor topics about this card yet.': 'Обсуждений Мэров по этой карточке пока нет.',
+  // owner 15.11 (refined): every card has a comment box; its thread is the card's Mayor topic
+  'Messages about this card: {n}': 'Сообщений по карточке: {n}',
+  'Card conversation': 'Обсуждение карточки',
+  'Open the topic view': 'Открыть обсуждение',
+  'Nobody has written about this card yet.': 'Пока никто не писал по этой карточке.',
+  'Comment on the card': 'Комментарий к карточке',
+  'Write to the Mayors…': 'Написать Мэрам…',
+  'Write to {name}…': 'Написать {name}…',
+  'Write to {owner} city…': 'Написать в город {owner}…',
+  'Topic state: open': 'Открыто',
+  'Topic state: the Mayors did not agree': 'Мэры не договорились',
+  'Topic state: paused': 'На паузе',
+  'Topic state: resolved': 'Решено',
+  'Topic state: rejected': 'Отклонено',
   // part 5: Activity deep links
   Notice: 'Уведомление',
   'Task {id} not found — maybe closed or from another city':

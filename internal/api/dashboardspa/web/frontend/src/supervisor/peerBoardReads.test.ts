@@ -154,6 +154,10 @@ describe('listPeerBoards', () => {
       { messageId: 'm-1', kind: 'ack', by: { kind: 'mayor', city: 'me', name: 'mayor', agent: null } },
     ]);
     expect(paused).toMatchObject({ status: 'paused', pausedReason: 'needs_human', mine: true });
+    // a topic may be linked to one card: {city, rig, id}
+    expect(open!.card).toEqual({ city: 'rich', rig: 'crm-api', id: 'dw-ab12' });
+    expect(paused!.card).toEqual({ city: 'me', rig: 'devwork', id: 'dw-ab12' });
+    expect(pausedByHuman!.card).toBeNull();
     expect(pausedByHuman).toMatchObject({ status: 'paused', pausedReason: 'human' });
     expect(resolved!.resolution).toMatchObject({
       reason: 'resolved',

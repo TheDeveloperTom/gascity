@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { canWrite } from '../../embed/activitySession';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
 import { renderMiniMarkdown } from '../../lib/miniMarkdown';
@@ -26,8 +25,10 @@ export interface PeerTaskDrawerProps {
   avatar: string;
   asOf: string;
   stale: boolean;
-  /** The comments thread (vk-final part 4). */
+  /** The card's conversation thread (its Mayor topic). */
   children?: ReactNode;
+  /** The card's comment box, pinned at the drawer's bottom. */
+  footer?: ReactNode;
 }
 
 function LockIcon() {
@@ -50,6 +51,7 @@ export function PeerTaskDrawer({
   asOf,
   stale,
   children,
+  footer = null,
 }: PeerTaskDrawerProps) {
   const prNumber = bead.metadata?.['devwork.pr_number']?.trim() ?? '';
   const prUrl = safeExternalUrl(bead.metadata?.['devwork.pr_url']?.trim() ?? '');
@@ -66,7 +68,7 @@ export function PeerTaskDrawer({
   );
 
   return (
-    <TaskDrawer open={open} onClose={onClose} chips={chips} title={bead.title} aboveTabs>
+    <TaskDrawer open={open} onClose={onClose} chips={chips} title={bead.title} aboveTabs footer={footer}>
       <div data-testid="peer-card" className="-mt-2 flex flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-center gap-1">
           <Chip>
@@ -101,12 +103,7 @@ export function PeerTaskDrawer({
             ))}
         </div>
         <p className="text-sm text-vk-text-low" style={{ borderLeft: `2px solid ${PEER_COLOR}`, paddingLeft: 8 }}>
-          {canWrite()
-            ? t('A task from {owner} city, read only. Only {name} can change it; you can leave a comment.', {
-                owner: label,
-                name,
-              })
-            : t('A task from {owner} city, read only. Only {name} can change it.', { owner: label, name })}
+          {t('A task from {owner} city, read only. Only {name} can change it.', { owner: label, name })}
         </p>
         {bead.description !== undefined && bead.description.length > 0 && (
           <div className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">

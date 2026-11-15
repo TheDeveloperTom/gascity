@@ -21,7 +21,7 @@ export interface PeerKanbanCardProps {
   card: BoardCard;
   selected: boolean;
   onSelect: (key: string) => void;
-  /** «💬 N» (vk-final part 4); hidden at 0. */
+  /** «💬 N»: messages in this card's conversation (its Mayor topics); hidden at 0. */
   commentCount?: number;
   variant?: 'column' | 'list';
   className?: string;
@@ -127,7 +127,7 @@ export function PeerKanbanCard({
             ))}
           {commentCount > 0 && (
             <span
-              aria-label={t('{n} comments', { n: commentCount })}
+              aria-label={t('Messages about this card: {n}', { n: commentCount })}
               className="inline-flex h-5 items-center gap-1 rounded-sm px-1.5 text-[13px] text-vk-text-low"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
