@@ -111,6 +111,7 @@
     --plate: 39% 0.134 262.8; /* Эмаль #1B3F8B: the plate and the focus ring */
     --on-plate: 100% 0 0; /* Кромка #FFFFFF: rim and letters on the plate */
     --on-plate-muted: 86.8% 0.039 269.4; /* #C9D3EE: secondary text on the plate */
+    --plate-ring: 39% 0.134 262.8; /* = enamel #1B3F8B: focus ring, ≥8.2:1 on every ground */
     --scrim: 18.1% 0.018 259.7; /* #0D121A: modal backdrop, use /50 */
     --shadow-overlay: 0 18px 48px -12px rgb(13 18 26 / 0.28), 0 2px 8px rgb(13 18 26 / 0.1);
 
@@ -134,6 +135,7 @@
     --plate: 44.4% 0.136 264.3; /* #2C4E9E: the white rim carries the edge */
     --on-plate: 100% 0 0; /* #FFFFFF */
     --on-plate-muted: 86.8% 0.039 269.4; /* #C9D3EE */
+    --plate-ring: 64.5% 0.122 265.5; /* #6A8BD8: lighter enamel, ≥4:1 (WCAG 1.4.11) */
     --scrim: 13.2% 0.011 250.2; /* #05080C */
     --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
 
@@ -158,6 +160,7 @@
       --plate: 44.4% 0.136 264.3;
       --on-plate: 100% 0 0;
       --on-plate-muted: 86.8% 0.039 269.4;
+      --plate-ring: 64.5% 0.122 265.5;
       --scrim: 13.2% 0.011 250.2;
       --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
 
@@ -250,10 +253,12 @@
   }
 
   /* Focus ring: 2px enamel at 2px offset, the plate's colour spent a second
-     and last time. No border-radius: the outline follows the control's own
+     and last time. --plate-ring is enamel itself in light and a lighter
+     enamel in dark, where the plate is only ~2.2:1 on the ground and a focus
+     indicator needs 3:1 (WCAG 1.4.11). No border-radius: the outline follows the control's own
      radius, so pills stay pills and nav items keep their 8 px corners. */
   .focus-mark:focus-visible {
-    outline: 2px solid oklch(var(--plate));
+    outline: 2px solid oklch(var(--plate-ring));
     outline-offset: 2px;
   }
 

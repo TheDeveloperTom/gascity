@@ -132,10 +132,22 @@ describe('«Табличка» tokens', () => {
     expect(decls(BLOCKS['system-dark'])).toEqual(decls(BLOCKS.dark));
   });
 
-  it('the focus ring is enamel', () => {
+  it('the focus ring is enamel, drawn from --plate-ring', () => {
     const rule = css.match(/\.focus-mark:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
-    expect(rule).toMatch(/outline:[^;]*var\(--plate\)/);
+    expect(rule).toMatch(/outline:[^;]*var\(--plate-ring\)/);
   });
+
+  // WCAG 1.4.11: a focus indicator needs 3:1 against what it sits on. Dark
+  // enamel itself is only ~2.2:1 on the night ground, so the ring has its own
+  // lighter enamel token.
+  for (const [theme, block] of Object.entries(BLOCKS)) {
+    it(`${theme}: the focus ring clears 3:1 on ground and panels`, () => {
+      const low = GROUNDS.map((bg) => [bg, contrast(block, 'plate-ring', bg)] as const)
+        .filter(([, ratio]) => ratio < 3)
+        .map(([bg, ratio]) => `plate-ring on ${bg}: ${ratio.toFixed(2)}`);
+      expect(low).toEqual([]);
+    });
+  }
 
   it('ink links carry an underline at rest (review §5: blue stays on the plate)', () => {
     // primary is ink now, so colour alone no longer tells a link from text.

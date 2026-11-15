@@ -81,7 +81,7 @@ describe('Signal & Pavement tokens', () => {
   });
 
   it('focus is enamel and selection is ink', () => {
-    expect(css).toMatch(/\.focus-mark:focus-visible\s*\{[^}]*var\(--plate\)/);
+    expect(css).toMatch(/\.focus-mark:focus-visible\s*\{[^}]*var\(--plate-ring\)/);
     expect(css).toMatch(/::selection\s*\{[^}]*var\(--primary\)/);
   });
 
