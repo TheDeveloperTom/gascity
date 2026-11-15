@@ -311,6 +311,15 @@ describe('marks', () => {
     expect(result.marks.map((m) => m.kind)).toContain('ready');
   });
 
+  it('does not mark a queued run ready (ready is about a routeless task)', () => {
+    const result = stageOf(task(), [
+      root({ is_blocked: true }),
+      ...routeFrom(0, 'open').map(blocked),
+    ]);
+    expect(result.stepLabel).toBe('Queued');
+    expect(result.marks.map((m) => m.kind)).not.toContain('ready');
+  });
+
   it('reads the PR number and url from the route gate', () => {
     const gate = step(
       'await-merge',

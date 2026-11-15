@@ -76,12 +76,15 @@ function StageLine({ stage }: { stage: TaskStage }) {
           <Link
             to={routeRunHref(root, step)}
             title={step !== null ? `Open step ${step.id} in its run` : `Open run ${root.id}`}
-            className={`line-clamp-1 ${STEP_LINK}`}
+            className={`line-clamp-2 ${STEP_LINK}`}
           >
             {stepLabel}
           </Link>
         ) : (
-          <span className="line-clamp-1 min-w-0 text-fg-muted [overflow-wrap:anywhere]">
+          <span
+            title={stepLabel}
+            className="line-clamp-2 min-w-0 text-fg-muted [overflow-wrap:anywhere]"
+          >
             {stepLabel}
           </span>
         ))}

@@ -289,7 +289,10 @@ export function deriveTaskStage(
   }
 
   if (task.status === 'blocked') marks.push({ kind: 'blocked', tone: 'warn', label: 'blocked' });
-  if (stage === 'waiting' && node.ready)
+  // `ready` (every need closed) only helps a task no run has picked up yet; a
+  // queued run already says where the task stands.
+  const hasLiveRoute = route !== null && route.root.status !== 'closed';
+  if (stage === 'waiting' && node.ready && !hasLiveRoute)
     marks.push({ kind: 'ready', tone: 'quiet', label: 'ready' });
 
   const stopCard = stopCards.get(task.id);
