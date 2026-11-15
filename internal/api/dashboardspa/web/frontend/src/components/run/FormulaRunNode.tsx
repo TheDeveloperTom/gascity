@@ -38,7 +38,7 @@ export function FormulaRunNode({ node, selected, onToggle }: FormulaRunNodeProps
       onClick={() => onToggle(node.id)}
       className={`focus-mark w-full text-left px-4 py-3 bg-transparent transition-colors duration-150 ease-out-quart ${shapeClass} ${
         selected
-          ? 'text-fg border-accent bg-surface-tint ring-2 ring-accent/45 ring-offset-2 ring-offset-surface'
+          ? 'text-fg border-primary bg-surface-tint ring-2 ring-primary/40 ring-offset-2 ring-offset-surface'
           : 'text-fg border-rule hover:border-fg-faint hover:bg-surface-tint'
       }`}
     >

@@ -81,17 +81,17 @@ function WorkerRow({
             className="group text-left cursor-pointer focus-mark"
             title={`Open ${rig} · ${worker.worker} transcript`}
           >
-            <span className="font-medium group-hover:text-accent">{rig}</span>
+            <span className="font-medium group-hover:text-primary">{rig}</span>
             <span className="text-fg-faint" aria-hidden="true">
               {' '}
               ·{' '}
             </span>
-            <span className="text-fg-muted group-hover:text-accent">{worker.worker}</span>
+            <span className="text-fg-muted group-hover:text-primary">{worker.worker}</span>
           </button>
           {bead && (
             <Link
               to={`/beads?bead=${encodeURIComponent(bead.id)}`}
-              className="hover:text-accent focus-mark"
+              className="hover:text-primary focus-mark"
               title={`Open ${bead.id}`}
             >
               <span className="text-fg-faint" aria-hidden="true">
@@ -211,7 +211,7 @@ export function WorkInFlight({
             // is one click away from the transcript.
             <Link
               to={`/beads?bead=${encodeURIComponent(peekWorker.bead.id)}`}
-              className="text-fg-muted hover:text-accent focus-mark"
+              className="text-fg-muted hover:text-primary focus-mark"
               title={`Open ${peekWorker.bead.id}`}
             >
               <span className="tnum">{peekWorker.bead.id}</span>

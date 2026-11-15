@@ -245,7 +245,7 @@ function NodeLink({
   onOpenBead?: (beadId: string) => void;
 }) {
   const className = `text-body text-left truncate min-w-0 focus-mark ${
-    dimmed ? 'text-fg-muted' : 'text-fg hover:text-accent'
+    dimmed ? 'text-fg-muted' : 'text-fg hover:text-primary'
   }`;
 
   // Beads open the modal in place; sessions/runs route; unresolved

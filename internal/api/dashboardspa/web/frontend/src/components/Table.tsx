@@ -89,7 +89,7 @@ export function Table<T>({
                     >
                       {col.label}
                       {isSorted && (
-                        <span aria-hidden className="text-accent">
+                        <span aria-hidden className="text-primary">
                           {sort?.dir === 'asc' ? '↑' : '↓'}
                         </span>
                       )}

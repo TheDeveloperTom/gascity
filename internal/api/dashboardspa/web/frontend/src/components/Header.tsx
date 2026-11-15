@@ -148,7 +148,7 @@ export function Header() {
             </span>
           )}
           {showReadingAs && (
-            <span className="text-label uppercase tracking-wider text-accent ml-3">
+            <span className="text-label uppercase tracking-wider text-warn ml-3">
               · reading as {displayLabel(viewingAs.alias, operatorAlias)}
             </span>
           )}

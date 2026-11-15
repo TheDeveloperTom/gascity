@@ -37,7 +37,7 @@ export function AgentBeadsAssigned({
               <button
                 type="button"
                 onClick={() => onSelect(b)}
-                className="text-body text-fg hover:text-accent truncate min-w-0 text-left focus-mark"
+                className="text-body text-fg hover:text-primary truncate min-w-0 text-left focus-mark"
                 title={`Open ${b.id}`}
               >
                 {b.title}

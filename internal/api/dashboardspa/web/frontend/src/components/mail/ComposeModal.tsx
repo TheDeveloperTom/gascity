@@ -107,7 +107,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="mayor, mechanic, scix-worker, …"
-            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none transition-colors"
+            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg placeholder:text-fg-faint focus-mark transition-colors"
           />
         </Field>
         <Field label="Subject" variant="form">
@@ -116,7 +116,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             maxLength={200}
-            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg focus:border-accent focus:outline-none transition-colors"
+            className="w-full bg-transparent border-0 border-b border-rule pb-1 text-body text-fg focus-mark transition-colors"
           />
         </Field>
         <Field label="Body" variant="form">
@@ -125,7 +125,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             onChange={(e) => setBody(e.target.value)}
             rows={10}
             maxLength={16 * 1024}
-            className="w-full bg-surface-tint border border-rule rounded-sm px-3 py-2 text-body text-fg focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40 resize-y"
+            className="w-full bg-surface-tint border border-rule rounded-sm px-3 py-2 text-body text-fg focus-mark resize-y"
           />
         </Field>
         {readOnly && <ReadOnlyBadge />}

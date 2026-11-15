@@ -73,10 +73,10 @@ export function AgentPanel({
           ▸ Agents
         </button>
         <div className="mt-4 text-label uppercase tracking-wider text-fg-faint">
-          {isOperator ? 'Reading as' : <span className="text-accent">▲ Reading as</span>}
+          {isOperator ? 'Reading as' : <span className="text-warn">▲ Reading as</span>}
         </div>
         <div
-          className={`mt-1 text-body truncate ${isOperator ? 'text-fg' : 'text-accent font-medium'}`}
+          className={`mt-1 text-body truncate ${isOperator ? 'text-fg' : 'text-warn font-medium'}`}
           title={valueLabel}
         >
           {valueLabel}
@@ -111,8 +111,8 @@ export function AgentPanel({
       </button>
 
       <div className="mt-2 text-label uppercase tracking-wider text-fg-faint">
-        {isOperator ? 'Reading as' : <span className="text-accent">▲ Reading as</span>}{' '}
-        <span className={`not-italic ${isOperator ? 'text-fg-muted' : 'text-accent'}`}>
+        {isOperator ? 'Reading as' : <span className="text-warn">▲ Reading as</span>}{' '}
+        <span className={`not-italic ${isOperator ? 'text-fg-muted' : 'text-warn'}`}>
           {valueLabel}
         </span>
       </div>

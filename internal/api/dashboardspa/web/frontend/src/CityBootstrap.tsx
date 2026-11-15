@@ -181,7 +181,7 @@ function UnknownCityScreen({
                 <li key={c.name}>
                   <a
                     href={`/city/${encodeURIComponent(c.name)}/`}
-                    className="text-body text-accent hover:underline focus-mark"
+                    className="text-body text-primary hover:underline focus-mark"
                   >
                     {c.name}
                   </a>
@@ -233,7 +233,7 @@ function NoCitiesBody() {
           href={GETTING_STARTED_URL}
           target="_blank"
           rel="noreferrer"
-          className="text-accent hover:underline focus-mark"
+          className="text-primary hover:underline focus-mark"
         >
           getting-started guide
         </a>{' '}

@@ -243,7 +243,7 @@ export function AgentDetailPage() {
         <p className="text-body text-fg-muted max-w-prose">
           The slug doesn't match any current session's session_name, alias, or id. Sessions are
           listed at{' '}
-          <Link to="/agents" className="text-accent hover:underline">
+          <Link to="/agents" className="text-primary hover:underline">
             /agents
           </Link>
           .

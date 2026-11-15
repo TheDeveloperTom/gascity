@@ -30,7 +30,7 @@ import { DiffView } from './DiffView.js';
 
 // roleClass suffix → header tone, mirroring SessionPeek's roleTone palette.
 const ROLE_TONE: Record<string, string> = {
-  assistant: 'text-accent',
+  assistant: 'text-fg',
   system: 'text-warn',
   result: 'text-fg-muted',
   user: 'text-fg',
@@ -51,7 +51,7 @@ function HeaderMeta({ children }: { children: string }) {
 function BlockTitle({ kind, label }: { kind: string; label: string }) {
   return (
     <div className="text-label uppercase tracking-wider text-fg-muted">
-      <span className="text-accent">{kind}</span> {label}
+      <span className="font-semibold text-fg-muted">{kind}</span> {label}
     </div>
   );
 }

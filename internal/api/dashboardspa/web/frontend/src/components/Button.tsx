@@ -17,7 +17,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const TONE: Record<ButtonTone, string> = {
   default: 'border border-rule text-fg-muted hover:text-fg hover:bg-surface-tint',
-  accent: 'border border-accent text-accent hover:bg-accent hover:text-surface',
+  accent: 'border border-primary bg-primary text-on-primary hover:bg-primary/90',
   quiet: 'border border-transparent text-fg-muted hover:text-fg',
 };
 

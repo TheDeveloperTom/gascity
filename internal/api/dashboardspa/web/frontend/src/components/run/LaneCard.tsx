@@ -82,7 +82,7 @@ export function LaneCard({ lane, now, attentionSeverity = null, blocked }: LaneC
 
       <Link
         to={runDetailHref(lane.id, lane.scope)}
-        className="focus-mark mt-1 block text-body text-fg leading-snug hover:text-accent"
+        className="focus-mark mt-1 block text-body text-fg leading-snug hover:text-primary"
       >
         {lane.title}
       </Link>

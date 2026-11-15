@@ -22,7 +22,7 @@ export function AgentChatThread({
         </span>
       </header>
       <p className="text-label uppercase tracking-wider text-fg-faint mb-4">
-        <span className="text-accent">▲ {PROMPT_INJECTION_NOTICE}</span>
+        <span className="text-warn">▲ {PROMPT_INJECTION_NOTICE}</span>
       </p>
       {loading ? (
         <p className="text-body text-fg-muted italic">Loading messages.</p>

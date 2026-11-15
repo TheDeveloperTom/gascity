@@ -372,7 +372,7 @@ export function MailPage() {
       render: (r) => (
         <input
           type="checkbox"
-          className="h-3.5 w-3.5 translate-y-[2px] cursor-pointer accent-fg focus-mark"
+          className="h-3.5 w-3.5 translate-y-[2px] cursor-pointer accent-primary focus-mark"
           checked={selectedIds.has(r.id)}
           onChange={() => toggleSelect(r.id)}
           onClick={(e) => e.stopPropagation()}
@@ -591,7 +591,7 @@ export function MailPage() {
                 maxLength={16 * 1024}
                 title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
                 disabled={readOnly || !viewingAs.isOperator}
-                className="w-full bg-surface-tint border border-rule rounded-sm px-3 py-2 text-body text-fg focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40 resize-y disabled:opacity-50"
+                className="w-full bg-surface-tint border border-rule rounded-sm px-3 py-2 text-body text-fg focus-mark resize-y disabled:opacity-50"
               />
             </Field>
           )}
@@ -667,7 +667,7 @@ function MailSelectionBar({
         <input
           ref={allRef}
           type="checkbox"
-          className="h-3.5 w-3.5 translate-y-[2px] cursor-pointer accent-fg focus-mark"
+          className="h-3.5 w-3.5 translate-y-[2px] cursor-pointer accent-primary focus-mark"
           checked={allSelected}
           onChange={onToggleAll}
           aria-label="select all mail"
@@ -720,7 +720,7 @@ function MailHistoryControls({
           aria-label="Mail time window"
           value={window}
           onChange={(e) => onWindowChange(toMailHistoryWindow(e.target.value))}
-          className="bg-transparent border border-rule rounded-sm px-2 py-1 text-label uppercase tracking-wider text-fg-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+          className="bg-transparent border border-rule rounded-sm px-2 py-1 text-label uppercase tracking-wider text-fg-muted focus-mark"
         >
           {MAIL_HISTORY_WINDOWS.map((historyWindow) => (
             <option key={historyWindow} value={historyWindow}>
@@ -735,7 +735,7 @@ function MailHistoryControls({
           aria-label="Mail history limit"
           value={limit}
           onChange={(e) => onLimitChange(toMailHistoryLimit(e.target.value))}
-          className="bg-transparent border border-rule rounded-sm px-2 py-1 text-label uppercase tracking-wider text-fg-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+          className="bg-transparent border border-rule rounded-sm px-2 py-1 text-label uppercase tracking-wider text-fg-muted focus-mark"
         >
           {MAIL_HISTORY_LIMITS.map((historyLimit) => (
             <option key={historyLimit} value={historyLimit}>

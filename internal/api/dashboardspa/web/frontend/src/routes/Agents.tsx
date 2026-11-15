@@ -295,7 +295,7 @@ export function AgentsPage() {
             <div className="min-w-0">
               <Link
                 to={`/agents/${encodeURIComponent(agentSlug(r))}`}
-                className={`block ${linkColor} truncate hover:text-accent focus-mark ${
+                className={`block ${linkColor} truncate hover:text-primary focus-mark ${
                   dispatcher ? 'font-normal italic' : 'font-medium'
                 }`}
                 title={linkTitle}
@@ -507,10 +507,6 @@ export function AgentsPage() {
               type="checkbox"
               checked={runningOnly}
               onChange={(e) => setRunningOnly(e.target.checked)}
-              // Neutral accent, not maroon: the adjacent "running" word already
-              // names the state (greyscale-safe), and a maroon check would be a
-              // second mark per DESIGN.md One Mark Rule.
-              style={{ accentColor: 'oklch(var(--fg-muted))' }}
               className="translate-y-[2px]"
             />
             <span>running</span>
@@ -610,7 +606,7 @@ function NeedsYouSection({ rows }: { rows: readonly NeedsYouRow[] }) {
             <div className="flex items-baseline justify-between gap-4">
               <Link
                 to={`/agents/${encodeURIComponent(slug)}`}
-                className="focus-mark block min-w-0 truncate text-title text-fg hover:text-accent"
+                className="focus-mark block min-w-0 truncate text-title text-fg hover:text-primary"
               >
                 {label}
               </Link>

@@ -654,7 +654,7 @@ function Sparkline({ samples }: { samples: { ts: string; bytes: number }[] }) {
           fill="none"
           stroke="currentColor"
           strokeWidth="1"
-          className="text-accent"
+          className="text-fg-muted"
           points={points}
         />
       </svg>

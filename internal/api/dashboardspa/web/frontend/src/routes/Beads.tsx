@@ -417,7 +417,7 @@ export function BeadsPage() {
         )}
         {rigFilter !== RIG_FILTER_ALL && (
           <p>
-            Filtering by rig <span className="text-accent">{rigFilter}</span>.{' '}
+            Filtering by rig <span className="font-semibold text-fg">{rigFilter}</span>.{' '}
             <button
               type="button"
               onClick={() => setRigFilter(RIG_FILTER_ALL)}

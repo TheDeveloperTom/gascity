@@ -193,7 +193,7 @@ function RoleLabel({ role }: { role: string }) {
 function roleTone(role: string): string {
   switch (role) {
     case 'assistant':
-      return 'text-accent';
+      return 'text-fg';
     case 'user':
       return 'text-fg';
     case 'system':
