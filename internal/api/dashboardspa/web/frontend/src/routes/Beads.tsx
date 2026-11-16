@@ -49,6 +49,7 @@ import {
   BOARD_RECENT_CLOSED_LIMIT,
   BOARD_REFRESH_COALESCE_MS,
   boardDataOf,
+  readRigStore,
   rigsCacheKey,
   sessionsCacheKey,
   sharedRead,
@@ -233,8 +234,10 @@ export function BeadsPage() {
     fastKey === 'off'
       ? Promise.resolve(null)
       : // No withRoutes: a rig read with routes adds an unscoped route leg, the
-        // very read this one is here to outrun. Routes fill in with it.
-        listSupervisorBeads({ rigFilter: fastKey }),
+        // very read this one is here to outrun. Routes fill in with it. It is
+        // the same rig-store read the board takes for the owner model, so the
+        // two share one request (BOARD-LOAD × REVIEW 16.11).
+        readRigStore(fastKey),
   );
   const fastData = useMemo(() => boardDataOf(fast.data), [fast.data]);
   const data = showAllHistory ? historyData : (board.data ?? fastData);

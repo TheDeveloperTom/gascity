@@ -4,7 +4,7 @@ import { invalidate } from '../api/cache';
 import { listSupervisorBeads } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
-import { sharedRead, useBoardData } from './useBoardData';
+import { readRigStore, sharedRead, useBoardData } from './useBoardData';
 
 vi.mock('../supervisor/beadReads', () => ({ listSupervisorBeads: vi.fn() }));
 vi.mock('../supervisor/rigReads', () => ({ listSupervisorRigs: vi.fn() }));
@@ -116,12 +116,66 @@ describe('useBoardData', () => {
     await waitFor(() => expect(screen.getByTestId('beads').textContent).toBe('1/0/0/true/1/1'));
     expect(screen.getByTestId('home').textContent).toBe('1/0/0/true/1/1');
     // One unscoped board read, plus (REVIEW 16.11) one open-store read per rig
-    // for the owner model; both shared by every consumer.
-    await waitFor(() => expect(beads).toHaveBeenCalledWith({ rigFilter: 'devwork' }));
+    // for the owner model; both shared by every consumer. The rig-store read
+    // skips its own Live in-progress leg while its window is complete: the
+    // board read's city-wide leg covers every rig (BOARD-LOAD 16.11).
+    await waitFor(() =>
+      expect(beads).toHaveBeenCalledWith({ rigFilter: 'devwork', inProgressLeg: 'when-truncated' }),
+    );
     expect(beads).toHaveBeenCalledTimes(2);
-    expect(beads).toHaveBeenCalledWith({ withRoutes: true, recentClosed: { limit: 100 } });
+    expect(beads).toHaveBeenCalledWith({
+      withRoutes: true,
+      recentClosed: { limit: 100, rigNames: expect.any(Function) },
+    });
     expect(rigs).toHaveBeenCalledTimes(1);
     expect(sessions).toHaveBeenCalledTimes(1);
+  });
+
+  // BOARD-LOAD 16.11: the closed legs' rig list joins the board's own /rigs
+  // read in flight instead of sending a second /rigs request beside it.
+  it('the closed legs read their rigs from the shared rigs read', async () => {
+    let releaseRigs: () => void = () => undefined;
+    rigs.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRigs = () => resolve({ items: [{ name: 'devwork', prefix: 'dw' }, { name: 'east' }] } as never);
+        }),
+    );
+    render(<Consumer name="beads" />);
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(1));
+    const options = beads.mock.calls[0]?.[0];
+    const rigNames = options?.recentClosed?.rigNames;
+    expect(options?.recentClosed?.limit).toBe(100);
+    expect(rigNames).toBeTypeOf('function');
+    const names = rigNames!();
+    expect(rigs).toHaveBeenCalledTimes(1);
+    releaseRigs();
+    await expect(names).resolves.toEqual(['devwork', 'east']);
+  });
+
+  // BOARD-LOAD × REVIEW 16.11: the Beads page's fast first paint reads the
+  // same rig store the board read takes for the owner model; one request per
+  // rig serves both while it is in flight.
+  it('a second reader of a rig store joins the board read of that store', async () => {
+    let releaseStore: () => void = () => undefined;
+    beads.mockImplementation(async (options) =>
+      options?.rigFilter === 'devwork'
+        ? new Promise((resolve) => {
+            releaseStore = () =>
+              resolve({ items: [], total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never);
+          })
+        : ({ items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never),
+    );
+    render(<Consumer name="beads" />);
+    await waitFor(() =>
+      expect(beads).toHaveBeenCalledWith({ rigFilter: 'devwork', inProgressLeg: 'when-truncated' }),
+    );
+    const joined = readRigStore('devwork');
+    const storeCalls = () => beads.mock.calls.filter(([o]) => o?.rigFilter === 'devwork').length;
+    expect(storeCalls()).toBe(1);
+    releaseStore();
+    await expect(joined).resolves.toMatchObject({ items: [] });
+    expect(storeCalls()).toBe(1);
   });
 
   // vk integration: TopNav, BottomTabs, the drawer and ⌘K each read the board.

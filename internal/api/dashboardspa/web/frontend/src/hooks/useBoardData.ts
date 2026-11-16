@@ -84,11 +84,33 @@ export function rigStoresCacheKey(city: string | null, rigs: readonly string[]):
   return `beads:board:${city ?? 'no-city'}:rig-stores:${rigs.join(',')}`;
 }
 
+/**
+ * One rig's open work store, one request while it is in flight: the board
+ * read's rig stores (owner model, graphs) and the Beads page's fast first
+ * paint read the same store (BOARD-LOAD × REVIEW 16.11). Its own Live
+ * in-progress leg runs only when the rig window may be incomplete: the board
+ * read's city-wide leg covers every rig, and ownerBeadsOf puts the board's
+ * rows first.
+ */
+export function readRigStore(
+  rig: string,
+  options: { fresh?: boolean } = {},
+): Promise<SupervisorBeadList> {
+  return sharedRead(
+    `beads:rig-store:${getActiveCity() ?? 'no-city'}:${rig}`,
+    () => listSupervisorBeads({ rigFilter: rig, inProgressLeg: 'when-truncated' }),
+    options,
+  );
+}
+
 /** Each rig's own open work store, merged (a failed leg reads as empty). */
-export function readRigStores(rigs: readonly string[]): Promise<SupervisorBead[]> {
+export function readRigStores(
+  rigs: readonly string[],
+  options: { fresh?: boolean } = {},
+): Promise<SupervisorBead[]> {
   return Promise.all(
     rigs.map((rig) =>
-      listSupervisorBeads({ rigFilter: rig })
+      readRigStore(rig, options)
         .then((list) => list.items)
         .catch(() => [] as SupervisorBead[]),
     ),
@@ -144,10 +166,14 @@ export function useBoardData(): BoardRead {
   const sessionsKey = sessionsCacheKey(city);
   const rigsKey = rigsCacheKey(city);
 
+  // The closed legs need the rig names; they join this hook's own /rigs read
+  // in flight rather than sending a second /rigs beside it (BOARD-LOAD 16.11).
+  const readRigNames = () =>
+    sharedRead(rigsKey, listSupervisorRigs).then((list) => list.items.map((rig) => rig.name));
   const readBoard = () =>
     listSupervisorBeads({
       withRoutes: true,
-      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
+      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT, rigNames: readRigNames },
     });
   const board = useCachedData(boardKey, () => sharedRead(boardKey, readBoard), {
     refreshFetcher: () => sharedRead(boardKey, readBoard, { fresh: true }),
@@ -179,7 +205,7 @@ export function useBoardData(): BoardRead {
       ? new Promise<SupervisorBead[]>(() => undefined)
       : rigNames.length === 0
         ? Promise.resolve([] as SupervisorBead[])
-        : sharedRead(rigStoresKey, () => readRigStores(rigNames), { fresh });
+        : sharedRead(rigStoresKey, () => readRigStores(rigNames, { fresh }), { fresh });
   const rigStores = useCachedData(rigStoresKey, () => readStores(false), {
     refreshFetcher: () => readStores(true),
   });
