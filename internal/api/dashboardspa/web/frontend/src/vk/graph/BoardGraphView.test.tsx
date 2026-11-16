@@ -163,6 +163,62 @@ describe('questions stay inside their epic lane', () => {
   });
 });
 
+describe('no line runs past its target (owner screenshot 16.11)', () => {
+  // y values of every point in an SVG path (x y pairs after the command letters).
+  const ys = (d: string) => {
+    const nums = d.replace(/[A-Za-z,]/g, ' ').trim().split(/\s+/).map(Number);
+    return nums.filter((_, i) => i % 2 === 1);
+  };
+  const within = (l: ReturnType<typeof layoutBoard>, from: string, to: string) => {
+    const a = l.box.get(from)!;
+    const b = l.box.get(to)!;
+    const y1 = a.y + a.h / 2;
+    const y2 = b.y + b.h / 2;
+    const d = l.paths.get(`${from}>${to}`)!;
+    expect(d).toBeTruthy();
+    for (const y of ys(d)) {
+      expect(y).toBeGreaterThanOrEqual(Math.min(y1, y2) - 0.1);
+      expect(y).toBeLessThanOrEqual(Math.max(y1, y2) + 0.1);
+    }
+  };
+
+  it('a question holding one card in its own lane: the path stays between source and target y', () => {
+    const G: BoardGraph = {
+      ...BOARD,
+      nodes: [n('q', 'question', 'вопрос · L1', 0, 0), n('t', 'task', 'M02 #7', 1, 0)],
+      edges: [{ from: 'q', to: 't' }],
+      lanes: [lane('M02', ['t']), lane('M03', [])],
+      laneOf: { q: 'ask', t: 'M02' },
+    };
+    within(layoutBoard(G, 1400), 'q', 't');
+  });
+
+  it('a shared trunk to several targets: each path spans only its own source→target range', () => {
+    const G: BoardGraph = {
+      ...BOARD,
+      nodes: [
+        n('q', 'question', 'вопрос · L1', 0, 0),
+        n('t1', 'task', 'M02 #1', 1, 0),
+        n('t2', 'task', 'M02 #2', 1, 1),
+        n('t3', 'task', 'M02 #3', 1, 2),
+        n('u1', 'task', 'M03 #1', 1, 0),
+        n('u2', 'task', 'M03 #2', 2, 1),
+      ],
+      edges: [
+        { from: 'q', to: 't1' },
+        { from: 'q', to: 't2' },
+        { from: 'q', to: 't3' },
+        { from: 'q', to: 'u1' },
+        { from: 'q', to: 'u2' },
+      ],
+      lanes: [lane('M02', ['t1', 't2', 't3']), lane('M03', ['u1', 'u2'])],
+      laneOf: { q: 'ask', t1: 'M02', t2: 'M02', t3: 'M02', u1: 'M03', u2: 'M03' },
+    };
+    const l = layoutBoard(G, 1400);
+    for (const t of ['t1', 't2', 't3', 'u1', 'u2']) within(l, 'q', t);
+  });
+});
+
 describe('fitScale', () => {
   it('is min(1, available / graph width), floored at 0.6', () => {
     expect(fitScale(3000, 2000)).toBe(1);

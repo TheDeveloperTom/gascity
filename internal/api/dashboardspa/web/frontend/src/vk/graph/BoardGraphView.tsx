@@ -192,13 +192,18 @@ export function layoutBoard(graph: BoardGraph, avail: number): BoardLayout {
     const x2 = b.x;
     const y2 = b.y + b.h / 2;
     const mids = Array.from({ length: Math.max(0, b.col - a.col - 1) }, (_, i) => a.col + 1 + i);
-    if (a.lane === b.lane && a.lane !== ASK && b.col > a.col) {
+    // A question sits inside its home lane's band: a line to a card in that
+    // lane is a same-lane line, not a gutter detour (the detour ran down past
+    // the lane and back, leaving a lit stub into empty space — 16.11).
+    const tb = laneBox.get(b.lane);
+    const homeBand = a.lane === ASK && tb !== undefined && !tb.collapsed && y1 >= tb.top && y1 <= tb.top + tb.height;
+    if (((a.lane === b.lane && a.lane !== ASK) || homeBand) && b.col > a.col) {
       if (b.col === a.col + 1) {
         paths.set(key, `M ${x1.toFixed(1)} ${y1.toFixed(1)} ${bez(x1, y1, x2, y2)}`);
         routes.set(key, 'direct');
         continue;
       }
-      if (mids.every((c) => free(a.lane, c, y1))) {
+      if (mids.every((c) => free(b.lane, c, y1))) {
         paths.set(key, `M ${x1.toFixed(1)} ${y1.toFixed(1)} L ${(x2 - GUTTER).toFixed(1)} ${y1.toFixed(1)} ${bez(x2 - GUTTER, y1, x2, y2)}`);
         routes.set(key, 'direct');
         continue;
