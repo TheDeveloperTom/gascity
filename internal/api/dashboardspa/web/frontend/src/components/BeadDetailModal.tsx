@@ -13,6 +13,7 @@ import type { SupervisorSession } from '../supervisor/sessionReads';
 import { DiscussButton } from '../vk/DiscussButton';
 import { AgentWork } from '../vk/panel/AgentWork';
 import { blockerTags, Relationships } from '../vk/panel/Relationships';
+import { BackCrumb, GraphChain, ShowOnGraphButton } from '../vk/panel/GraphChain';
 import {
   DotChip,
   MayorMessageBox,
@@ -64,6 +65,12 @@ interface BeadDetailModalProps {
   extra?: ReactNode;
   /** Pinned at the drawer's bottom (vk-final: the card's comment box). */
   footer?: ReactNode;
+  /** Graph sprint: «Показать на графе» beside «Обсудить с Мэром». */
+  onShowOnGraph?: () => void;
+  /** Graph sprint: on the graph, the clickable «Почему стоит» / «Её ждут» rows. */
+  graphChain?: { cameFrom: string | null } | null;
+  /** Graph sprint: «← <previous>» after a jump along the chain. */
+  backCrumb?: { label: string; onBack: () => void } | null;
 }
 
 export function BeadDetailModal({
@@ -78,6 +85,9 @@ export function BeadDetailModal({
   renderActions,
   extra = null,
   footer = null,
+  onShowOnGraph,
+  graphChain = null,
+  backCrumb = null,
 }: BeadDetailModalProps) {
   const { bead, loading, error, notFound, now } = useBeadDetail(open, beadId, initialBead);
   const links = useEntityLinks(open ? beadId : null);
@@ -158,6 +168,7 @@ export function BeadDetailModal({
     bead && discussCtx ? (
       <>
         <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} variant="secondary" />
+        {onShowOnGraph !== undefined && <ShowOnGraphButton onClick={onShowOnGraph} />}
         {renderActions?.(bead)}
       </>
     ) : undefined;
@@ -217,6 +228,10 @@ export function BeadDetailModal({
           <p className="text-sm text-vk-text-low">{t('No task.')}</p>
         ) : (
           <>
+            {backCrumb !== null && <BackCrumb label={backCrumb.label} onBack={backCrumb.onBack} />}
+            {graphChain !== null && onOpenBead !== undefined && (
+              <GraphChain bead={bead} items={items} onOpenBead={onOpenBead} cameFrom={graphChain.cameFrom} />
+            )}
             <Relationships
               bead={bead}
               items={items}

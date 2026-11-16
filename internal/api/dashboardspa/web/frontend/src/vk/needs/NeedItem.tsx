@@ -58,6 +58,16 @@ export function discussSummary(need: Need): string {
   return text.length <= SUMMARY_MAX ? text : `${text.slice(0, SUMMARY_MAX - 1)}…`;
 }
 
+/** Graph sprint: «держит N задач» opens the graph of that chain. */
+export function chainGraphHref(id: string): string {
+  return `/beads?${new URLSearchParams({ view: 'graph', focus: id }).toString()}`;
+}
+
+/** An ask whose meta line leads with «держит N задач» (a link to its chain on the graph). */
+function holdsLinked(need: Need): boolean {
+  return need.kind !== 'stall' && need.holds > 0;
+}
+
 /** The row's one meta line (canvas: «держит 22 задачи, ждёт 3 дня», «стоит 20 ч · проверки красные»). */
 export function metaText(need: Need): string {
   const waited = need.waitedMs === null ? null : waitedShort(need.waitedMs);
@@ -259,8 +269,10 @@ export function NeedItem({ need }: { need: Need }) {
             >
               {rowTitle(need.title)}
             </span>
-            {meta !== '' && (
-              <span className="max-w-full truncate text-[13px] leading-5 text-vk-text-low">{meta}</span>
+            {meta !== '' && !holdsLinked(need) && (
+              <span data-testid="need-meta" className="max-w-full truncate text-[13px] leading-5 text-vk-text-low">
+                {meta}
+              </span>
             )}
             {question && need.summary !== null && (
               <span className="mt-1 line-clamp-2 text-sm leading-[1.45] text-vk-text-normal [overflow-wrap:anywhere] md:hidden">
@@ -268,6 +280,18 @@ export function NeedItem({ need }: { need: Need }) {
               </span>
             )}
           </RowLink>
+          {holdsLinked(need) && (
+            <span data-testid="need-meta" className="max-w-full truncate text-[13px] leading-5 text-vk-text-low">
+              <Link
+                to={chainGraphHref(need.id)}
+                title={t('holds {n} tasks: show the chain on the graph')}
+                className="underline decoration-dotted underline-offset-2 hover:text-vk-text-high focus-mark"
+              >
+                {holdsText(need.holds)}
+              </Link>
+              {meta.slice(holdsText(need.holds).length)}
+            </span>
+          )}
           {need.breakdown.length > 0 && held.length === 0 && (
             <span
               title={t('What waits for this')}
