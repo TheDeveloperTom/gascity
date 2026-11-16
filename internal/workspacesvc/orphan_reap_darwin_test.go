@@ -24,7 +24,16 @@ func TestDarwinOrphanHelperProcess(_ *testing.T) {
 	if os.Getenv(darwinOrphanHelperEnv) != "1" {
 		return
 	}
-	_ = syscall.Setpgid(0, 0)
+	if dir := os.Getenv("GC_DARWIN_ORPHAN_CWD"); dir != "" {
+		_ = os.Chdir(dir)
+	}
+	if os.Getenv("GC_DARWIN_ORPHAN_SETSID") == "1" {
+		// A daemon a service started: its own session, like bd's proxy.
+		_, _ = syscall.Setsid()
+	} else {
+		// A service root: its own group in its parent's session (Setpgid).
+		_ = syscall.Setpgid(0, 0)
+	}
 	child := exec.Command("/bin/sleep", "600")
 	if err := child.Start(); err == nil {
 		_ = os.WriteFile(os.Getenv("GC_DARWIN_ORPHAN_CHILD_FILE"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
@@ -45,16 +54,16 @@ func darwinHelperCommand(t *testing.T, marker string) []string {
 
 // spawnDarwinOrphanGroup spawns the helper as an orphan of launchd carrying
 // stateRoot, and returns the helper's pid and its grandchild's pid.
-func spawnDarwinOrphanGroup(t *testing.T, command []string, stateRoot string) (int, int) {
+func spawnDarwinOrphanGroup(t *testing.T, command []string, stateRoot string, extraEnv ...string) (int, int) {
 	t.Helper()
 	childFile := filepath.Join(t.TempDir(), "child.pid")
-	pid := spawnOrphanForTest(t, command, []string{
+	pid := spawnOrphanForTest(t, command, append([]string{
 		darwinOrphanHelperEnv + "=1",
 		"GC_DARWIN_ORPHAN_CHILD_FILE=" + childFile,
 		"GC_SERVICE_NAME=darwin-reap-test",
 		"GC_SERVICE_STATE_ROOT=" + stateRoot,
 		"GC_TEST_FAKE_SECRET=do-not-read",
-	})
+	}, extraEnv...))
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		if data, err := os.ReadFile(childFile); err == nil && len(data) > 0 {
@@ -145,5 +154,42 @@ func TestDarwinProcessCwdReadsOwnCwd(t *testing.T) {
 	}
 	if _, err := darwinProcessCwd(999999); err == nil {
 		t.Fatal("darwinProcessCwd of a missing pid succeeded")
+	}
+}
+
+// The cwd rule against real processes: an orphan whose argv is not the
+// configured command (a wrapper exec'd something else) but that leads its own
+// group inside a session it does not lead, and runs in the service's command
+// dir, is reaped with its group. A Setsid daemon a service started — same
+// state root, same cwd, re-parented to launchd, bd's db-proxy-child shape —
+// survives, and so does its group.
+func TestDarwinReapCwdRuleSparesSetsidDaemon(t *testing.T) {
+	stateRoot := t.TempDir()
+	dir := resolveOrphanCommandDir(t.TempDir())
+	marker := fmt.Sprintf("darwin-cwd-%d", os.Getpid())
+	configured := darwinHelperCommand(t, marker+"-configured")
+
+	wrapped, wrappedChild := spawnDarwinOrphanGroup(t, darwinHelperCommand(t, marker+"-exec"), stateRoot,
+		"GC_DARWIN_ORPHAN_CWD="+dir)
+	daemon, daemonChild := spawnDarwinOrphanGroup(t, darwinHelperCommand(t, marker+"-daemon"), stateRoot,
+		"GC_DARWIN_ORPHAN_CWD="+dir, "GC_DARWIN_ORPHAN_SETSID=1")
+	t.Cleanup(func() { _ = syscall.Kill(-daemon, syscall.SIGKILL) })
+
+	id := newOrphanIdentity("darwin-reap-test", stateRoot, configured)
+	id.dir = dir
+	reapOrphanedServiceProcesses(id)
+
+	if !waitProcessGoneForTest(t, wrapped, 5*time.Second) {
+		t.Fatalf("cwd-rule orphan %d still alive after reap", wrapped)
+	}
+	if !waitProcessGoneForTest(t, wrappedChild, 5*time.Second) {
+		t.Fatalf("grandchild %d of the cwd-rule orphan still alive after reap", wrappedChild)
+	}
+	time.Sleep(200 * time.Millisecond) // let any wrongly-sent signal land
+	if !processAliveForTest(daemon) {
+		t.Errorf("Setsid daemon %d with the same state root and cwd was killed", daemon)
+	}
+	if !processAliveForTest(daemonChild) {
+		t.Errorf("child %d in the Setsid daemon's group was killed", daemonChild)
 	}
 }
