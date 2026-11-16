@@ -482,7 +482,10 @@ export function buildBoardModel(
   };
   const keep = (card: BoardCard) =>
     (filters.showTests || !card.isTest) &&
-    (filters.project === ALL_PROJECTS || card.project.key === filters.project) &&
+    (filters.project === ALL_PROJECTS ||
+      card.project.key === filters.project ||
+      // 16.11 owner: a peer's card of the same product rig shows on our rig's board.
+      (card.peer !== null && card.peer.rig === filters.project)) &&
     (owner === 'all' || card.owner === owner) &&
     matchesEpic(card) &&
     matchesSearch(card.node.bead, needle);
