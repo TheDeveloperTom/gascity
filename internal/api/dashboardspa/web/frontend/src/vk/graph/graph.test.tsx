@@ -102,9 +102,23 @@ describe('hover (V5-Hover, V1-WhatIf)', () => {
     expect(edge('a1', 'gw').getAttribute('data-lit')).toBe('away');
     expect(edge('qv3', 's9').getAttribute('data-lit')).toBe('faint');
     expect(card('qv3').getAttribute('data-dim')).toBe('true');
-    fireEvent.mouseLeave(card('s3'));
-    expect(desk.queryByRole('status')).toBeNull();
-    expect(desk.getByText(M04.headline)).toBeTruthy();
+  });
+
+  it('clears hover about 80 ms after the pointer leaves', () => {
+    vi.useFakeTimers();
+    try {
+      const { card, desk } = setup();
+      fireEvent.mouseEnter(card('s3'));
+      fireEvent.mouseLeave(card('s3'));
+      expect(desk.getByTestId('graph-banner').textContent).not.toBe('');
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(desk.getByTestId('graph-banner').textContent).toBe('');
+      expect(desk.getByText(M04.headline)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('hovering «Ответить» runs the what-if wave along the question chain', () => {
@@ -117,10 +131,15 @@ describe('hover (V5-Hover, V1-WhatIf)', () => {
   });
 
   it('hover takes over from the selection and gives it back on leave', () => {
+    vi.useFakeTimers();
     const { card, edge } = setup('s9');
     fireEvent.mouseEnter(card('s3'));
     expect(edge('m3', 's3').getAttribute('data-lit')).toBe('toward');
     fireEvent.mouseLeave(card('s3'));
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    vi.useRealTimers();
     expect(edge('m3', 's3').getAttribute('data-lit')).toBe('faint');
     expect(edge('qv3', 's9').getAttribute('data-lit')).toBe('held');
   });
@@ -262,14 +281,16 @@ describe('fluid layout (integration 16.11, eyes at 2000 px: graph used only the 
     expect(title.getAttribute('title')).toBe(n.title);
   });
 
-  it('the banner replaces the headline inside the same reserved head slot (no column jump on hover)', () => {
+  it('the banner slot is always rendered (empty without hover) and the headline stays put', () => {
     const { card } = setup();
-    const slot = screen.getByTestId('graph-head');
-    expect(slot.querySelector('.vkg-concl')).not.toBeNull();
+    const slot = screen.getByTestId('graph-banner');
+    expect(slot.textContent).toBe('');
+    expect(screen.getByTestId('graph-head').querySelector('.vkg-concl')).not.toBeNull();
     const n = M04.nodes.find((x) => x.kind === 'task');
     if (n === undefined) throw new Error('no task');
     fireEvent.mouseEnter(card(n.id));
-    expect(screen.getByTestId('graph-head')).toBe(slot);
-    expect(slot.querySelector('.vkg-banner')).not.toBeNull();
+    expect(screen.getByTestId('graph-banner')).toBe(slot);
+    expect(slot.textContent).not.toBe('');
+    expect(screen.getByTestId('graph-head').querySelector('.vkg-concl')).not.toBeNull();
   });
 });
