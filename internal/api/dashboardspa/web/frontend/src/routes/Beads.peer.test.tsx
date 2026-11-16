@@ -135,8 +135,12 @@ describe('BeadsPage with Richard’s board', () => {
     await waitFor(() => expect(requests).toContain('/v0/city/test-city/beads'));
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole('region', { name: 'Доска' })).toBeNull();
+    // The filter bar too: «Проект» joins it once the cards are known and wraps
+    // it at 768 px (live deep link: CLS 0.17 with the peer lines under it).
+    expect(screen.queryByRole('searchbox', { name: 'Найти задачу' })).toBeNull();
     await act(async () => release(json(peerBody({ snapshotAt: minutesAgo(1) }))));
     expect(await screen.findByRole('region', { name: 'Доска' })).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: 'Найти задачу' })).toBeTruthy();
   });
 
   it('«Все / Мои / Ричарда» turn on with peer data and show both, mine, his', async () => {

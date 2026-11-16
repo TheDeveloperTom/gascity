@@ -183,8 +183,10 @@ export function NeedsShelves({
           topicQuestions.length === 0 ? (
           <Status>{t('Nothing needs you right now.')}</Status>
         ) : null}
-        {topicQuestions.length > 0 && <TopicQuestions items={topicQuestions} />}
-        {topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
+        {/* Our own asks land with our board; the Mayors' lines wait for it, or
+            the asks push them down (H1 16.11). */}
+        {model.state !== 'loading' && topicQuestions.length > 0 && <TopicQuestions items={topicQuestions} />}
+        {model.state !== 'loading' && topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
         {!holding && model.stalls.length > 0 && (
           <section aria-labelledby={stuckId} className="mt-4 min-w-0">
             <h3 id={stuckId} className="pb-2 text-label font-semibold text-vk-text-low">

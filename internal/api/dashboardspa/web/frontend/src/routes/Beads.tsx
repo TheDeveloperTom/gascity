@@ -464,6 +464,10 @@ export function BeadsPage() {
         </p>
       )}
 
+      {/* H1 16.11: the filter bar and the peer lines join with the board, once
+          the cards and the peer boards are read, so nothing above the board
+          grows after it is drawn (layout shift). */}
+      {!((!hasLoadedBoard && loading) || !peerSettled) && (
       <div className="mb-8">
         <BoardFilterBar
           projects={boardModel.projects}
@@ -531,6 +535,7 @@ export function BeadsPage() {
           </p>
         )}
       </div>
+      )}
 
       {(!hasLoadedBoard && loading) || !peerSettled ? (
         <p className="text-body text-fg-muted">{t('Loading beads.')}</p>

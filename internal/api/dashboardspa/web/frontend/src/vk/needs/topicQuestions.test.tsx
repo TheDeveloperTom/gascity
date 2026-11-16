@@ -130,6 +130,17 @@ describe('one owner question, three views', () => {
     expect(link.className.split(/\s+/)).toContain('min-h-11');
   });
 
+  // H1 16.11 (phone, final sweep, CLS 0.22): the Mayors' questions drew while
+  // our board was still read, then our own asks landed above and pushed them
+  // down. They wait for our board like everything below it.
+  it('the Mayors’ questions wait for our board to be read', () => {
+    renderShelves(boards(), { ...EMPTY, state: 'loading' });
+    expect(screen.queryAllByTestId('topic-question')).toHaveLength(0);
+    cleanup();
+    renderShelves(boards());
+    expect(screen.getAllByTestId('topic-question').length).toBeGreaterThan(0);
+  });
+
   it('a question our bead already lists (same question id) is not counted again', () => {
     const result = boards();
     expect(peerNeedsCount(result, new Set(['q-ours']), NOW)).toBe(1);
