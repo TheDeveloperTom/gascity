@@ -14,7 +14,16 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './styles/index.css';
 
-import { registerServiceWorker } from './lib/pwa';
+import { installChunkReload, registerServiceWorker } from './lib/pwa';
+
+// Lane L1: a tab opened before the built files were swapped reloads once when
+// one of its chunks is gone (404), instead of going blank. Installed before the
+// app mounts so the first lazy route is covered.
+try {
+  installChunkReload(window, window.sessionStorage);
+} catch {
+  // sessionStorage blocked: no reload guard, so no reload-once
+}
 
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
