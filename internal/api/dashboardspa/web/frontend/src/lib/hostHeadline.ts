@@ -1,15 +1,17 @@
 import type { LiveDisk, LiveHealth, LiveMemory } from 'gas-city-dashboard-shared';
-import { getLocale, t } from '../i18n';
-import { loadPctOf } from './hostLive';
+import { getLocale, t, tn } from '../i18n';
 
 // «Что с маком сейчас» (owner 16.11): one sentence, calm unless a threshold
 // is crossed. Each clause carries its own tone; the sentence takes the worst.
 //
 // Thresholds, and why:
-// - CPU: the 1-minute load as a percent of the cores. Under 80 % there is a
-//   free core to spare; 80–120 % the Mac is busy and new work starts to wait;
-//   120 % and over, threads queue for a core for a sustained minute.
-//   Busy % stands in when load is unreadable.
+// - CPU: the tone reads the 1-minute load against the cores. Under 0.8× the
+//   cores there is a free core to spare; 0.8–1.2× the Mac is busy and new
+//   work starts to wait; 1.2× and over, threads queue for a core for a
+//   sustained minute. Busy % stands in when load is unreadable.
+//   What is SHOWN never passes 100 % (coordinator 16.11: «356 %» reads as a
+//   bug): the CPU is busy % (0–100), the queue is a multiple of the cores
+//   («в 3,6 раза больше ядер»).
 // - Memory: the kernel's own pressure level when macOS reports it (the same
 //   signal as Activity Monitor's pressure graph): warn is amber, critical is
 //   red. Elsewhere, the available share: under 10 % amber, under 5 % red.
@@ -83,7 +85,8 @@ export function formatBytes(bytes: number): string {
     [2 ** 10, t('KB')],
   ];
   for (const [size, unit] of units) {
-    if (bytes >= size) {
+    // From 1000 of the unit below, use this unit: «1 ГБ», never «1 009 МБ».
+    if (bytes >= (size * 1000) / 1024) {
       const v = bytes / size;
       return `${numberFormat(v < 100 ? 1 : 0).format(v)}${NBSP}${unit}`;
     }
@@ -103,25 +106,81 @@ export interface Headline {
   sentence: string;
 }
 
-export function cpuPctOf(live: LiveHealth): number | null {
-  const load = loadPctOf(live);
-  if (load !== null) return load;
+/** The 1-minute load as a multiple of the cores (1 = one thread per core). */
+export function loadRatioOf(live: LiveHealth): number | null {
+  if (live.cpu.load.status !== 'available' || !(live.cpu.cores > 0)) return null;
+  const v = live.cpu.load.value.load_avg_1 / live.cpu.cores;
+  return Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+export function busyPctOf(live: LiveHealth): number | null {
   return live.cpu.busy_pct.status === 'available' ? live.cpu.busy_pct.value : null;
+}
+
+/** The CPU tone: the queue against the cores, else busy %. */
+export function cpuToneOf(live: LiveHealth): HostTone | null {
+  const ratio = loadRatioOf(live);
+  if (ratio !== null) return cpuTone(ratio * 100);
+  const busy = busyPctOf(live);
+  return busy === null ? null : cpuTone(busy);
+}
+
+/** «в 3,6 раза больше» / «3.6×»: a multiple, never a percent. */
+function formatTimes(ratio: number): string {
+  const rounded = Math.round(ratio * 10) / 10;
+  return tn(rounded, { one: '{x}×', other: '{x}×' }, { x: numberFormat(1).format(rounded) });
+}
+
+function formatLoad(load: number): string {
+  return numberFormat(load < 10 ? 1 : 0).format(load);
+}
+
+/** The run queue in plain words for the CPU card; null when load is unread. */
+export function cpuQueueLine(live: LiveHealth): string | null {
+  const ratio = loadRatioOf(live);
+  if (ratio === null || live.cpu.load.status !== 'available') return null;
+  const load = formatLoad(live.cpu.load.value.load_avg_1);
+  const cores = live.cpu.cores;
+  if (ratio >= 1) {
+    return t('work queue: {times} the cores ({load} for {cores})', {
+      times: formatTimes(ratio),
+      load,
+      cores,
+    });
+  }
+  return t('work queue: {load} for {cores} cores', { load, cores });
 }
 
 export function buildHeadline(live: LiveHealth): Headline {
   const clauses: HeadlineClause[] = [];
 
-  const cpu = cpuPctOf(live);
-  if (cpu !== null) {
-    const tone = cpuTone(cpu);
-    const pct = formatPct(Math.round(cpu));
-    const text =
-      tone === 'critical'
-        ? t('The Mac is overloaded: {pct}, work waits for a core', { pct })
-        : tone === 'warn'
-          ? t('The Mac is {pct} loaded, close to its limit', { pct })
-          : t('The Mac is {pct} loaded', { pct });
+  const tone = cpuToneOf(live);
+  const busyValue = busyPctOf(live);
+  const ratio = loadRatioOf(live);
+  if (tone !== null) {
+    const busy = busyValue === null ? null : formatPct(Math.round(busyValue));
+    const times = ratio === null ? null : formatTimes(ratio);
+    let text: string;
+    if (tone === 'critical' && times !== null) {
+      text =
+        busy === null
+          ? t('The Mac is overloaded: work waits in a queue ({times} the cores)', { times })
+          : t(
+              'The Mac is overloaded: the CPU is {busy} busy, work waits in a queue ({times} the cores)',
+              {
+                busy,
+                times,
+              },
+            );
+    } else if (tone !== 'ok') {
+      text =
+        busy === null
+          ? t('The Mac is busy: work is close to queueing')
+          : t('The Mac is busy: the CPU is {busy} busy, work is close to queueing', { busy });
+    } else {
+      text =
+        busy === null ? t('the CPU has cores to spare') : t('The CPU is {busy} busy', { busy });
+    }
     clauses.push({ key: 'cpu', tone, text });
   }
 
@@ -141,14 +200,14 @@ export function buildHeadline(live: LiveHealth): Headline {
     const free = formatBytes(live.disk.value.free_bytes);
     const text =
       tone === 'critical'
-        ? t('the disk is almost full: {free} free', { free })
+        ? t('the disk is almost full — {free} left', { free })
         : tone === 'warn'
-          ? t('disk space is low: {free} free', { free })
+          ? t('disk space is low — {free}', { free })
           : t('{free} free on disk', { free });
     clauses.push({ key: 'disk', tone, text });
   }
 
-  const joined = clauses.map((c) => c.text).join(', ');
+  const joined = clauses.map((c) => c.text).join('; ');
   const sentence =
     joined.length === 0
       ? t('The Mac is not reporting its load right now.')

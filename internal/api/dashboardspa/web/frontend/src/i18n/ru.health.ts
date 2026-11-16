@@ -11,16 +11,25 @@ export const RU_HEALTH: Readonly<Record<string, string | RuPlural>> = {
   TB: 'ТБ',
 
   // Headline
-  'The Mac is {pct} loaded': 'Мак загружен на {pct}',
-  'The Mac is {pct} loaded, close to its limit': 'Мак загружен на {pct}, почти под завязку',
-  'The Mac is overloaded: {pct}, work waits for a core':
-    'Мак перегружен: {pct}, задачи ждут процессор',
+  'The CPU is {busy} busy': 'Процессор занят на {busy}',
+  'the CPU has cores to spare': 'у процессора есть свободные ядра',
+  'The Mac is busy: the CPU is {busy} busy, work is close to queueing':
+    'Мак загружен: процессор занят на {busy}, задачи почти встают в очередь',
+  'The Mac is busy: work is close to queueing': 'Мак загружен: задачи почти встают в очередь',
+  'The Mac is overloaded: the CPU is {busy} busy, work waits in a queue ({times} the cores)':
+    'Мак перегружен: процессор занят на {busy}, задачи ждут в очереди ({times} ядер)',
+  'The Mac is overloaded: work waits in a queue ({times} the cores)':
+    'Мак перегружен: задачи ждут в очереди ({times} ядер)',
+  '{x}×': { one: 'в {x} раз больше', few: 'в {x} раза больше', many: 'в {x} раз больше' },
+  'work queue: {times} the cores ({load} for {cores})':
+    'очередь задач: {times}, чем ядер ({load} на {cores})',
+  'work queue: {load} for {cores} cores': 'очередь задач: {load} на {cores} ядер',
   'memory is fine': 'памяти хватает',
   'memory is tight': 'памяти впритык',
   'memory is running out': 'память на исходе',
-  '{free} free on disk': 'на диске {free} свободно',
-  'disk space is low: {free} free': 'на диске мало места: {free} свободно',
-  'the disk is almost full: {free} free': 'диск почти заполнен: {free} свободно',
+  '{free} free on disk': 'на диске свободно {free}',
+  'disk space is low — {free}': 'на диске мало места — {free}',
+  'the disk is almost full — {free} left': 'диск почти заполнен — осталось {free}',
   'The Mac is not reporting its load right now.': 'Мак сейчас не сообщает о нагрузке.',
 
   // Page frame
@@ -42,12 +51,8 @@ export const RU_HEALTH: Readonly<Record<string, string | RuPlural>> = {
   now: 'сейчас',
   '−{n} min': '−{n} мин',
   'Collecting data…': 'Собираю данные…',
-  'load, 1 min': 'нагрузка за минуту',
-  'busy now': 'занят сейчас',
-  busy: 'порог',
+  busy: 'занят',
   used: 'занято',
-  'load on {n} cores, 1-minute average': 'нагрузка на {n} ядер, среднее за минуту',
-  'busy right now: {pct}': 'занят прямо сейчас: {pct}',
   '{used} of {total}': '{used} из {total}',
   'memory pressure: normal': 'давление памяти в норме',
   'memory pressure: elevated': 'давление памяти повышено',
@@ -56,6 +61,7 @@ export const RU_HEALTH: Readonly<Record<string, string | RuPlural>> = {
   'swap in use: {swap}': 'в файле подкачки: {swap}',
   '{free} free': '{free} свободно',
   '{free} left': 'осталось {free}',
+  'busy right now, share of all {n} cores': 'занят прямо сейчас, доля всех {n} ядер',
   '{pct} of {total} used': 'занято {pct} из {total}',
 
   // Who eats the Mac

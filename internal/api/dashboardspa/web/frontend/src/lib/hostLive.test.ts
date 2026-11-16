@@ -32,9 +32,9 @@ describe('RingBuffer', () => {
 });
 
 describe('sampleFromLive', () => {
-  it('turns load into a percent of the cores', () => {
+  it('keeps the CPU as busy %, never load as a percent', () => {
     const s = sampleFromLive(liveFixture());
-    expect(s.loadPct).toBeCloseTo(38);
+    expect(s).not.toHaveProperty('loadPct');
     expect(s.busyPct).toBe(31);
     expect(s.memUsedBytes).toBe(19 * 2 ** 30);
     expect(s.diskFreeBytes).toBe(40 * 2 ** 30);
