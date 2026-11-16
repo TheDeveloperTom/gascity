@@ -38,6 +38,12 @@ const (
 	// liveBaselineWait is the one-time wait the first sample (or the first
 	// after liveBaselineMaxAge idle) takes so CPU deltas are never blank.
 	liveBaselineWait = 300 * time.Millisecond
+	// liveCPUSettleStep and liveCPUSettleMax: macOS advances the CPU tick
+	// counters in coarse steps, so a read can see no change since the
+	// baseline (re-review R1-1: ~40 % of 300 ms waits). The sampler re-reads
+	// every step until they move, for at most baseline wait + settle max ≈ 1 s.
+	liveCPUSettleStep = 100 * time.Millisecond
+	liveCPUSettleMax  = 700 * time.Millisecond
 	// liveBaselineMaxAge: an older previous sample would average CPU over the
 	// whole idle gap, so the sampler takes a fresh baseline instead.
 	liveBaselineMaxAge = time.Minute
@@ -210,13 +216,18 @@ func (s *liveSampler) sample(ctx context.Context) liveHealth {
 		s.takeBaseline(ctx)
 		s.src.sleep(liveBaselineWait)
 	}
+	busy, total, err := s.src.cpuTimes(ctx)
+	for waited := time.Duration(0); err == nil && total <= s.prevCPU.total && waited < liveCPUSettleMax; waited += liveCPUSettleStep {
+		s.src.sleep(liveCPUSettleStep)
+		busy, total, err = s.src.cpuTimes(ctx)
+	}
+
 	at := s.src.now()
 	elapsed := at.Sub(s.prevAt).Seconds()
 
 	out := liveHealth{SampledAt: at.UTC().Format(time.RFC3339Nano)}
 	out.CPU.Cores = s.src.cores()
 
-	busy, total, err := s.src.cpuTimes(ctx)
 	switch {
 	case err != nil:
 		out.CPU.BusyPct = failedHealthMetric[float64]("host cpu times", healthMetricSampleFailed, err)

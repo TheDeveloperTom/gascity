@@ -411,3 +411,64 @@ func TestLiveSamplerTreatsAFloatRoundingDipAsZeroBusy(t *testing.T) {
 		t.Fatalf("busy_pct = %#v, want available 0", snap.CPU.BusyPct)
 	}
 }
+
+// Re-review R1-1: macOS updates the CPU counters in coarse steps, so a
+// 300 ms baseline often sees no change. The sampler waits for the counters
+// to move, up to about a second in all, instead of reporting a blank.
+func TestLiveSamplerWaitsForTheCPUCountersToAdvance(t *testing.T) {
+	f := &fakeLiveSources{
+		now:       time.Unix(1000, 0),
+		cpuTotals: [][2]float64{{0, 0}, {0, 0}, {0, 0}, {1, 10}},
+		procs:     [][]processSample{{}},
+	}
+	snap := newLiveSampler(f.sources()).snapshot(context.Background(), true)
+	if snap.CPU.BusyPct.Status != healthMetricAvailable || *snap.CPU.BusyPct.Value != 10 {
+		t.Fatalf("busy_pct = %#v, want 10 once the counters move", snap.CPU.BusyPct)
+	}
+	var waited time.Duration
+	for _, d := range f.sleeps {
+		waited += d
+	}
+	if waited > 1100*time.Millisecond {
+		t.Fatalf("waited %v, want about a second at most", waited)
+	}
+}
+
+func TestLiveSamplerStopsWaitingAfterAboutASecond(t *testing.T) {
+	f := &fakeLiveSources{
+		now:       time.Unix(1000, 0),
+		cpuTotals: [][2]float64{{0, 0}},
+		procs:     [][]processSample{{}},
+	}
+	snap := newLiveSampler(f.sources()).snapshot(context.Background(), true)
+	var waited time.Duration
+	for _, d := range f.sleeps {
+		waited += d
+	}
+	if waited < 900*time.Millisecond || waited > 1100*time.Millisecond {
+		t.Fatalf("waited %v, want about a second", waited)
+	}
+	if snap.CPU.BusyPct.Status != healthMetricUnavailable {
+		t.Fatalf("busy_pct = %#v, want unavailable when the counters never move", snap.CPU.BusyPct)
+	}
+}
+
+// A later poll keeps the previous reading as its baseline: no new wait.
+func TestLiveSamplerKeepsTheBaselineBetweenPolls(t *testing.T) {
+	f := &fakeLiveSources{
+		now:       time.Unix(1000, 0),
+		cpuTotals: [][2]float64{{0, 0}, {1, 10}, {3, 20}},
+		procs:     [][]processSample{{}},
+	}
+	s := newLiveSampler(f.sources())
+	s.snapshot(context.Background(), true)
+	sleeps := len(f.sleeps)
+	f.now = f.now.Add(3 * time.Second)
+	snap := s.snapshot(context.Background(), true)
+	if len(f.sleeps) != sleeps {
+		t.Fatalf("a steady poll slept %d more times, want none", len(f.sleeps)-sleeps)
+	}
+	if *snap.CPU.BusyPct.Value != 20 {
+		t.Fatalf("busy_pct = %v, want 20 (2 of 10 s since the last poll)", *snap.CPU.BusyPct.Value)
+	}
+}
