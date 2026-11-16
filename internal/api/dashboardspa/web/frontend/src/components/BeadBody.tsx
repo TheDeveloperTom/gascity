@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import { formatDateTime } from '../lib/format';
 import { Field } from './Field';
@@ -64,7 +65,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
     <div className="space-y-6">
       {kind === 'template' && (
         <section>
-          <h3 className={SUBHEAD}>Formula template</h3>
+          <h3 className={SUBHEAD}>{t('Formula template')}</h3>
           <p className="text-body text-fg-muted max-w-prose">
             This bead is a recipe, not actionable work. Every{' '}
             {bead.ref ? <code className="text-fg-muted">{bead.ref}</code> : 'wisp'} instance is
@@ -77,7 +78,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
 
       {kind === 'wisp' && (
         <section>
-          <h3 className={SUBHEAD}>Formula instance</h3>
+          <h3 className={SUBHEAD}>{t('Formula instance')}</h3>
           <p className="text-body text-fg-muted max-w-prose">
             One run of the{' '}
             {bead.title ? <code className="text-fg-muted">{bead.title}</code> : 'formula'} recipe.
@@ -86,41 +87,41 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
       )}
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-md bg-surface-tint/60 px-4 py-3 sm:grid-cols-4">
-        <Field label="Status">
+        <Field label={t('Status')}>
           <StatusBadge tone={beadStatusTone(bead.status)} label={bead.status} />
         </Field>
-        <Field label="Type">{bead.issue_type}</Field>
-        <Field label="Assignee">{bead.assignee || '·'}</Field>
-        <Field label="Created">
+        <Field label={t('Type')}>{bead.issue_type}</Field>
+        <Field label={t('Assignee')}>{bead.assignee || '·'}</Field>
+        <Field label={t('Created')}>
           <span className="tnum">{formatDateTime(bead.created_at)}</span>
         </Field>
       </dl>
 
       {kind === 'template' && (wf.formulaContract || wf.originBeadId || wf.runTarget) && (
         <section>
-          <h3 className={SUBHEAD}>Template origin</h3>
+          <h3 className={SUBHEAD}>{t('Template origin')}</h3>
           <p className="text-body text-fg-muted max-w-prose mb-4">
             Where this formula came from, kept for traceability. The origin bead and target may be
             stale; the formula itself is now used wherever the pool dispatches it.
           </p>
           <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-3">
             {wf.formulaContract && (
-              <Field label="Contract">
+              <Field label={t('Contract')}>
                 <code className="text-fg-muted">{wf.formulaContract}</code>
               </Field>
             )}
             {bead.ref && (
-              <Field label="Ref">
+              <Field label={t('Ref')}>
                 <code className="text-fg-muted">{bead.ref}</code>
               </Field>
             )}
             {wf.originBeadId && (
-              <Field label="Origin bead">
+              <Field label={t('Origin bead')}>
                 <code className="text-fg-muted">{wf.originBeadId}</code>
               </Field>
             )}
             {wf.runTarget && (
-              <Field label="Origin target">
+              <Field label={t('Origin target')}>
                 <span className="text-fg-muted truncate" title={wf.runTarget}>
                   {wf.runTarget}
                 </span>
@@ -132,7 +133,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
 
       {Array.isArray(bead.labels) && bead.labels.length > 0 && (
         <section>
-          <h3 className={SUBHEAD}>Labels</h3>
+          <h3 className={SUBHEAD}>{t('Labels')}</h3>
           <div className="flex flex-wrap gap-1.5">
             {bead.labels.map((l) => (
               <span
@@ -153,7 +154,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
             {bead.description}
           </pre>
         ) : (
-          <p className="text-body text-fg-muted">No description.</p>
+          <p className="text-body text-fg-muted">{t('No description.')}</p>
         )}
       </section>
     </div>

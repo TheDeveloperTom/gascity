@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { EntityLinkView, LinkNode, LinkNodeType } from 'gas-city-dashboard-shared';
@@ -74,7 +75,7 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
   return (
     <section className="mt-12">
       <header className="flex items-baseline justify-between mb-4 gap-3">
-        <h2 className="text-title font-semibold text-fg">Related</h2>
+        <h2 className="text-title font-semibold text-fg">{t('Related')}</h2>
         <div className="flex items-baseline gap-3 min-w-0">
           {view && view.asOf && (
             <span className="text-label text-fg-faint tnum shrink-0">
@@ -90,9 +91,9 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
           {error}
         </p>
       ) : loading && view === null ? (
-        <p className="text-body text-fg-muted">Loading related entities.</p>
+        <p className="text-body text-fg-muted">{t('Loading related entities.')}</p>
       ) : view === null || groups.length === 0 ? (
-        <p className="text-body text-fg-muted">No related entities.</p>
+        <p className="text-body text-fg-muted">{t('No related entities.')}</p>
       ) : (
         <>
           {view.partial && (
@@ -106,7 +107,7 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
             className="mb-4 text-label font-medium text-primary underline-offset-2 hover:underline focus-mark"
             aria-expanded={expanded}
           >
-            {expanded ? 'Hide detail' : 'Show detail'}
+            {expanded ? t('Hide detail') : t('Show detail')}
           </button>
           {expanded && (
             <div className="space-y-8">
@@ -140,10 +141,10 @@ function SummaryLine({
     return <span className="text-label text-fg-faint">·</span>;
   }
   const parts: string[] = [];
-  if (counts.resolved > 0) parts.push(`${counts.resolved} resolved`);
-  if (counts.unresolved > 0) parts.push(`${counts.unresolved} unresolved`);
-  if (counts.candidates > 0) parts.push(`${counts.candidates} candidates`);
-  const text = parts.length > 0 ? parts.join(', ') : 'none';
+  if (counts.resolved > 0) parts.push(t('{n} resolved', { n: counts.resolved }));
+  if (counts.unresolved > 0) parts.push(t('{n} unresolved', { n: counts.unresolved }));
+  if (counts.candidates > 0) parts.push(t('{n} candidates', { n: counts.candidates }));
+  const text = parts.length > 0 ? parts.join(', ') : t('none');
   // The single aggregate maroon mark (One Mark Rule): the unresolved count
   // crossing the threshold is the one loud moment in this section.
   return (
