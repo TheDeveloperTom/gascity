@@ -13,6 +13,7 @@ export const RU_HOME: Readonly<Record<string, string | RuPlural>> = {
   'Nothing needs you right now.': 'Сейчас от тебя ничего не нужно.',
   'Nothing is waiting quietly.': 'Тихо ждущих задач нет.',
   'The Mayor asks': 'Мэр спрашивает',
+  'holds nothing': 'ничего не держит',
   'waits for you {time}': 'ждёт тебя {time}',
   'stuck for {time}': 'стоит {time}',
   // vk11 phone lane (canvas row meta «держит 22 задачи, ждёт 3 дня»).

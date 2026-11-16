@@ -18,8 +18,10 @@ function bead(id: string, title: string, extra: Partial<GraphBead> = {}): GraphB
     ...extra,
   };
 }
+// «От тебя» (lib/ownerAsked): asked — needs/operator, question id, Discord link.
+const ASKED = (qid: string) => ({ 'decision.question_id': qid, 'owner.link': 'https://discord.com/channels/1/2/3' });
 const q = (id: string, title: string, milestone = 'M04') =>
-  bead(id, title, { labels: [`milestone:${milestone}`, 'needs/operator'] });
+  bead(id, title, { labels: [`milestone:${milestone}`, 'needs/operator'], metadata: ASKED(id) });
 const blocks = (issue: string, target: string) => ({ issue_id: issue, depends_on_id: target, type: 'blocks' });
 
 const ID = {
@@ -223,7 +225,7 @@ describe('buildGraph edges of the live data', () => {
       bead(ID.m3, 'M04 #3 — Сделать invalidation', {
         status: 'in_progress',
         labels: ['milestone:M04', 'needs/operator'],
-        metadata: { 'decision.question_id': 'b736', 'decision.decide': 'ВВ-4: применять ли миграцию 0426' },
+        metadata: { ...ASKED('b736'), 'decision.decide': 'ВВ-4: применять ли миграцию 0426' },
       }),
       bead(ID.s3, 'M04 #33 — Не затирать', { needs: [ID.m3] }),
       bead(ID.qv6, 'M04 — ответ владельца на ВВ-6 (способ оплаты)'),
@@ -239,8 +241,8 @@ describe('buildGraph edges of the live data', () => {
     expect(beadIdOf(qid)).toBe(ID.m3);
     expect(m.edges).toContainEqual({ from: qid, to: ID.m3 });
     expect(node(m, qid).holds).toBe(2);
-    expect(node(m, ID.qv6).kind).toBe('question');
-    expect(node(m, ID.qv6).label).toBe('вопрос · ВВ-6');
+    // «ответ владельца» is a placeholder task, not a question asked (owner 16.11)
+    expect(node(m, ID.qv6).kind).toBe('task');
   });
 
   it('marks an untaken free task «никто не взял · N дн» and says so in the subline', () => {
