@@ -35,26 +35,25 @@ export function Shelf({
   const [open, setOpen] = useState(defaultOpen);
   const Caret = open ? CaretDown : CaretRight;
   return (
-    <section className="min-w-0 border-t border-vk-border pt-2 first:border-t-0 first:pt-0">
-      <h2 className="text-body font-semibold text-vk-text-high">
+    <section className="min-w-0">
+      {/* Attention.dc.html: a 32 px caret row, 14 px medium title, quiet count. */}
+      <h2 className="text-sm font-medium text-vk-text-high">
         <button
           type="button"
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => setOpen((value) => !value)}
-          className="focus-mark flex min-h-11 w-full items-center gap-2 text-left"
+          className="focus-mark flex min-h-11 w-full items-center gap-1.5 px-1 text-left md:min-h-8"
         >
-          <Caret aria-hidden="true" className="h-4 w-4 shrink-0 text-vk-text-low" />
-          <span>{title}</span>{' '}
-          {count !== undefined && (
-            <span className="rounded bg-vk-bg-secondary px-1.5 text-label text-vk-text-normal">
-              {count}
-            </span>
-          )}
+          <Caret aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">{title}</span>{' '}
+          {count !== undefined && <span className="font-normal text-vk-text-low">{count}</span>}
         </button>
       </h2>
-      {note !== undefined && <p className="pb-2 text-label text-vk-text-low">{note}</p>}
-      <div id={bodyId} hidden={!open} className="min-w-0 pb-4">
+      {note !== undefined && (
+        <p className="pb-1 pl-6 pr-1 text-[13px] text-vk-text-low">{note}</p>
+      )}
+      <div id={bodyId} hidden={!open} className="min-w-0 pb-3">
         {open && children}
       </div>
     </section>
@@ -213,8 +212,9 @@ export function NeedsShelves({
 
       <div className="flex min-w-0 flex-col gap-2">
       {!holding && model.stalls.length > 0 && (
-        <section aria-labelledby={stuckId} className="min-w-0 border-t border-vk-border pt-2 xl:border-t-0 xl:pt-0">
-          <h3 id={stuckId} className="flex min-h-11 items-center text-body font-semibold text-vk-text-high">
+        <section aria-labelledby={stuckId} className="min-w-0">
+          {/* Phone-Needs: «Стоит» is a quiet 14 px label over its rows. */}
+          <h3 id={stuckId} className="mb-2 mt-2 px-1 text-sm font-medium text-vk-text-low xl:mt-0">
             {t('Stuck')}
           </h3>
           <ul className="flex min-w-0 flex-col gap-2">

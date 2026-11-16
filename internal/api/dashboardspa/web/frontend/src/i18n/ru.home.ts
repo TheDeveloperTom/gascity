@@ -15,6 +15,8 @@ export const RU_HOME: Readonly<Record<string, string | RuPlural>> = {
   'The Mayor asks': 'Мэр спрашивает',
   'waits for you {time}': 'ждёт тебя {time}',
   'stuck for {time}': 'стоит {time}',
+  // vk11 phone lane (canvas row meta «держит 22 задачи, ждёт 3 дня»).
+  'waits {time}': 'ждёт {time}',
   'Options from the Mayor': 'Варианты из вопроса Мэра',
   'What waits for this': 'Что ждёт этот ответ',
   // 'holds {n} tasks' lives in the core ru.ts (same forms); no lane override.
