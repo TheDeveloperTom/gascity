@@ -7,6 +7,7 @@ import {
   liveHistoryVersion,
   recordLiveSample,
   sampleFromLive,
+  seedLiveHistory,
   subscribeLiveHistory,
   type LiveSample,
 } from '../lib/hostLive';
@@ -22,7 +23,9 @@ export interface LiveHealthState {
 
 // Polls GET /api/health/live every LIVE_POLL_MS while the tab is visible and
 // appends each reading to the tab's ring buffer (lib/hostLive), which outlives
-// the route so the last half hour survives a visit elsewhere.
+// the route so the last half hour survives a visit elsewhere. On mount it also
+// reads GET /api/health/history once and seeds the ring, so the charts show
+// the last 30 minutes at once; a failed history read leaves the live polls.
 let lastLive: LiveHealth | null = null;
 
 export function useLiveHealth(): LiveHealthState {
@@ -47,6 +50,10 @@ export function useLiveHealth(): LiveHealthState {
   }, []);
 
   useEffect(() => {
+    api
+      .hostHistory()
+      .then((h) => seedLiveHistory(h.points.map(sampleFromLive)))
+      .catch(() => undefined);
     poll().catch(() => undefined);
   }, [poll]);
   useVisibleRefresh(poll, LIVE_POLL_MS);

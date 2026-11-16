@@ -19,8 +19,11 @@ import (
 // GET /api/health/live: the Health page's realtime host reading (owner 16.11:
 // «что с маком происходит при текущей нагрузке»). One request returns CPU
 // busy %, load, memory with pressure, free disk and the processes grouped by
-// name, so the page polls one endpoint every few seconds and keeps its own
-// 15–30 minute ring buffer. It lives next to GET /api/health/system, on the
+// name, so the page polls one endpoint every few seconds. The last 30 minutes
+// of the cheap host numbers come from GET /api/health/history
+// (health_history.go), which a background sampler fills while the engine
+// runs, so the charts are full the moment the page opens. It lives next to
+// GET /api/health/system, on the
 // host-side /api plane (plane.go): host metrics are not a city domain object
 // and the plane is the sanctioned home for host-side probes.
 //
@@ -175,7 +178,13 @@ func newLiveSampler(src liveSources) *liveSampler {
 }
 
 func defaultLiveSampler() *liveSampler {
-	return newLiveSampler(liveSources{
+	return newLiveSampler(defaultLiveSources())
+}
+
+// defaultLiveSources reads the real host; the live sampler and the background
+// history (health_history.go) share it.
+func defaultLiveSources() liveSources {
+	return liveSources{
 		now:      time.Now,
 		sleep:    time.Sleep,
 		cpuTimes: hostCPUTimes,
@@ -190,7 +199,7 @@ func defaultLiveSampler() *liveSampler {
 		memory:    hostLiveMemory,
 		disk:      hostLiveDisk,
 		processes: listProcesses,
-	})
+	}
 }
 
 // snapshot returns the current reading; withProcesses=false drops the process
@@ -216,60 +225,10 @@ func (s *liveSampler) sample(ctx context.Context) liveHealth {
 		s.takeBaseline(ctx)
 		s.src.sleep(liveBaselineWait)
 	}
-	busy, total, err := s.src.cpuTimes(ctx)
-	for waited := time.Duration(0); err == nil && total <= s.prevCPU.total && waited < liveCPUSettleMax; waited += liveCPUSettleStep {
-		s.src.sleep(liveCPUSettleStep)
-		busy, total, err = s.src.cpuTimes(ctx)
-	}
-
-	at := s.src.now()
+	at, host := s.src.readHost(ctx, &s.prevCPU)
 	elapsed := at.Sub(s.prevAt).Seconds()
 
-	out := liveHealth{SampledAt: at.UTC().Format(time.RFC3339Nano)}
-	out.CPU.Cores = s.src.cores()
-
-	switch {
-	case err != nil:
-		out.CPU.BusyPct = failedHealthMetric[float64]("host cpu times", healthMetricSampleFailed, err)
-	default:
-		dTotal := total - s.prevCPU.total
-		dBusy := busy - s.prevCPU.busy
-		// busy = total − idle − iowait in floats: an unchanged busy counter
-		// can read a hair lower. Within a millisecond that is 0, not a fault.
-		if dBusy < 0 && dBusy > -1e-3 {
-			dBusy = 0
-		}
-		if dTotal <= 0 || dBusy < 0 {
-			out.CPU.BusyPct = unavailableHealthMetric[float64](healthMetricInvalidSample)
-		} else {
-			out.CPU.BusyPct = availableHealthMetric(roundTo(math.Min(100, 100*dBusy/dTotal), 1))
-		}
-		s.prevCPU = cpuReading{busy: busy, total: total}
-	}
-
-	if avg, err := s.src.load(); err != nil {
-		out.CPU.Load = failedHealthMetric[hostLoadAverages]("host load average", healthMetricSampleFailed, err)
-	} else if !validLoadAverage(avg.LoadAvg1) || !validLoadAverage(avg.LoadAvg5) || !validLoadAverage(avg.LoadAvg15) {
-		out.CPU.Load = unavailableHealthMetric[hostLoadAverages](healthMetricInvalidSample)
-	} else {
-		out.CPU.Load = availableHealthMetric(avg)
-	}
-
-	if m, err := s.src.memory(ctx); err != nil {
-		out.Memory = failedHealthMetric[liveMemory]("host memory", healthMetricSampleFailed, err)
-	} else if m.TotalBytes == 0 || m.UsedBytes > m.TotalBytes {
-		out.Memory = unavailableHealthMetric[liveMemory](healthMetricInvalidSample)
-	} else {
-		out.Memory = availableHealthMetric(m)
-	}
-
-	if d, err := s.src.disk(ctx); err != nil {
-		out.Disk = failedHealthMetric[liveDisk]("host disk", healthMetricSampleFailed, err)
-	} else if d.TotalBytes == 0 || d.FreeBytes > d.TotalBytes {
-		out.Disk = unavailableHealthMetric[liveDisk](healthMetricInvalidSample)
-	} else {
-		out.Disk = availableHealthMetric(d)
-	}
+	out := liveHealth{SampledAt: host.SampledAt, CPU: host.CPU, Memory: host.Memory, Disk: host.Disk}
 
 	procs, err := s.src.processes(ctx)
 	if err != nil {
@@ -285,6 +244,74 @@ func (s *liveSampler) sample(ctx context.Context) liveHealth {
 	s.prevAt = at
 	s.hasPrev = true
 	return out
+}
+
+// hostReading is the cheap host numbers of one sample: CPU busy % and load,
+// memory with pressure, and disk. GET /api/health/live adds the process list
+// to it; the background history (health_history.go) keeps only these.
+type hostReading struct {
+	SampledAt string                   `json:"sampled_at"`
+	CPU       liveCPU                  `json:"cpu"`
+	Memory    healthMetric[liveMemory] `json:"memory"`
+	Disk      healthMetric[liveDisk]   `json:"disk"`
+}
+
+// readHost reads the cheap host numbers. CPU busy % is the share since *prev,
+// which it advances on a good read; it returns the reading's wall time.
+func (src liveSources) readHost(ctx context.Context, prev *cpuReading) (time.Time, hostReading) {
+	busy, total, err := src.cpuTimes(ctx)
+	for waited := time.Duration(0); err == nil && total <= prev.total && waited < liveCPUSettleMax; waited += liveCPUSettleStep {
+		src.sleep(liveCPUSettleStep)
+		busy, total, err = src.cpuTimes(ctx)
+	}
+
+	at := src.now()
+	out := hostReading{SampledAt: at.UTC().Format(time.RFC3339Nano)}
+	out.CPU.Cores = src.cores()
+
+	switch {
+	case err != nil:
+		out.CPU.BusyPct = failedHealthMetric[float64]("host cpu times", healthMetricSampleFailed, err)
+	default:
+		dTotal := total - prev.total
+		dBusy := busy - prev.busy
+		// busy = total − idle − iowait in floats: an unchanged busy counter
+		// can read a hair lower. Within a millisecond that is 0, not a fault.
+		if dBusy < 0 && dBusy > -1e-3 {
+			dBusy = 0
+		}
+		if dTotal <= 0 || dBusy < 0 {
+			out.CPU.BusyPct = unavailableHealthMetric[float64](healthMetricInvalidSample)
+		} else {
+			out.CPU.BusyPct = availableHealthMetric(roundTo(math.Min(100, 100*dBusy/dTotal), 1))
+		}
+		*prev = cpuReading{busy: busy, total: total}
+	}
+
+	if avg, err := src.load(); err != nil {
+		out.CPU.Load = failedHealthMetric[hostLoadAverages]("host load average", healthMetricSampleFailed, err)
+	} else if !validLoadAverage(avg.LoadAvg1) || !validLoadAverage(avg.LoadAvg5) || !validLoadAverage(avg.LoadAvg15) {
+		out.CPU.Load = unavailableHealthMetric[hostLoadAverages](healthMetricInvalidSample)
+	} else {
+		out.CPU.Load = availableHealthMetric(avg)
+	}
+
+	if m, err := src.memory(ctx); err != nil {
+		out.Memory = failedHealthMetric[liveMemory]("host memory", healthMetricSampleFailed, err)
+	} else if m.TotalBytes == 0 || m.UsedBytes > m.TotalBytes {
+		out.Memory = unavailableHealthMetric[liveMemory](healthMetricInvalidSample)
+	} else {
+		out.Memory = availableHealthMetric(m)
+	}
+
+	if d, err := src.disk(ctx); err != nil {
+		out.Disk = failedHealthMetric[liveDisk]("host disk", healthMetricSampleFailed, err)
+	} else if d.TotalBytes == 0 || d.FreeBytes > d.TotalBytes {
+		out.Disk = unavailableHealthMetric[liveDisk](healthMetricInvalidSample)
+	} else {
+		out.Disk = availableHealthMetric(d)
+	}
+	return at, out
 }
 
 func (s *liveSampler) takeBaseline(ctx context.Context) {

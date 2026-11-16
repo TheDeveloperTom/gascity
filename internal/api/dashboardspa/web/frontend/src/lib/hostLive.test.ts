@@ -1,5 +1,19 @@
-import { describe, expect, it } from 'vitest';
-import { RingBuffer, sampleFromLive, splitAtGaps, windowSamples } from './hostLive';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  LIVE_GAP_MS,
+  LIVE_HISTORY_SAMPLES,
+  RingBuffer,
+  liveHistory,
+  liveHistoryVersion,
+  recordLiveSample,
+  resetLiveHistory,
+  sampleFromLive,
+  seedLiveHistory,
+  splitAtGaps,
+  subscribeLiveHistory,
+  windowSamples,
+  type LiveSample,
+} from './hostLive';
 import { liveFixture } from '../test/fixtures/liveHealth';
 
 describe('RingBuffer', () => {
@@ -67,5 +81,66 @@ describe('windowSamples and splitAtGaps', () => {
       [at(0), at(3), at(6)],
       [at(60), at(63)],
     ]);
+  });
+});
+
+describe('seedLiveHistory', () => {
+  const sample = (sec: number, busyPct = 10): LiveSample => ({
+    at: sec * 1000,
+    busyPct,
+    memUsedBytes: 1,
+    memTotalBytes: 2,
+    swapUsedBytes: 0,
+    pressure: 'normal',
+    diskFreeBytes: 1,
+    diskTotalBytes: 2,
+  });
+
+  beforeEach(() => {
+    resetLiveHistory();
+  });
+
+  it('fills an empty store with the server history, oldest first', () => {
+    seedLiveHistory([sample(10), sample(5), sample(15)]);
+    expect(liveHistory().map((s) => s.at)).toEqual([5_000, 10_000, 15_000]);
+  });
+
+  it('fills only the gaps the tab did not poll, never doubling a stretch it has', () => {
+    recordLiveSample(sample(1000, 77));
+    recordLiveSample(sample(1003, 78));
+    const gapSec = LIVE_GAP_MS / 1000;
+    seedLiveHistory([
+      sample(900),
+      sample(1000 - gapSec - 1),
+      sample(995),
+      sample(1003),
+      sample(1010),
+      sample(1003 + gapSec + 1),
+    ]);
+    expect(liveHistory().map((s) => s.at / 1000)).toEqual([
+      900,
+      1000 - gapSec - 1,
+      1000,
+      1003,
+      1003 + gapSec + 1,
+    ]);
+    expect(liveHistory().find((s) => s.at === 1_000_000)?.busyPct).toBe(77);
+  });
+
+  it('keeps the newest samples when the merge exceeds the capacity', () => {
+    seedLiveHistory(Array.from({ length: LIVE_HISTORY_SAMPLES + 50 }, (_, i) => sample(i * 5)));
+    const all = liveHistory();
+    expect(all).toHaveLength(LIVE_HISTORY_SAMPLES);
+    expect(all.at(-1)?.at).toBe((LIVE_HISTORY_SAMPLES + 49) * 5 * 1000);
+  });
+
+  it('tells the subscribers once', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeLiveHistory(listener);
+    const before = liveHistoryVersion();
+    seedLiveHistory([sample(1), sample(2)]);
+    unsubscribe();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(liveHistoryVersion()).toBe(before + 1);
   });
 });

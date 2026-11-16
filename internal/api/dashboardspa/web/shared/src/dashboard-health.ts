@@ -87,6 +87,20 @@ export interface LiveHealth {
   processes: LiveProcesses;
 }
 
+/** The cheap host numbers of one reading: LiveHealth without the process
+ *  list (dashboardbff hostReading). */
+export type HostReading = Omit<LiveHealth, 'processes'>;
+
+/** GET /api/health/history (dashboardbff/health_history.go): the last
+ *  window_ms of host readings, one every interval_ms, oldest first, sampled
+ *  in the background while the engine runs. In memory only: an engine
+ *  restart starts it empty. */
+export interface HostHistory {
+  interval_ms: number;
+  window_ms: number;
+  points: HostReading[];
+}
+
 export type MemoryPressure = 'normal' | 'warn' | 'critical' | 'unknown';
 
 export interface LiveMemory {

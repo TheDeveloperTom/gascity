@@ -3,6 +3,7 @@ import type {
   GitView,
   DeployList,
   SystemHealth,
+  HostHistory,
   LiveHealth,
   LocalToolVersions,
   DoltNomsTrend,
@@ -287,19 +288,20 @@ const decodeSystemHealth = objectDecoder<SystemHealth>('system health', (record,
     requireNumberField(memory, metricURL, label, 'free_mem_bytes');
   });
 });
-// GET /api/health/live (dashboardbff/health_live.go): must match LiveHealth.
-const decodeLiveHealth = objectDecoder<LiveHealth>('live health', (record, url) => {
-  requireStringField(record, url, 'live health', 'sampled_at');
-  const cpu = requireRecord(record.cpu, url, 'live health.cpu');
-  requireNumberField(cpu, url, 'live health.cpu', 'cores');
-  requireHealthMetricField(cpu, url, 'live health.cpu', 'busy_pct', requireNumberValue);
-  requireHealthMetricField(cpu, url, 'live health.cpu', 'load', (value, metricURL, label) => {
+// The cheap host numbers shared by GET /api/health/live and each point of
+// GET /api/health/history (dashboardbff hostReading): must match HostReading.
+function requireHostReading(record: JsonRecord, url: string, where: string): void {
+  requireStringField(record, url, where, 'sampled_at');
+  const cpu = requireRecord(record.cpu, url, `${where}.cpu`);
+  requireNumberField(cpu, url, `${where}.cpu`, 'cores');
+  requireHealthMetricField(cpu, url, `${where}.cpu`, 'busy_pct', requireNumberValue);
+  requireHealthMetricField(cpu, url, `${where}.cpu`, 'load', (value, metricURL, label) => {
     const load = requireRecord(value, metricURL, label);
     requireNumberField(load, metricURL, label, 'load_avg_1');
     requireNumberField(load, metricURL, label, 'load_avg_5');
     requireNumberField(load, metricURL, label, 'load_avg_15');
   });
-  requireHealthMetricField(record, url, 'live health', 'memory', (value, metricURL, label) => {
+  requireHealthMetricField(record, url, where, 'memory', (value, metricURL, label) => {
     const memory = requireRecord(value, metricURL, label);
     for (const field of [
       'total_bytes',
@@ -312,11 +314,15 @@ const decodeLiveHealth = objectDecoder<LiveHealth>('live health', (record, url) 
     }
     requireStringField(memory, metricURL, label, 'pressure');
   });
-  requireHealthMetricField(record, url, 'live health', 'disk', (value, metricURL, label) => {
+  requireHealthMetricField(record, url, where, 'disk', (value, metricURL, label) => {
     const disk = requireRecord(value, metricURL, label);
     requireNumberField(disk, metricURL, label, 'total_bytes');
     requireNumberField(disk, metricURL, label, 'free_bytes');
   });
+}
+// GET /api/health/live (dashboardbff/health_live.go): must match LiveHealth.
+const decodeLiveHealth = objectDecoder<LiveHealth>('live health', (record, url) => {
+  requireHostReading(record, url, 'live health');
   const processes = requireRecord(record.processes, url, 'live health.processes');
   requireStringField(processes, url, 'live health.processes', 'status');
   requireStringField(processes, url, 'live health.processes', 'coverage');
@@ -334,6 +340,16 @@ const decodeLiveHealth = objectDecoder<LiveHealth>('live health', (record, url) 
   requireNumberField(rest, url, 'live health.processes.rest', 'count');
   requireNumberField(rest, url, 'live health.processes.rest', 'cpu_pct');
   requireNumberField(rest, url, 'live health.processes.rest', 'rss_bytes');
+});
+// GET /api/health/history (dashboardbff/health_history.go): must match HostHistory.
+const decodeHostHistory = objectDecoder<HostHistory>('host history', (record, url) => {
+  requireNumberField(record, url, 'host history', 'interval_ms');
+  requireNumberField(record, url, 'host history', 'window_ms');
+  requireArrayField(record, url, 'host history', 'points');
+  (record.points as unknown[]).forEach((point, i) => {
+    const where = `host history.points[${i}]`;
+    requireHostReading(requireRecord(point, url, where), url, where);
+  });
 });
 function requireLocalToolVersionField(
   record: JsonRecord,
@@ -477,6 +493,9 @@ export const api = {
   },
   liveHealth(): Promise<LiveHealth> {
     return request('GET', '/api/health/live', decodeLiveHealth);
+  },
+  hostHistory(): Promise<HostHistory> {
+    return request('GET', '/api/health/history', decodeHostHistory);
   },
   doltTrend(): Promise<DoltNomsTrend> {
     return request('GET', cityPath('/dolt-noms/trend'), decodeDoltTrend);
