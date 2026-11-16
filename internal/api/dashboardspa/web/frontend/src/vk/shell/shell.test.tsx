@@ -224,13 +224,14 @@ describe('ProjectRail (canvas left rail)', () => {
     const names = [...rail.children].map(
       (el) => el.getAttribute('aria-label') ?? (el.className.includes('flex-1') ? 'spacer' : ''),
     );
-    expect(names.slice(0, 6)).toEqual([
+    expect(names).toEqual([
       'Меню',
       'Продукт devwork',
       'Сам город',
       'Подключить проект',
       'spacer',
       'Ты',
+      'Мэр в Discord',
     ]);
   });
 

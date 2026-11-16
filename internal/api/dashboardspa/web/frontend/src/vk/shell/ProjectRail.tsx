@@ -37,7 +37,6 @@ export function ProjectRail() {
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const active = currentProject(pathname, params.get('project'));
-  const mayor = mayorChannelUrl();
   return (
     <nav
       aria-label={t('Projects')}
@@ -96,27 +95,27 @@ export function ProjectRail() {
       >
         А
       </span>
-      {mayor !== null ? (
-        <a
-          href={mayor}
-          aria-label={t('Mayor in Discord')}
-          title={t('Mayor in Discord')}
-          onClick={(e) => {
-            e.preventDefault();
-            openExternal(mayor);
-          }}
-          className={cn(TILE, IDLE)}
-        >
-          <Svg>
-            <path
-              d="M2.5 4h11v6.5H7.2L4 13v-2.5H2.5z"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinejoin="round"
-            />
-          </Svg>
-        </a>
-      ) : null}
+      {/* Always drawn (canvas). The city's mayor_url arrives later through
+          usePeerBoards and is not reactive, so the link is read on click. */}
+      <button
+        type="button"
+        aria-label={t('Mayor in Discord')}
+        title={t('Mayor in Discord')}
+        onClick={() => {
+          const url = mayorChannelUrl();
+          if (url !== null) openExternal(url);
+        }}
+        className={cn(TILE, IDLE)}
+      >
+        <Svg>
+          <path
+            d="M2.5 4h11v6.5H7.2L4 13v-2.5H2.5z"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+        </Svg>
+      </button>
     </nav>
   );
 }
