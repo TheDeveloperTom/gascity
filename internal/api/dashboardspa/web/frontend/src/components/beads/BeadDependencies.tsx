@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import type { BeadNode } from '../../lib/beadGraph';
 
 // The needs/blocks dependency view for a single bead (gascity-dashboard-14s1).
@@ -20,15 +21,15 @@ export function BeadDependencies({ node, onOpenBead }: BeadDependenciesProps) {
 
   return (
     <section>
-      <h3 className="mb-2 text-label font-semibold text-fg-muted">Dependencies</h3>
+      <h3 className="mb-2 text-label font-semibold text-fg-muted">{t('Dependencies')}</h3>
       {!hasAny ? (
-        <p className="text-body text-fg-muted">No dependencies.</p>
+        <p className="text-body text-fg-muted">{t('No dependencies.')}</p>
       ) : (
         <div className="space-y-4">
           {deps.length > 0 && (
             <div>
               <p className="mb-1.5 text-label font-medium text-fg-muted">
-                Needs <span className="tnum">{deps.length}</span>
+                {t('Needs')} <span className="tnum">{deps.length}</span>
               </p>
               <ul className="space-y-1.5">
                 {deps.map((dep) => (
@@ -46,7 +47,7 @@ export function BeadDependencies({ node, onOpenBead }: BeadDependenciesProps) {
           {blocks.length > 0 && (
             <div>
               <p className="mb-1.5 text-label font-medium text-fg-muted">
-                Blocks <span className="tnum">{blocks.length}</span>
+                {t('Blocks')} <span className="tnum">{blocks.length}</span>
               </p>
               <ul className="space-y-1.5">
                 {blocks.map((b) => (
@@ -76,10 +77,24 @@ interface DepLineProps {
   onOpenBead?: (beadId: string) => void;
 }
 
+/** Typed edge kinds say what they mean in the UI language; unknown kinds stay verbatim. */
+const RELATION_LABELS: Readonly<Record<string, string>> = {
+  blocks: 'blocks',
+  'parent-child': 'parent-child',
+  related: 'related',
+  'discovered-from': 'discovered from',
+  'waits-for': 'waits for',
+};
+
+function relationLabel(kind: string): string {
+  const key = RELATION_LABELS[kind];
+  return key === undefined ? kind : t(key);
+}
+
 function DepLine({ relation, targetId, targetTitle, onOpenBead }: DepLineProps) {
   const label = (
     <>
-      {relation && <span className="text-label text-fg-faint">{relation} </span>}
+      {relation && <span className="text-label text-fg-faint">{relationLabel(relation)} </span>}
       <span className="font-mono text-[0.8125rem] text-fg-muted">{targetId}</span>
       {targetTitle && <span className="text-fg"> · {targetTitle}</span>}
     </>
@@ -92,13 +107,13 @@ function DepLine({ relation, targetId, targetTitle, onOpenBead }: DepLineProps) 
           type="button"
           onClick={() => onOpenBead(targetId)}
           className="rounded-sm text-left text-fg hover:text-primary hover:underline focus-mark"
-          title={`Open ${targetId}`}
+          title={t('Open {id}', { id: targetId })}
         >
           {label}
         </button>
       ) : (
-        <span title="Outside the fetched window">
-          {label} <span className="text-label text-warn">unresolved</span>
+        <span title={t('Outside the fetched window')}>
+          {label} <span className="text-label text-warn">{t('unresolved')}</span>
         </span>
       )}
     </li>

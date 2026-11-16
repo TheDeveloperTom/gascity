@@ -74,3 +74,31 @@ describe('attention row copy', () => {
     expect(s.get('B-m')).toBe('Waiting on Mayor for 5 hours');
   });
 });
+
+// H1 16.11 (live «Нужно от меня» → «Город · Неполадки»): health rows read
+// «Dolt-noms trend unavailable» with the raw code «store_health_absent».
+describe('health rows in Russian', () => {
+  beforeEach(() => {
+    setLocale('ru');
+    resetMissing();
+  });
+  afterEach(() => setLocale('en'));
+
+  it('titles and the trend reason read Russian', () => {
+    const m = composeAttention(
+      createAttentionContributors({
+        health: {
+          supervisor: { status: 'unavailable', error: 'down' },
+          trend: { available: false, reason: 'store_health_absent' },
+        },
+      }),
+    );
+    const byId = new Map(m.items.map((item) => [item.id, item]));
+    expect(byId.get('health:dolt-noms-unavailable')?.title).toBe('Нет тренда хранилища (dolt-noms)');
+    expect(byId.get('health:dolt-noms-unavailable')?.summary).toBe(
+      'супервизор не сообщает о состоянии хранилища; замеры вернутся, когда оно восстановится',
+    );
+    expect(byId.get('health:supervisor-unreachable')?.title).toBe('Супервизор недоступен');
+    expect(collectMissing()).toEqual([]);
+  });
+});

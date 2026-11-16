@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { collectMissing, resetMissing, setLocale } from '../../i18n';
 import type { DashboardBead, BeadStatus } from 'gas-city-dashboard-shared';
 import { buildBeadGraph } from '../../lib/beadGraph';
 import { BeadDependencies } from './BeadDependencies';
@@ -73,5 +74,33 @@ describe('BeadDependencies', () => {
     const node = nodeFor('A', [bead('A', 'open')]);
     render(<BeadDependencies node={node} />);
     expect(screen.getByText(/no dependencies/i)).toBeTruthy();
+  });
+});
+
+// H1 16.11: the drawer's «Подробности» showed «Dependencies», «Blocks» and
+// «blocks dw-iy9a · …» in English on the Russian UI.
+describe('BeadDependencies in Russian', () => {
+  beforeEach(() => setLocale('ru'));
+  afterEach(() => setLocale('en'));
+
+  it('speaks Russian: headings, edge kinds and the unresolved mark', () => {
+    resetMissing();
+    const node = nodeFor('B', [
+      bead('A', 'open'),
+      bead('B', 'open', {
+        dependencies: [
+          { issue_id: 'B', depends_on_id: 'A', type: 'blocks' },
+          { issue_id: 'B', depends_on_id: 'Z', type: 'blocks' },
+        ],
+      } as Partial<DashboardBead>),
+      bead('C', 'open', { needs: ['B'] }),
+    ]);
+    render(<BeadDependencies node={node} onOpenBead={vi.fn()} />);
+    expect(screen.getByText('Зависимости')).toBeTruthy();
+    expect(screen.getByText(/^Ждёт/)).toBeTruthy();
+    expect(screen.getByText(/^Блокирует/)).toBeTruthy();
+    expect(screen.getAllByText('блокирует').length).toBeGreaterThan(0);
+    expect(screen.getByText('вне загруженного окна')).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
   });
 });

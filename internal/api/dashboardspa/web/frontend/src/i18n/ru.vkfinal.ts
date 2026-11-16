@@ -2,6 +2,18 @@ import type { RuPlural } from './ru';
 
 // vk-final lane: Russian strings keyed by the English source string.
 export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
+  // H1 16.11: the drawer's dependency list («Подробности»)
+  Dependencies: 'Зависимости',
+  'No dependencies.': 'Зависимостей нет.',
+  Needs: 'Ждёт',
+  Blocks: 'Блокирует',
+  'Open {id}': 'Открыть {id}',
+  'Outside the fetched window': 'Задача вне загруженного окна',
+  unresolved: 'вне загруженного окна',
+  'parent-child': 'часть',
+  related: 'связана',
+  'discovered from': 'найдена при',
+  'waits for': 'ждёт',
   // part 2: projects
   'Project:': 'Проект:',
   'Choose a project': 'Выбрать проект',

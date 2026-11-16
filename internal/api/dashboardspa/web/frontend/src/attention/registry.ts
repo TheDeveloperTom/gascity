@@ -353,7 +353,7 @@ function deriveRunsAttention(facts: RunsAttentionFacts | undefined): readonly At
     items.push(
       domainAttention('runs', {
         id: 'runs:unavailable',
-        title: 'Run data unavailable',
+        title: t('Run data unavailable'),
         summary: facts.error,
         href: '/runs',
       }),
@@ -377,7 +377,7 @@ function deriveRunsAttention(facts: RunsAttentionFacts | undefined): readonly At
         'runs',
         {
           id: 'runs:partial',
-          title: 'Run list incomplete',
+          title: t('Run list incomplete'),
           href: '/runs',
         },
         freshness,
@@ -391,7 +391,7 @@ function deriveRunsAttention(facts: RunsAttentionFacts | undefined): readonly At
         'runs',
         {
           id: `runs:${lane.id}:health-unavailable`,
-          title: `${lane.title} health unavailable`,
+          title: t('{name} health unavailable', { name: lane.title }),
           summary: lane.health.error,
           href: runDetailHref(lane.id, lane.scope),
         },
@@ -409,7 +409,7 @@ function deriveRunsAttention(facts: RunsAttentionFacts | undefined): readonly At
     items.push(
       domainAttention('runs', {
         id: `runs:${run.id}:blocked`,
-        title: `${run.title} blocked`,
+        title: t('{name} blocked', { name: run.title }),
         summary: run.reason,
         href: runDetailHref(run.id, run.scope),
       }),
@@ -431,7 +431,7 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
     items.push(
       domainUnavailable('agents', {
         id: 'agents:unavailable',
-        title: 'Agent data unavailable',
+        title: t('Agent data unavailable'),
         summary: facts.error,
         href: '/agents',
       }),
@@ -442,7 +442,7 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
     items.push(
       domainUnavailable('agents', {
         id: 'agents:partial',
-        title: 'Agent list incomplete',
+        title: t('Agent list incomplete'),
         href: '/agents',
       }),
     );
@@ -451,7 +451,7 @@ function deriveAgentsAttention(facts: AgentsAttentionFacts | undefined): readonl
     items.push(
       domainUnavailable('agents', {
         id: 'agents:pending-unavailable',
-        title: 'Agent pending state unavailable',
+        title: t('Agent pending state unavailable'),
         summary: facts.pendingError,
         href: '/agents',
       }),
@@ -490,7 +490,7 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     items.push(
       domainAttention('beads', {
         id: 'beads:unavailable',
-        title: 'Bead data unavailable',
+        title: t('Bead data unavailable'),
         summary: facts.error,
         href: '/beads',
       }),
@@ -500,7 +500,7 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     items.push(
       domainWatch('beads', {
         id: 'beads:partial',
-        title: 'Bead list incomplete',
+        title: t('Bead list incomplete'),
         href: '/beads',
       }),
     );
@@ -509,7 +509,7 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     items.push(
       domainAttention('beads', {
         id: 'beads:decisions-unavailable',
-        title: 'Decision queue unavailable',
+        title: t('Decision queue unavailable'),
         summary: facts.decisionsError,
         href: '/beads',
       }),
@@ -519,7 +519,7 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
     items.push(
       domainAttention('beads', {
         id: 'beads:escalations-unavailable',
-        title: 'Escalation queue unavailable',
+        title: t('Escalation queue unavailable'),
         summary: facts.escalationsError,
         href: '/beads',
       }),
@@ -691,7 +691,7 @@ function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly At
     items.push(
       domainAttention('mail', {
         id: 'mail:unavailable',
-        title: 'Mail data unavailable',
+        title: t('Mail data unavailable'),
         summary: facts.error,
         href: '/mail',
       }),
@@ -701,7 +701,7 @@ function deriveMailAttention(facts: MailAttentionFacts | undefined): readonly At
     items.push(
       domainWatch('mail', {
         id: 'mail:partial',
-        title: 'Mail list incomplete',
+        title: t('Mail list incomplete'),
         href: '/mail',
       }),
     );
@@ -748,7 +748,7 @@ function deriveActivityAttention(
     items.push(
       domainAttention('activity', {
         id: 'activity:deploys-unavailable',
-        title: 'Deploy data unavailable',
+        title: t('Deploy data unavailable'),
         summary: facts.deploysError,
         href: '/activity',
       }),
@@ -758,7 +758,7 @@ function deriveActivityAttention(
     items.push(
       domainWatch('activity', {
         id: 'activity:events-degraded',
-        title: 'Event stream degraded',
+        title: t('Event stream degraded'),
         summary: facts.eventsDegraded,
         href: '/activity',
       }),
@@ -768,7 +768,7 @@ function deriveActivityAttention(
     items.push(
       domainWatch('activity', {
         id: 'activity:events-unavailable',
-        title: 'Event history unavailable',
+        title: t('Event history unavailable'),
         summary: facts.eventsError,
         href: '/activity',
       }),
@@ -778,7 +778,7 @@ function deriveActivityAttention(
     items.push(
       domainWatch('activity', {
         id: 'activity:events-partial',
-        title: 'Event history incomplete',
+        title: t('Event history incomplete'),
         href: '/activity',
       }),
     );
@@ -791,7 +791,7 @@ function deriveActivityAttention(
     items.push(
       domainAttention('activity', {
         id: 'activity:failed-marker',
-        title: 'Deploy failed marker present',
+        title: t('Deploy failed marker present'),
         href: '/activity',
       }),
     );
@@ -801,7 +801,7 @@ function deriveActivityAttention(
       items.push(
         domainAttention('activity', {
           id: `activity:deploy:${deploy.at}:failed`,
-          title: 'Deploy failed',
+          title: t('Deploy failed'),
           summary: deploy.detail,
           href: '/activity',
           updatedAt: deploy.at,
@@ -811,7 +811,7 @@ function deriveActivityAttention(
       items.push(
         domainWatch('activity', {
           id: `activity:deploy:${deploy.at}:in-progress`,
-          title: 'Deploy in progress',
+          title: t('Deploy in progress'),
           summary: deploy.detail,
           href: '/activity',
           updatedAt: deploy.at,
@@ -859,7 +859,7 @@ function deriveHealthAttention(facts: HealthAttentionFacts | undefined): readonl
     items.push(
       healthAttention({
         id: 'health:dashboard-health-unavailable',
-        title: 'Dashboard health unavailable',
+        title: t('Dashboard health unavailable'),
         summary: facts.dashboardError,
       }),
     );
@@ -876,13 +876,25 @@ function deriveHealthAttention(facts: HealthAttentionFacts | undefined): readonl
     items.push(
       healthWatch({
         id: 'health:dolt-noms-unavailable',
-        title: 'Dolt-noms trend unavailable',
-        summary: facts.trend.reason,
+        title: t('Dolt-noms trend unavailable'),
+        summary: doltTrendReason(facts.trend.reason),
       }),
     );
   }
 
   return items;
+}
+
+/** H1 16.11: the trend's reason code as a sentence (was the raw «store_health_absent»). */
+function doltTrendReason(reason: string): string {
+  switch (reason) {
+    case 'store_health_absent':
+      return t('the supervisor does not report store health; samples resume when it recovers');
+    case 'sample_failed':
+      return t('the latest supervisor status read failed');
+    default:
+      return reason;
+  }
 }
 
 function appendSupervisorAttention(
@@ -893,7 +905,7 @@ function appendSupervisorAttention(
     items.push(
       healthAttention({
         id: 'health:supervisor-unreachable',
-        title: 'Supervisor unreachable',
+        title: t('Supervisor unreachable'),
         summary: supervisor.error,
       }),
     );
@@ -905,7 +917,7 @@ function appendSupervisorAttention(
     items.push(
       healthAttention({
         id: 'health:supervisor-not-ok',
-        title: `Supervisor ${data.status}`,
+        title: t('Supervisor status: {status}', { status: data.status }),
       }),
     );
   }
@@ -913,8 +925,8 @@ function appendSupervisorAttention(
     items.push(
       healthWatch({
         id: 'health:supervisor-city-missing',
-        title: 'Supervisor city missing',
-        summary: 'city was absent from generated supervisor health',
+        title: t('Supervisor city missing'),
+        summary: t('city was absent from generated supervisor health'),
       }),
     );
   }
@@ -922,8 +934,8 @@ function appendSupervisorAttention(
     items.push(
       healthWatch({
         id: 'health:supervisor-version-missing',
-        title: 'Supervisor version missing',
-        summary: 'version was absent from generated supervisor health',
+        title: t('Supervisor version missing'),
+        summary: t('version was absent from generated supervisor health'),
       }),
     );
   }
@@ -935,8 +947,8 @@ function appendDashboardProcessAttention(items: AttentionItem[], health: SystemH
     items.push(
       healthAttention({
         id: 'health:dashboard-process-starting',
-        title: 'Dashboard process just restarted',
-        summary: `${admin.uptime_sec}s uptime`,
+        title: t('Dashboard process just restarted'),
+        summary: t('{n} s uptime', { n: admin.uptime_sec }),
       }),
     );
   }
@@ -945,7 +957,7 @@ function appendDashboardProcessAttention(items: AttentionItem[], health: SystemH
     items.push(
       healthAttention({
         id: 'health:dashboard-process-rss-high',
-        title: 'Dashboard RSS high',
+        title: t('Dashboard RSS high'),
         summary: formatBytes(admin.rss.value),
       }),
     );
@@ -956,7 +968,7 @@ function appendDashboardProcessAttention(items: AttentionItem[], health: SystemH
     items.push(
       healthWatch({
         id: 'health:dashboard-process-rss-elevated',
-        title: 'Dashboard RSS elevated',
+        title: t('Dashboard RSS elevated'),
         summary: formatBytes(admin.rss.value),
       }),
     );
@@ -966,7 +978,7 @@ function appendDashboardProcessAttention(items: AttentionItem[], health: SystemH
     items.push(
       healthAttention({
         id: 'health:dashboard-process-heap-high',
-        title: 'Dashboard heap high',
+        title: t('Dashboard heap high'),
         summary: formatBytes(admin.heap_used_bytes),
       }),
     );
@@ -974,7 +986,7 @@ function appendDashboardProcessAttention(items: AttentionItem[], health: SystemH
     items.push(
       healthWatch({
         id: 'health:dashboard-process-heap-elevated',
-        title: 'Dashboard heap elevated',
+        title: t('Dashboard heap elevated'),
         summary: formatBytes(admin.heap_used_bytes),
       }),
     );
@@ -990,16 +1002,16 @@ function appendHostAttention(items: AttentionItem[], health: SystemHealth): void
     items.push(
       healthAttention({
         id: 'health:memory-critical',
-        title: 'Host memory critical',
-        summary: `${Math.round(memoryRatio * 100)}% free`,
+        title: t('Host memory critical'),
+        summary: t('{n}% free', { n: Math.round(memoryRatio * 100) }),
       }),
     );
   } else if (memoryRatio !== null && memoryRatio < 0.1) {
     items.push(
       healthWatch({
         id: 'health:memory-low',
-        title: 'Host memory low',
-        summary: `${Math.round(memoryRatio * 100)}% free`,
+        title: t('Host memory low'),
+        summary: t('{n}% free', { n: Math.round(memoryRatio * 100) }),
       }),
     );
   }
@@ -1012,16 +1024,16 @@ function appendHostAttention(items: AttentionItem[], health: SystemHealth): void
     items.push(
       healthAttention({
         id: 'health:load-high',
-        title: 'Host load high',
-        summary: `${loadAverage.toFixed(2)} load across ${health.host.cpu_count} CPUs`,
+        title: t('Host load high'),
+        summary: t('load {load} across {cpus} CPUs', { load: loadAverage.toFixed(2), cpus: health.host.cpu_count }),
       }),
     );
   } else if (loadRatio !== null && loadRatio > 1) {
     items.push(
       healthWatch({
         id: 'health:load-elevated',
-        title: 'Host load elevated',
-        summary: `${loadAverage.toFixed(2)} load across ${health.host.cpu_count} CPUs`,
+        title: t('Host load elevated'),
+        summary: t('load {load} across {cpus} CPUs', { load: loadAverage.toFixed(2), cpus: health.host.cpu_count }),
       }),
     );
   }
