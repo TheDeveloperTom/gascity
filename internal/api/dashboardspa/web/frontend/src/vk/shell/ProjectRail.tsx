@@ -3,11 +3,13 @@ import { t } from '../../i18n';
 import { mayorChannelUrl } from '../../lib/mayorLink';
 import { openExternal } from '../../lib/openExternal';
 import { cn } from '../cn';
+import { useSelfIdentity, type SelfIdentity } from '../../lib/selfIdentity';
 
 // vk-1to1 16.11: the canvas left project rail (Main / Attention .dc.html),
 // desktop only. 56 px wide, bg-secondary with a right border, 8 px padding
 // and gap: menu, the DW and ГО project tiles (the current one in
-// active-bg / active-fg), «+» «Подключить проект», a spacer, the «А» avatar
+// active-bg / active-fg), «+» «Подключить проект», a spacer, the city's own avatar
+// («А» here, «Р» in Richard's city; lib/selfIdentity)
 // and the Mayor-in-Discord link. Phones keep the bottom tabs instead.
 
 export const DW_PROJECT = 'devwork';
@@ -33,7 +35,9 @@ function Svg({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ProjectRail() {
+export function ProjectRail({ identity }: { identity?: SelfIdentity } = {}) {
+  const cityIdentity = useSelfIdentity();
+  const me = identity ?? cityIdentity;
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const active = currentProject(pathname, params.get('project'));
@@ -90,10 +94,10 @@ export function ProjectRail() {
       <div className="flex-1" />
       <span
         aria-label={t('You')}
-        title={t('You')}
+        title={me.name ?? t('You')}
         className="flex h-8 w-8 items-center justify-center rounded-full bg-vk-bg-panel text-[13px] font-medium text-vk-text-normal"
       >
-        А
+        {me.initial}
       </span>
       {/* Always drawn (canvas). The city's mayor_url arrives later through
           usePeerBoards and is not reactive, so the link is read on click. */}

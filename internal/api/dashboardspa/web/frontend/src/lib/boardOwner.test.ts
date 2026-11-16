@@ -10,6 +10,7 @@ import {
 
 const RESULT: PeerBoardsResult = {
   ownLogin: null,
+  ownPerson: null,
   heartbeatSeconds: 900,
   staleAfterSeconds: 1500,
   ownerQuestions: [],

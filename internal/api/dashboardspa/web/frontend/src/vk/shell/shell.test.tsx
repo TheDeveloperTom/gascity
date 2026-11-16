@@ -235,6 +235,19 @@ describe('ProjectRail (canvas left rail)', () => {
     ]);
   });
 
+  it("shows the city's own person: «Р» in Richard's city, «А» by default", () => {
+    inRouter(
+      <ProjectRail identity={{ login: 'RicciRi', name: 'Ричард', initial: 'Р', peers: [] }} />,
+      '/beads',
+    );
+    const me = screen.getByLabelText('Ты');
+    expect(me.textContent).toBe('Р');
+    expect(me.getAttribute('title')).toBe('Ричард');
+    cleanup();
+    inRouter(<ProjectRail />, '/beads');
+    expect(screen.getByLabelText('Ты').textContent).toBe('А');
+  });
+
   it('highlights the current project tile with active-bg / active-fg', () => {
     inRouter(<ProjectRail />, '/beads?project=city');
     const go = screen.getByRole('link', { name: 'Сам город' });

@@ -137,6 +137,15 @@ export function usePeerBoards(): PeerBoardsState {
   return { sources, error: snap.city === city ? snap.error : null, result };
 }
 
+/**
+ * The active city's raw result only (null until it answers). Unlike
+ * usePeerBoards it does not follow the app tick, so many cards can use it.
+ */
+export function usePeerBoardsResult(): PeerBoardsResult | null {
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return snap.city === getActiveCity() ? snap.result : null;
+}
+
 /** How long a page waits for the peer boards before drawing what sits under their lines. */
 export const PEER_SETTLE_CAP_MS = 3_000;
 

@@ -56,7 +56,8 @@ import { cardLabel } from './cardLabel';
 import { PeerKanbanCard } from './PeerKanbanCard';
 import { RelationshipBadge, type RelationshipDisplayType } from './RelationshipBadge';
 import { RunningDots } from './RunningDots';
-import { assigneeTone } from './cardAssignee';
+import { cardAssignee } from './cardAssignee';
+import { useSelfIdentity, type SelfIdentity } from '../../lib/selfIdentity';
 
 /** Milestone tag colours: the design's dots, picked by a stable hash of the key. */
 const TAG_COLORS = ['#0EA5E9', '#EC4899', '#22C55E', '#F59E0B', '#8B5CF6', '#14B8A6'] as const;
@@ -136,6 +137,8 @@ export interface KanbanCardProps {
   className?: string;
   /** Peer cards only: «💬 N» (vk-final part 4). */
   commentCount?: number;
+  /** Who «I» am (tests); by default the city's own identity (useSelfIdentity). */
+  identity?: SelfIdentity;
 }
 
 /** One board card; `onSelect` gets `card.key` (the bead id on my cards). */
@@ -166,7 +169,9 @@ function OwnKanbanCard({
   attentionSeverity = null,
   variant = 'column',
   className,
+  identity,
 }: KanbanCardProps) {
+  const cityIdentity = useSelfIdentity();
   const bead = card.node.bead;
   const { stage } = card;
   const ref = useRef<HTMLElement | null>(null);
@@ -232,7 +237,7 @@ function OwnKanbanCard({
   const stepAge =
     progress === null || nowMs - progress < 60_000 ? t('now') : ageText(nowMs - progress);
   const routeAttention = stage.marks.find((mark) => mark.tone === 'attention') ?? null;
-  const avatar = assigneeTone(bead.assignee, stage.stage === 'working');
+  const avatar = cardAssignee(bead.assignee, stage.stage === 'working', identity ?? cityIdentity);
 
   return (
     <article
@@ -288,9 +293,21 @@ function OwnKanbanCard({
 
       {/* Row 3: assignee avatar at the right */}
       <div className="flex items-center justify-end text-vk-text-low">
-        {avatar === 'owner' && <CardAvatar letter="А" label={t('Assignee: you')} tone="owner" />}
-        {avatar === 'executor' && <CardAvatar letter="И" label={t('Implementer')} tone="executor" />}
-        {avatar === 'peer' && <CardAvatar letter="Р" label={t('Assignee: Richard')} tone="peer" />}
+        {avatar !== null && (
+          <CardAvatar
+            letter={avatar.letter}
+            label={
+              avatar.tone === 'owner'
+                ? t('Assignee: you')
+                : avatar.tone === 'executor'
+                  ? t('Implementer')
+                  : avatar.who !== null
+                    ? t('Assignee: {who}', { who: avatar.who })
+                    : t('Assignee: Richard')
+            }
+            tone={avatar.tone}
+          />
+        )}
       </div>
 
       {/* Row 4: chips */}

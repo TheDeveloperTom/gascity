@@ -569,6 +569,9 @@ const ResponseSchema = z.looseObject({
   // our own people.json login, from OUR city service (trusted; never taken
   // from peer-supplied topics) — security scan 15.11
   own_login: optString,
+  // owner 16.11: our own person (OUR people.json row for own_login); parsed
+  // leniently, a bad value is no person (see ownPersonFrom)
+  own_person: z.unknown().nullish(),
   // owner 16.11: our owner's Mayor channel (#мэр), from OUR city service
   mayor_url: optString,
   // BOARD-LIVE L10/L12: every owner topic question (owner_q.question_views)
@@ -610,8 +613,29 @@ export interface PeerBoardsResult {
   mayorUrl: string | null;
   /** Our own login as our city service states it (`own_login`); null until it does. */
   ownLogin: string | null;
+  /** Our own person (`own_person`, OUR people.json); null until the city sends it. */
+  ownPerson: OwnPerson | null;
   heartbeatSeconds: number | null;
   staleAfterSeconds: number;
+}
+
+export interface OwnPerson {
+  name: string;
+  genitive: string;
+  initial: string;
+}
+
+const OwnPersonSchema = z.looseObject({
+  name: z.string().min(1),
+  genitive: z.string().min(1),
+  initial: z.string().min(1),
+});
+
+function ownPersonFrom(raw: unknown): OwnPerson | null {
+  const parsed = OwnPersonSchema.safeParse(raw);
+  return parsed.success
+    ? { name: parsed.data.name, genitive: parsed.data.genitive, initial: parsed.data.initial }
+    : null;
 }
 
 export class PeerBoardsError extends Error {
@@ -626,6 +650,7 @@ const EMPTY: PeerBoardsResult = {
   ownerQuestions: [],
   mayorUrl: null,
   ownLogin: null,
+  ownPerson: null,
   heartbeatSeconds: null,
   staleAfterSeconds: DEFAULT_STALE_AFTER_SECONDS,
 };
@@ -678,6 +703,7 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
     ownerQuestions: mergeQuestions(res.owner_questions, peers),
     mayorUrl: discordChannelOrNull(res.mayor_url),
     ownLogin: ownLoginFrom(res.own_login, peers),
+    ownPerson: ownPersonFrom(res.own_person),
     heartbeatSeconds: res.heartbeat_seconds ?? null,
     staleAfterSeconds: res.stale_after_seconds ?? DEFAULT_STALE_AFTER_SECONDS,
     peers,
