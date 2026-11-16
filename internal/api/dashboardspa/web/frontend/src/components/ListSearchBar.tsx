@@ -38,7 +38,7 @@ export function ListSearchBar({
         onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        className="h-10 w-full rounded border border-rule bg-surface-raised pl-9 pr-16 text-body text-fg placeholder:text-fg-faint focus-mark"
+        className="h-11 w-full rounded border border-rule bg-surface-raised md:h-10 pl-9 pr-16 text-body text-fg placeholder:text-fg-faint focus-mark"
       />
       {showCount && (
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-label text-fg-faint tnum">

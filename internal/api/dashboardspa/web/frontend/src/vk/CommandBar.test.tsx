@@ -57,6 +57,14 @@ describe('CommandBar (⌘K)', () => {
     cleanup();
   });
 
+  // H1 16.11: the search field was 40 px tall on a phone (tap targets ≥ 44 px).
+  it('the search field is a 44 px tap target on a phone', () => {
+    renderBar();
+    ctrlK();
+    const input = within(screen.getByRole('dialog')).getByRole('combobox');
+    expect(input.className.split(/\s+/)).toContain('h-11');
+  });
+
   it('Ctrl+K opens it and Esc closes it', () => {
     renderBar();
     expect(screen.queryByRole('dialog')).toBeNull();

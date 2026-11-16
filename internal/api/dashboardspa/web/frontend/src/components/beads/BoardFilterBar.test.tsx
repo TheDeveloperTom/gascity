@@ -75,6 +75,41 @@ describe('BoardFilterBar (vk)', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 
+  // H1 16.11: at 390/360 px the «Эпик» button sits right of «Все Мои Ричарда»,
+  // and its 320 px menu, anchored to the button's left edge, ran off the
+  // screen (right edge at 523 px). Both menus now shift left to stay 16 px
+  // inside the viewport.
+  it.each([
+    ['Эпик', /Эпик:/, { epics: EPICS, epic: 'all', onEpic: vi.fn() }],
+    ['Проект', /Проект:/, { projects: [{ key: 'all', label: 'Все', count: 5 }, { key: 'devwork', label: 'devwork', count: 3 }, { key: 'city', label: 'Город', count: 2 }] }],
+  ] as const)('the %s menu stays inside a phone-wide viewport', (_name, button, extra) => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (this.getAttribute('role') === 'listbox') {
+        return { x: 203, y: 0, left: 203, top: 0, right: 523, bottom: 300, width: 320, height: 300, toJSON: () => ({}) };
+      }
+      return rect.call(this);
+    };
+    try {
+      renderBar(extra as Partial<ComponentProps<typeof BoardFilterBar>>);
+      fireEvent.click(screen.getByRole('button', { name: button }));
+      // 523 - (390 - 16) = 149 px to the left
+      expect((screen.getByRole('listbox') as HTMLElement).style.transform).toBe('translateX(-149px)');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect;
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    }
+  });
+
+  // H1 16.11: «Найти задачу» was 40 px tall on a phone (tap targets ≥ 44 px).
+  it('the search field is a 44 px tap target on a phone', () => {
+    renderBar();
+    const field = screen.getByRole('searchbox');
+    expect(field.className.split(/\s+/)).toContain('h-11');
+  });
+
   it('the epic button names the chosen epic with its progress', () => {
     renderBar({ epics: EPICS, epic: 'M04', onEpic: vi.fn() });
     expect(screen.getByRole('button', { name: /Эпик:/ }).textContent).toContain('M04 · 7 из 21');

@@ -242,7 +242,7 @@ function Palette(): ReactElement {
               setQuery(event.target.value);
               setActive(0);
             }}
-            className="h-10 min-w-0 flex-1 border-0 bg-transparent text-base text-vk-text-high outline-none placeholder:text-vk-text-low"
+            className="h-11 min-w-0 flex-1 border-0 md:h-10 bg-transparent text-base text-vk-text-high outline-none placeholder:text-vk-text-low"
           />
           <kbd className="hidden rounded-[3px] border border-vk-border bg-vk-bg-secondary px-1.5 font-vk-mono text-xs text-vk-text-low md:inline">
             esc

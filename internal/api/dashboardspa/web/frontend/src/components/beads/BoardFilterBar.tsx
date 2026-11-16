@@ -1,4 +1,13 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { t } from '../../i18n';
 import { ownerChoicesEnabled, type BoardSource, type OwnerFilter } from '../../lib/boardOwner';
 import { ALL_EPICS, epicLabel, epicProgress, NO_EPIC, type EpicSummary } from '../../lib/epics';
@@ -47,6 +56,26 @@ export function epicDotStyle(key: string): { backgroundColor: string } | undefin
   const m = /\d+/.exec(key);
   if (key === NO_EPIC || m === null) return undefined;
   return { backgroundColor: `oklch(65% 0.13 ${(Number(m[0]) * 47 + 200) % 360})` };
+}
+
+/** Viewport margin a dropdown keeps (the page's phone gutter). */
+const MENU_GUTTER_PX = 16;
+
+/**
+ * H1 16.11: a menu anchored to its button's left edge ran off a phone screen
+ * when the button sits mid-row (the «Эпик» menu ended at 523 px on a 390 px
+ * phone). Once open, shift it left just enough to keep the gutter.
+ */
+function useKeepMenuOnScreen(open: boolean, listRef: RefObject<HTMLDivElement | null>): void {
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!open || list === null) return;
+    list.style.transform = '';
+    const rect = list.getBoundingClientRect();
+    const over = rect.right - (window.innerWidth - MENU_GUTTER_PX);
+    const shift = Math.min(Math.max(over, 0), Math.max(rect.left - MENU_GUTTER_PX, 0));
+    if (shift > 0) list.style.transform = `translateX(-${Math.round(shift)}px)`;
+  }, [open, listRef]);
 }
 
 function OwnerChips({
@@ -118,6 +147,7 @@ function EpicSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  useKeepMenuOnScreen(open, listRef);
   const listId = useId();
   const chosen = epics.find((e) => e.key === value);
 
@@ -279,6 +309,7 @@ function ProjectSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  useKeepMenuOnScreen(open, listRef);
   const listId = useId();
   const chosen = projects.find((p) => p.key === value) ?? projects[0];
 
