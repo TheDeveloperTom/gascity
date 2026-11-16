@@ -39,7 +39,7 @@ const PITCH = 102;
 const LANE_PAD = 10;
 const LANE_GAP = 22;
 const SUMMARY_H = 40;
-export const COLHEAD_H = 72;
+export const COLHEAD_H = 100;
 
 /** «M05, M06 … M12» → «M05–M12»; anything else is listed. */
 export function epicRange(keys: ReadonlyArray<string>): string {

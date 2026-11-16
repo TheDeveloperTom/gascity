@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BoardGraphView, layoutBoard, epicRange } from './BoardGraphView';
+import { BoardGraphView, COLHEAD_H, layoutBoard, epicRange } from './BoardGraphView';
 import type { BoardGraph, Lane } from './boardModel';
 import type { GraphNode } from './model';
 
@@ -299,5 +299,14 @@ describe('BoardGraphView phone accordion', () => {
     expect(within(screen.getByTestId('board-phone-lane-M03')).getByText('Следом')).toBeTruthy();
     fireEvent.click(c1);
     expect(onSelect).toHaveBeenCalledWith('c1');
+  });
+});
+
+describe('column header band', () => {
+  // Live 16.11 (2000 px): the «Сейчас» verdict wraps to two lines and spilled
+  // out of a 72 px band over the first lane. The band holds the 8 px inset,
+  // the title bar (~38 px), the 6 px gap and a two-line verdict (2×18 + 8).
+  it('is tall enough for the title bar and a two-line verdict', () => {
+    expect(COLHEAD_H).toBeGreaterThanOrEqual(8 + 38 + 6 + 2 * 18 + 8);
   });
 });
