@@ -450,3 +450,22 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Health charts (vk/health, owner 16.11). The dataviz reference palette's
+   first two categorical slots, stepped per theme and validated against the
+   card surfaces (#FFFFFF light, #222327 dark): contrast ≥ 3:1, adjacent CVD
+   ΔE 24.7 / 26.8. Marks only; text keeps the text tokens. */
+:root {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+}
+:root[data-theme='dark'] {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+  }
+}

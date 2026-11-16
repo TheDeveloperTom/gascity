@@ -29,7 +29,12 @@ describe('Layout', () => {
     expect(home).toContain('max-w-[64rem]');
     expect(home).toContain('mx-auto');
     cleanup();
-    for (const path of ['/runs', '/health', '/agents']) {
+    // Owner 16.11: Health is full width (charts of the Mac's load).
+    const health = measureOf('/health');
+    expect(health).toContain('max-w-[120rem]');
+    expect(health).not.toContain('max-w-dashboard');
+    cleanup();
+    for (const path of ['/runs', '/agents']) {
       const cls = measureOf(path);
       expect(cls, path).toContain('max-w-dashboard');
       cleanup();

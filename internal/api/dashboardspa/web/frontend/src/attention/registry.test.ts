@@ -81,11 +81,25 @@ describe('createAttentionContributors', () => {
       }),
     );
 
+    // Owner 16.11: bd-owned (proxied) stores never report store_health, so
+    // an absent trend is the expected state, not a problem row.
     expect(model.byDomain.health.attention).toBe(0);
-    expect(model.byDomain.health.watch).toBe(3);
+    expect(model.byDomain.health.watch).toBe(2);
     expect(model.byDomain.health.items.map((item) => item.id)).toEqual([
       'health:supervisor-city-missing',
       'health:supervisor-version-missing',
+    ]);
+  });
+
+  it('still raises a dolt-noms watch row when the trend sample itself failed', () => {
+    const model = composeAttention(
+      createAttentionContributors({
+        health: {
+          trend: { available: false, samples: [], reason: 'sample_failed' } satisfies DoltNomsTrend,
+        },
+      }),
+    );
+    expect(model.byDomain.health.items.map((item) => item.id)).toEqual([
       'health:dolt-noms-unavailable',
     ]);
   });

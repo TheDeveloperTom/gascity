@@ -89,14 +89,16 @@ describe('health rows in Russian', () => {
       createAttentionContributors({
         health: {
           supervisor: { status: 'unavailable', error: 'down' },
-          trend: { available: false, samples: [], reason: 'store_health_absent' },
+          trend: { available: false, samples: [], reason: 'sample_failed' },
         },
       }),
     );
     const byId = new Map(m.items.map((item) => [item.id, item]));
-    expect(byId.get('health:dolt-noms-unavailable')?.title).toBe('Нет тренда хранилища (dolt-noms)');
+    expect(byId.get('health:dolt-noms-unavailable')?.title).toBe(
+      'Нет тренда хранилища (dolt-noms)',
+    );
     expect(byId.get('health:dolt-noms-unavailable')?.summary).toBe(
-      'супервизор не сообщает о состоянии хранилища; замеры вернутся, когда оно восстановится',
+      'последнее чтение состояния супервизора не удалось',
     );
     expect(byId.get('health:supervisor-unreachable')?.title).toBe('Супервизор недоступен');
     expect(collectMissing()).toEqual([]);

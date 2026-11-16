@@ -14,7 +14,8 @@ interface LayoutProps {
 function measureOf(pathname: string): string {
   const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   const path = trimmed === '' ? '/' : trimmed;
-  if (path === '/beads') return 'max-w-[120rem]';
+  // Health (owner 16.11): live charts of the Mac's load use the full width.
+  if (path === '/beads' || path === '/health') return 'max-w-[120rem]';
   if (path === '/') return 'mx-auto max-w-[64rem]';
   return 'max-w-dashboard';
 }
