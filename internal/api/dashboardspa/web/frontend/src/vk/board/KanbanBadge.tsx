@@ -23,7 +23,8 @@
  *
  * Modified for the Gas City dashboard: VK tokens mapped to the --vk-* aliases;
  * `color` is a full CSS colour (VK took an HSL triple); a `tone="error"` badge
- * (the design's «срочно» / «стоит N ч» pill) is added.
+ * (the design's «срочно» / «стоит N ч» pill) is added; vk11: an optional
+ * leading icon (the canvas clock on «стоит N ч»).
  */
 // Source: vibe-kanban packages/ui/src/components/KanbanBadge.tsx
 
@@ -36,22 +37,26 @@ export type KanbanBadgeProps = {
   tone?: 'default' | 'error';
   className?: string;
   title?: string;
+  /** A leading 15 px icon (the canvas «стоит N ч» clock); tightens padding to 4 px. */
+  icon?: ReactNode;
 };
 
-export const KanbanBadge = ({ name, color, tone = 'default', className, title }: KanbanBadgeProps) => {
+export const KanbanBadge = ({ name, color, tone = 'default', className, title, icon }: KanbanBadgeProps) => {
   return (
     <span
       title={title}
       className={cn(
         'inline-flex items-center justify-center',
         'h-5 gap-1',
-        tone === 'error' ? 'bg-vk-error/10 px-1.5 text-vk-error' : 'bg-vk-bg-panel px-2 text-vk-text-low',
+        tone === 'error' ? 'bg-vk-error/10 text-vk-error' : 'bg-vk-bg-panel text-vk-text-low',
+        icon !== undefined ? 'px-1' : tone === 'error' ? 'px-1.5' : 'px-2',
         'rounded-sm',
         'text-sm font-medium',
         'whitespace-nowrap',
         className,
       )}
     >
+      {icon}
       {color && (
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
       )}

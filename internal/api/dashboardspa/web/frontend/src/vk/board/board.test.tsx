@@ -7,6 +7,7 @@ import { ALL_PROJECTS, buildBoardModel } from '../../lib/boardModel';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { LIVE_7LPZG7, LIVE_MQFCX13 } from '../../test/fixtures/liveCards';
 import { boardData, renderBoard } from '../../test/renderBoard';
+import { KanbanCard } from './KanbanCard';
 import { PhoneBoard } from './PhoneBoard';
 
 vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }));
@@ -51,7 +52,7 @@ describe('VK board', () => {
     renderBoard([bead('dw-a', 'open'), LIVE_MQFCX13, LIVE_7LPZG7], { nowMs: NOW });
     const names = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
     expect(names).toEqual(['Ждёт', 'В работе', 'Ревью', 'Влито · за 7 дней']);
-    expect(within(column('Ревью')).getByText(/миграция 0425/, { selector: 'span' })).toBeTruthy();
+    expect(within(column('Ревью')).getAllByText(/миграция 0425/i, { selector: 'button span' })[0]).toBeTruthy();
   });
 
   it('«Показать старые» reveals cards older than 7 days', () => {
@@ -69,7 +70,7 @@ describe('VK board', () => {
     expect(within(merged).getByText('old merge')).toBeTruthy();
   });
 
-  it('shows «нужен ты», «срочно» and «стоит 2 ч»', () => {
+  it('shows «ждёт тебя», «срочно» and «стоит 2 ч» with a clock (canvas Cards)', () => {
     renderBoard(
       [
         bead('dw-q', 'open', { title: 'question', labels: ['needs/operator'] }),
@@ -79,30 +80,31 @@ describe('VK board', () => {
       { nowMs: NOW },
     );
     const card = (title: string) => screen.getByText(title).closest('article') as HTMLElement;
-    expect(within(card('question')).getByText('нужен ты')).toBeTruthy();
+    expect(within(card('question')).getByText('ждёт тебя')).toBeTruthy();
     expect(within(card('hot')).getByText('срочно')).toBeTruthy();
-    expect(within(card('stalled')).getByText('стоит 2 ч')).toBeTruthy();
+    const stalled = within(card('stalled')).getByText('стоит 2 ч');
+    expect(stalled.querySelector('svg')).toBeTruthy();
   });
 
-  it('the blocker badge names the blocker by its milestone tag', () => {
-    const blocker = bead('dw-b', 'open', { title: 'Blocker task', labels: ['milestone:M04'] });
+  it('the blocker chip is icon + short label, no «ждёт:»/«блокирует:» prefix (canvas)', () => {
+    const blocker = bead('dw-b', 'open', { title: 'M04 #3 / Task 3: Blocker task', labels: ['milestone:M04'] });
     const waiter = bead('dw-w', 'open', {
       title: 'Waiter task',
       is_blocked: true,
       dependencies: [{ issue_id: 'dw-w', depends_on_id: 'dw-b', type: 'blocks' }],
     });
     renderBoard([blocker, waiter], { nowMs: NOW });
-    const card = screen.getByText('Waiter task').closest('article') as HTMLElement;
+    const card = screen.getByText('Waiter task', { selector: 'button span' }).closest('article') as HTMLElement;
     const badge = card.querySelector('[data-relationship="blocked_by"]') as HTMLElement;
-    expect(badge.textContent).toContain('M04');
-    expect(badge.textContent).toContain('ждёт:');
-    const holder = screen.getByText('Blocker task').closest('article') as HTMLElement;
-    expect(holder.querySelector('[data-relationship="blocks"]')?.textContent).toContain('блокирует:');
+    expect(badge.textContent).toBe('M04 #3');
+    expect(badge.querySelector('svg circle')).toBeTruthy();
+    const holder = screen.getByText('Blocker task', { selector: 'button span' }).closest('article') as HTMLElement;
+    expect(holder.querySelector('[data-relationship="blocks"]')?.textContent).toBe('Waiter task');
   });
 
   // H1 16.11 (live board): «блокирует: M04 M04 — приёмка этапа» — the tag was
-  // prefixed to a title that already starts with it.
-  it('does not repeat the milestone tag when the related title already starts with it', () => {
+  // prefixed to a title that already starts with it. vk11: canvas «↱ M04 приёмка».
+  it('a blocks chip names the waiter by its short label («M04 приёмка»)', () => {
     const holder = bead('dw-h', 'open', { title: 'Holder task', labels: ['milestone:M04'] });
     const gate = bead('dw-g', 'open', {
       title: 'M04 — приёмка этапа',
@@ -113,7 +115,7 @@ describe('VK board', () => {
     renderBoard([holder, gate], { nowMs: NOW });
     const card = screen.getByText('Holder task').closest('article') as HTMLElement;
     const badge = card.querySelector('[data-relationship="blocks"]') as HTMLElement;
-    expect(badge.textContent).toBe('блокирует: M04 — приёмка этапа');
+    expect(badge.textContent).toBe('M04 приёмка');
   });
 
   it('the PR link calls openExternal and has no target', () => {
@@ -153,10 +155,83 @@ describe('VK board', () => {
     expect(screen.getByTitle('Открыть задачу dw-pick').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('a 150-character title without spaces wraps anywhere', () => {
+  it('a 150-character title stays on one line with an ellipsis (canvas Cards)', () => {
     const long = 'Д'.repeat(150);
     renderBoard([bead('dw-long', 'open', { title: long })], { nowMs: NOW });
-    expect(screen.getByText(long).className).toContain('[overflow-wrap:anywhere]');
+    expect(screen.getByText(long).className).toContain('truncate');
+  });
+
+  it('the top line is the short label, never the bead id; the title drops it', () => {
+    renderBoard(
+      [
+        bead('dw-eba63b7db1e9a14e.2', 'open', {
+          title: 'M03 #2 / Task 6: допуск, enqueue и claim по собственному ящику пользователя',
+          labels: ['milestone:M03'],
+        }),
+        bead('dw-1baxx4', 'open', { title: 'Repair PR #475: CI красный' }),
+      ],
+      { nowMs: NOW },
+    );
+    const card = screen.getByText('Допуск, enqueue и claim по собственному ящику пользователя').closest(
+      'article',
+    ) as HTMLElement;
+    expect(card.querySelector('[data-card-label]')?.textContent).toBe('M03 #2');
+    expect(card.textContent).not.toContain('dw-eba63b7db1e9a14e.2');
+    const bare = screen.getByText('Repair PR #475: CI красный').closest('article') as HTMLElement;
+    expect(bare.querySelector('[data-card-label]')).toBeNull();
+    expect(bare.textContent).not.toContain('dw-1baxx4');
+  });
+
+  it('a card under an epic is labelled by the epic («Один тип») and carries its dot chip', () => {
+    const epic = bead('dw-mqfcx', 'open', { title: 'Один тип пользователя', issue_type: 'epic' });
+    const model = buildBoardModel(boardData([LIVE_MQFCX13, LIVE_7LPZG7]), [], {
+      project: ALL_PROJECTS,
+      search: '',
+      showTests: false,
+    });
+    const card = Object.values(model.columns)
+      .flat()
+      .find((c) => c.node.bead.id === 'dw-mqfcx.13');
+    if (card === undefined) throw new Error('no dw-mqfcx.13 card');
+    render(
+      <MemoryRouter>
+        <KanbanCard
+          card={card}
+          nowMs={NOW}
+          selected={false}
+          onSelect={vi.fn()}
+          beadById={(id) => (id === epic.id ? epic : undefined)}
+        />
+      </MemoryRouter>,
+    );
+    const article = document.querySelector('article[data-bead-id="dw-mqfcx.13"]') as HTMLElement;
+    expect(article.querySelector('[data-card-label]')?.textContent).toBe('Один тип');
+    expect(within(article).getByText(/^Миграция 0425/, { selector: 'button span' })).toBeTruthy();
+    expect(within(article).getByText('Один тип пользователя')).toBeTruthy();
+  });
+
+  it('the assignee avatar: «А» for the owner, blue «И» for the executor at work', () => {
+    renderBoard(
+      [
+        bead('dw-own', 'open', { title: 'mine' }),
+        bead('dw-run', 'in_progress', { title: 'running', assignee: 'devwork/worker' }),
+      ],
+      { nowMs: NOW, sessions: [{ id: 's1', session_name: 'devwork/worker', state: 'active' }] },
+    );
+    const mine = screen.getByText('mine').closest('article') as HTMLElement;
+    expect(within(mine).getByRole('img', { name: 'Исполнитель: ты' }).textContent).toBe('А');
+    const run = screen.getByText('running').closest('article') as HTMLElement;
+    const executor = within(run).getByRole('img', { name: 'Исполнитель' });
+    expect(executor.textContent).toBe('И');
+    expect(executor.className).toContain('bg-[#1D5BD6]');
+  });
+
+  it('a selected card keeps its background and gets the brand border (canvas Main)', () => {
+    renderBoard([bead('dw-sel', 'open', { title: 'chosen' })], { nowMs: NOW, selectedId: 'dw-sel' });
+    const card = screen.getByText('chosen').closest('article') as HTMLElement;
+    expect(card.className).toContain('border-vk-brand');
+    expect(card.className).toContain('bg-vk-bg-primary');
+    expect(card.className).not.toContain('ring-2');
   });
 
   it('a working card with a live session shows running dots', () => {
@@ -188,11 +263,11 @@ describe('PhoneBoard', () => {
     expect(screen.getByText('waiting one')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Ревью/ }));
     expect(screen.queryByText('waiting one')).toBeNull();
-    expect(screen.getByText(/миграция 0425/, { selector: 'span' })).toBeTruthy();
+    expect(screen.getAllByText(/миграция 0425/i, { selector: 'button span' })[0]).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Ревью/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('phone cards carry the project tag when two projects exist (vk-final)', () => {
+  it('phone cards carry no project tag (vk11: canvas has none)', () => {
     const model = buildBoardModel(
       boardData([bead('dw-a', 'open', { title: 'rig card' }), bead('gc-b', 'open', { title: 'city card' })]),
       [{ name: 'devwork', prefix: 'dw' }],
@@ -204,9 +279,9 @@ describe('PhoneBoard', () => {
       </MemoryRouter>,
     );
     const rig = screen.getByText('rig card').closest('article') as HTMLElement;
-    expect(within(rig).getByText('Продукт devwork')).toBeTruthy();
+    expect(within(rig).queryByText('Продукт devwork')).toBeNull();
     const city = screen.getByText('city card').closest('article') as HTMLElement;
-    expect(within(city).getByText('Город (служебное)')).toBeTruthy();
+    expect(within(city).queryByText('Город (служебное)')).toBeNull();
   });
 
   it('an empty model renders without throwing', () => {
