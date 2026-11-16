@@ -36,6 +36,12 @@ export type BoardFilter = 'all' | 'holds_me' | 'stuck' | 'in_work';
 export interface BoardGraphOptions {
   nowMs: number;
   partial?: boolean;
+  /**
+   * The «От тебя» count may miss questions (a read missing or failed). The
+   * page gives it apart from `partial`, which also covers a refresh in
+   * flight; without it, `partial` decides (REL17 R2-1).
+   */
+  ownerIncomplete?: boolean;
   collapsed?: Record<string, boolean>;
   filter?: BoardFilter;
   /** The one owner model of the page's raw read (useBoardData.owner); else computed from `beads`. */
@@ -450,7 +456,7 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
       verdict,
       alarm,
       // A partial read may miss a store's questions (REL17 finding 3).
-      ...(c === 0 && opts.partial === true ? { incomplete: true } : {}),
+      ...(c === 0 && (opts.ownerIncomplete ?? opts.partial) === true ? { incomplete: true } : {}),
     });
   }
 

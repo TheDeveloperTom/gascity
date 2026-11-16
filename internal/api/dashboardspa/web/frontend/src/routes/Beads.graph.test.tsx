@@ -99,7 +99,14 @@ const net = vi.hoisted(() => ({
   release: [] as Array<() => void>,
 }));
 const boardCalls = vi.hoisted(
-  () => [] as Array<{ ids: string[]; partial?: boolean; collapsed?: Record<string, boolean>; filter?: string }>,
+  () =>
+    [] as Array<{
+      ids: string[];
+      partial?: boolean;
+      ownerIncomplete?: boolean;
+      collapsed?: Record<string, boolean>;
+      filter?: string;
+    }>,
 );
 vi.mock('../vk/graph/boardModel', async (orig) => {
   const real = await orig<typeof import('../vk/graph/boardModel')>();
@@ -107,11 +114,12 @@ vi.mock('../vk/graph/boardModel', async (orig) => {
     ...real,
     buildBoardGraph: (
       beads: ReadonlyArray<{ id: string; title: string }>,
-      opts: { partial?: boolean; collapsed?: Record<string, boolean>; filter?: string },
+      opts: { partial?: boolean; ownerIncomplete?: boolean; collapsed?: Record<string, boolean>; filter?: string },
     ) => {
       boardCalls.push({
         ids: beads.map((b) => b.id),
         ...(opts.partial !== undefined ? { partial: opts.partial } : {}),
+        ...(opts.ownerIncomplete !== undefined ? { ownerIncomplete: opts.ownerIncomplete } : {}),
         ...(opts.collapsed !== undefined ? { collapsed: opts.collapsed } : {}),
         ...(opts.filter !== undefined ? { filter: opts.filter } : {}),
       });
@@ -601,6 +609,17 @@ describe('BeadsPage progressive loading and the restarting city', () => {
     await screen.findByTestId('board-graph-view');
     expect(await screen.findByText('Could not read the tasks of: devwork')).toBeTruthy();
     expect(boardCalls.at(-1)?.partial).toBe(true);
+    // REL17 R2-1: a failed store marks «От тебя» incomplete.
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.ownerIncomplete).toBe(true));
+  });
+
+  // REL17 R2-1: once the reads are in and none failed, «От тебя» is complete.
+  it('a complete read gives the graph a complete «От тебя»', async () => {
+    resetSupervisorApiForTests();
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
+    expect(boardCalls.at(-1)?.ownerIncomplete).toBe(false);
   });
 
   it('a restarting city shows one calm line, not red not_found alerts', async () => {

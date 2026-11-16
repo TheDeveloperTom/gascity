@@ -294,6 +294,14 @@ describe('the «От тебя» column on a partial graph', () => {
     expect(graph.columns[0]?.title).toBe('От тебя');
     expect(graph.columns[0]?.incomplete).toBe(true);
   });
+  // REL17 R2-1: a partial graph during an ordinary refresh is not incomplete
+  // for «От тебя»; the page says which with `ownerIncomplete`.
+  it('follows ownerIncomplete when the page gives it, not partial', () => {
+    const refreshing = buildBoardGraph(beads(), { nowMs: NOW, partial: true, ownerIncomplete: false });
+    expect(refreshing.columns[0]?.incomplete).toBeUndefined();
+    const failed = buildBoardGraph(beads(), { nowMs: NOW, partial: false, ownerIncomplete: true });
+    expect(failed.columns[0]?.incomplete).toBe(true);
+  });
   it('is not marked when every read is in', () => {
     const graph = buildBoardGraph(beads(), { nowMs: NOW });
     expect(graph.columns[0]?.title).toBe('От тебя');

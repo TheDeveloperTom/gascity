@@ -593,12 +593,15 @@ export function BeadsPage() {
         ? buildBoardGraph(liveAllGraphRows, {
             nowMs,
             partial: graphPartial,
+            // REL17 R2-1: «?» only when a read is missing or failed, never for
+            // a refresh in flight after a good read.
+            ownerIncomplete: !unscopedIn || board.rigStoresComplete === false,
             collapsed: laneCollapsed,
             filter: graphFilter,
             ...(owner === undefined ? {} : { owner }),
           })
         : null,
-    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, laneCollapsed, graphFilter, owner],
+    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, unscopedIn, board.rigStoresComplete, laneCollapsed, graphFilter, owner],
   );
   const toggleLane = useCallback(
     (key: string) => {

@@ -209,6 +209,44 @@ describe('useBoardData', () => {
     expect(probe.read?.rigStoresFailed).toEqual([]);
   });
 
+  // REL17 R2-1: completeness has no loading term. A refresh in flight after a
+  // good read keeps the stores complete (the «От тебя» count gets no «?»);
+  // only a failed store makes them incomplete.
+  it('a refresh in flight after a good read keeps the rig stores complete', async () => {
+    let hold = false;
+    let release: () => void = () => undefined;
+    beads.mockImplementation(async (options) => {
+      if (options?.rigFilter !== undefined) {
+        if (hold) {
+          return new Promise((resolve) => {
+            release = () => resolve({ items: [], total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never);
+          });
+        }
+        return { items: [], total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+      }
+      return { items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+    expect(probe.read?.rigStoresComplete).toBe(true);
+    hold = true;
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(false));
+    expect(probe.read?.rigStoresComplete).toBe(true);
+    release();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+  });
+
+  it('a failed rig store makes the rig stores incomplete', async () => {
+    beads.mockImplementation(async (options) => {
+      if (options?.rigFilter !== undefined) throw new Error('store down');
+      return { items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresFailed).toEqual(['devwork']));
+    expect(probe.read?.rigStoresComplete).toBe(false);
+  });
+
   // REVIEW Round 2 LOW: a failed rig-list read left the stores waiting on a
   // promise that never resolved, so the graphs stayed partial for ever. It is
   // now «stores unknown», and the next refresh reads the rig list again.

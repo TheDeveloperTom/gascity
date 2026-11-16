@@ -37,6 +37,12 @@ export interface BoardRead {
    * could not be read (REVIEW Round 2). Empty when nothing failed.
    */
   rigStoresFailed?: readonly string[];
+  /**
+   * The rig list was read, the rig stores were read for it, and none failed.
+   * No loading term: a refresh in flight after a good read stays complete
+   * (REL17 R2-1), unlike `rigStoresIn`.
+   */
+  rigStoresComplete?: boolean;
   rigs: readonly RigPrefix[];
   sessions: readonly BeadAttentionSession[];
   loading: boolean;
@@ -290,6 +296,8 @@ export function useBoardData(): BoardRead {
       !rigStores.loading &&
       rigStores.data.failed.length === 0,
     rigStoresFailed: rigsFailed ? STORES_UNKNOWN : (rigStores.data?.failed ?? NO_FAILED),
+    rigStoresComplete:
+      rigs.data !== undefined && rigStores.data !== undefined && rigStores.data.failed.length === 0,
     rigs: rigItems,
     sessions: sessionItems,
     loading: board.loading,
