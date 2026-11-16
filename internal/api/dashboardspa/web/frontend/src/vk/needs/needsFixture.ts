@@ -74,6 +74,8 @@ function waiters(): SupervisorBead[] {
   for (let i = 0; i < 10; i += 1) add(`dw-m04-${i}`, 'M04', QUESTION_ID);
   for (let i = 0; i < 4; i += 1) add(`dw-m03-${i}`, 'M03', QUESTION_ID);
   for (let i = 0; i < 8; i += 1) add(`dw-x-${i}`, null, 'dw-m03-0');
+  // «От тебя» holds an open task (lib/ownerAsked): the second question holds one.
+  add('dw-m01-close', 'M01', SECOND_QUESTION_ID);
   return out;
 }
 

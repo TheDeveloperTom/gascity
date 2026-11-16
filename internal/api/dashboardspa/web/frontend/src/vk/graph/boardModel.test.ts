@@ -35,7 +35,11 @@ function board(): GraphBead[] {
     epic('e13', 'M13', 'M13. Финальная приёмка', false),
     epic('one', null, 'Один тип пользователя вместо наставника и ученика'),
     // L1: a decision gate (no route metadata) holding M03, M04 and «Один тип».
-    bead('l1', 'Окно L1 и ключ Clerk', { issue_type: 'gate' }),
+    bead('l1', 'Окно L1 и ключ Clerk', {
+      issue_type: 'gate',
+      labels: ['needs/operator'],
+      metadata: { 'decision.question_id': 'q-l1', 'owner.link': 'https://discord.com/channels/1/2/3' },
+    }),
     bead('t6', 'M03 #6 — Допуск по своему ящику', { labels: ms('M03'), parent: 'e03', needs: ['l1'] }),
     bead('t7', 'M03 #7 — Портал', { labels: ms('M03'), parent: 'e03', status: 'in_progress', assignee: 'devwork/worker-1' }),
     bead('s3', 'M04 #3 — Не затирать оценку', { labels: ms('M04'), parent: 'e04', dependencies: [blocks('s3', 't6')] }),
@@ -120,7 +124,8 @@ describe('buildBoardGraph', () => {
   it('does not count owner-answer placeholders in the epic progress', () => {
     const beads = [...board(), bead('qa', 'M04 — ответ владельца на ВВ-6', { labels: ms('M04'), parent: 'e04' })];
     const graph = buildBoardGraph(beads, { nowMs: NOW });
-    expect(graph.laneOf.qa).toBe('ask');
+    // a placeholder is a task, never a question (owner 16.11: asked questions only)
+    expect(graph.laneOf.qa).toBe('M04');
     expect(graph.lanes.find((l) => l.key === 'M04')?.total).toBe(2);
   });
 
@@ -261,7 +266,11 @@ describe('buildBoardGraph', () => {
 
   it('gives an in-work task with its own decision a question card in «От тебя»', () => {
     const beads = board().map((b) =>
-      b.id === 't7' ? { ...b, labels: [...ms('M03'), 'needs/operator'], metadata: { 'decision.decide': 'какой портал' } } : b,
+      b.id === 't7' ? {
+            ...b,
+            labels: [...ms('M03'), 'needs/operator'],
+            metadata: { 'decision.decide': 'какой портал', 'decision.question_id': 'q-t7', 'owner.link': 'https://discord.com/channels/1/2/3' },
+          } : b,
     );
     const graph = buildBoardGraph(beads, { nowMs: NOW });
     expect(graph.laneOf[questionNodeId('t7')]).toBe('ask');

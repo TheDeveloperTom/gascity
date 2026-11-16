@@ -7,12 +7,14 @@
 //
 // Data: the board's SupervisorBead (routes/Beads.tsx). A bead's blockers are
 // its `needs` plus its blocking `dependencies[]` (lib/beadGraph.ts reads the
-// same two fields). Owner questions are open beads marked for the owner
-// (`needs/operator`, a Mayor decision) or open human gates.
+// same two fields). Owner questions («От тебя») follow the one rule shared
+// with «Нужно от меня» (lib/ownerAsked): asked to the owner AND holding an
+// open task. An owner gate nobody asked yet is no question: the tasks behind
+// it say «вопрос ещё не задан».
 
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { milestoneOf } from '../../lib/waitReasons';
-import { OWNER_QUESTION_LABEL } from '../../lib/ownerQuestions';
+import { askedOwnerQuestions } from '../../lib/ownerAsked';
 import { cardLabel } from '../board/cardLabel';
 
 /** The bead element the graph reads: exactly what the board loads. */
@@ -59,7 +61,6 @@ export interface Chain {
 const DAY_MS = 86_400_000;
 /** Dependency types that do not block (shown elsewhere, never a wait). */
 const NON_BLOCKING = new Set(['parent-child', 'related', 'relates-to', 'discovered-from', 'duplicates', 'supersedes', 'replies-to', 'tracks']);
-const DECISION_KEYS = ['decision.question_id', 'decision.decide'];
 const VV = /ВВ-\d+/u;
 const SHORT_MAX = 28;
 
@@ -78,31 +79,34 @@ function isRouteBead(bead: GraphBead): boolean {
   return ['gc.kind', 'gc.root_bead_id', 'gc.cross_store_blocker', 'gc.cross_store_gate_owner'].some((k) => meta(bead, k).length > 0);
 }
 
-/** Marked for the owner: `needs/operator`, or a Mayor decision on it. */
-function ownerMarked(bead: GraphBead): boolean {
-  if ((bead.labels ?? []).some((l) => l.trim() === OWNER_QUESTION_LABEL)) return true;
-  return DECISION_KEYS.some((k) => meta(bead, k).length > 0);
+/** Asked owner questions holding an open task (lib/ownerAsked): the «От тебя» set. */
+type Asked = ReadonlySet<string>;
+
+/**
+ * An owner gate: a human gate, or a decision gate (dw-ssmbcp) with no route
+ * metadata (route and cross-store gates always carry it).
+ */
+function isOwnerGate(bead: GraphBead): boolean {
+  if (bead.issue_type !== 'gate') return false;
+  const await_ = meta(bead, 'await_type') || meta(bead, 'gc.await_type');
+  if (await_ === 'human' || meta(bead, 'gc.gate_type') === 'human' || meta(bead, 'devwork.owner_gate') === 'true') return true;
+  return await_.length === 0 && !isRouteBead(bead);
 }
 
 /** A bead that is itself the owner's question (a card in «От тебя»). */
-function isQuestionBead(bead: GraphBead): boolean {
-  if (bead.issue_type === 'gate') {
-    const await_ = meta(bead, 'await_type') || meta(bead, 'gc.await_type');
-    if (await_ === 'human') return true;
-    // A decision gate (dw-ssmbcp) carries no route metadata; route and
-    // cross-store gates always do.
-    return await_.length === 0 && !isRouteBead(bead);
-  }
+function isQuestionBead(bead: GraphBead, asked: Asked): boolean {
   // A task in work stays a task; its decision becomes a separate question card.
-  if (bead.status === 'in_progress') return false;
-  if (ownerMarked(bead)) return true;
-  // «M04 — ответ владельца на ВВ-6 (…)»: a placeholder task for an answer.
-  return /(^|[\s:—–-])ответ владельца/iu.test(bead.title);
+  return bead.status !== 'in_progress' && asked.has(bead.id);
 }
 
 /** The question card of an in-work task that carries its own owner decision. */
-function hasOwnQuestion(bead: GraphBead): boolean {
-  return bead.status === 'in_progress' && ownerMarked(bead);
+function hasOwnQuestion(bead: GraphBead, asked: Asked): boolean {
+  return bead.status === 'in_progress' && asked.has(bead.id);
+}
+
+/** An open owner gate nobody asked yet (the city asks it): it holds, but is not «От тебя». */
+function isUnaskedGate(bead: GraphBead | undefined, asked: Asked): boolean {
+  return bead !== undefined && bead.status !== 'closed' && isOwnerGate(bead) && !asked.has(bead.id);
 }
 
 const QUESTION_SUFFIX = '::q';
@@ -116,9 +120,9 @@ export function beadIdOf(nodeId: string): string {
 }
 
 /** Engine plumbing (route roots/steps, drains, cross-store gates, epics): never a node. */
-function isPlumbing(bead: GraphBead): boolean {
+function isPlumbing(bead: GraphBead, asked: Asked): boolean {
   if (bead.issue_type === 'epic' || bead.issue_type === 'convoy') return true;
-  if (isQuestionBead(bead)) return false;
+  if (isQuestionBead(bead, asked)) return false;
   return bead.issue_type === 'gate' || isRouteBead(bead);
 }
 
@@ -170,11 +174,11 @@ interface Draft {
   blockers: string[];
 }
 
-function draftOf(bead: GraphBead, byId: Map<string, GraphBead>, outside: boolean, blockers: string[]): Draft {
+function draftOf(bead: GraphBead, byId: Map<string, GraphBead>, outside: boolean, blockers: string[], asked: Asked): Draft {
   const parent = bead.parent ? byId.get(bead.parent) : undefined;
   const epicTitle = parent !== undefined && parent.issue_type === 'epic' ? parent.title : null;
   const derived = cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle, id: bead.id });
-  if (isQuestionBead(bead)) {
+  if (isQuestionBead(bead, asked)) {
     const vv = VV.exec(derived.label ?? '') ?? VV.exec(bead.title);
     const short = vv !== null ? vv[0] : shorten(derived.title);
     return { bead, kind: 'question', label: `вопрос · ${short}`, title: derived.title, short, outside: false, blockers };
@@ -250,9 +254,10 @@ export function buildGraph(
   const all = beads.filter(isBead);
   const byId = new Map<string, GraphBead>();
   for (const b of all) if (!byId.has(b.id)) byId.set(b.id, b);
+  const asked: Asked = new Set(askedOwnerQuestions(all).keys());
   const live = (id: string): GraphBead | undefined => {
     const b = byId.get(id);
-    return b !== undefined && b.status !== 'closed' && !isPlumbing(b) ? b : undefined;
+    return b !== undefined && b.status !== 'closed' && !isPlumbing(b, asked) ? b : undefined;
   };
   const liveBlockers = (b: GraphBead) => blockerIds(b).filter((id) => live(id) !== undefined);
   // The epic is a milestone key («M04», the board's epic filter) or an epic bead id.
@@ -303,13 +308,13 @@ export function buildGraph(
   const drafts = new Map<string, Draft>();
   for (const id of members) {
     const b = byId.get(id) as GraphBead;
-    drafts.set(id, draftOf(b, byId, !inEpic(b), liveBlockers(b).filter((d) => inSet.has(d))));
+    drafts.set(id, draftOf(b, byId, !inEpic(b), liveBlockers(b).filter((d) => inSet.has(d)), asked));
   }
   // An in-work task that carries its own owner decision (live M04 #3) gets a
   // separate question card that blocks it, as on the mockups.
   for (const id of [...members]) {
     const task = drafts.get(id) as Draft;
-    if (!hasOwnQuestion(task.bead)) continue;
+    if (!hasOwnQuestion(task.bead, asked)) continue;
     const decide = meta(task.bead, 'decision.decide');
     const vv = VV.exec(decide) ?? VV.exec(task.bead.title) ?? VV.exec(task.label);
     const short = vv !== null ? vv[0] : decide.length > 0 ? shorten(decide) : 'ответ';
@@ -349,6 +354,10 @@ export function buildGraph(
     const column = depth.get(id) ?? 1;
     const qs = d.blockers.filter((x) => drafts.get(x)?.kind === 'question').map(shortOf);
     const ts = d.blockers.filter((x) => drafts.get(x)?.kind === 'task').map(shortOf);
+    const unasked = blockerIds(b)
+      .map((x) => byId.get(x))
+      .filter((g): g is GraphBead => isUnaskedGate(g, asked))
+      .map((g) => shorten(g.title));
     let state: GraphNodeState;
     let reason: string;
     if (b.status === 'in_progress') {
@@ -363,6 +372,11 @@ export function buildGraph(
     } else if (ts.length > 0) {
       state = 'waits_task';
       reason = `ждёт: ${listShort(ts)}`;
+    } else if (unasked.length > 0) {
+      // An owner gate the city has not asked yet: it holds, but it is no
+      // question for the owner, and the task is not «никто не взял».
+      state = 'waits_task';
+      reason = `ждёт: ${listShort(unasked)} — вопрос ещё не задан`;
     } else {
       const since = Date.parse(b.updated_at ?? b.created_at);
       const days = Number.isFinite(since) ? Math.floor((opts.nowMs - since) / DAY_MS) : 0;
@@ -433,7 +447,7 @@ export function buildGraph(
   }
 
   // Headline: closed of total, and the deepest task everything later waits on.
-  const epicBeads = opts.epicId === null ? [] : [...byId.values()].filter((b) => inEpicOf(b) && !isPlumbing(b) && !isQuestionBead(b));
+  const epicBeads = opts.epicId === null ? [] : [...byId.values()].filter((b) => inEpicOf(b) && !isPlumbing(b, asked) && !isQuestionBead(b, asked));
   const closed = epicBeads.filter((b) => b.status === 'closed').length;
   const lead = opts.epicId === null ? '' : `${epicKey ?? 'Эпик'}: ${closed} из ${epicBeads.length} закрыто. `;
   const tasks = nodes.filter((n) => n.kind === 'task');
