@@ -3,7 +3,8 @@ import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { getActiveCity } from '../api/cityBase';
 import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
 import type { BoardData, RigPrefix } from '../lib/boardModel';
-import { listSupervisorBeads, type SupervisorBeadList } from '../supervisor/beadReads';
+import { ownerAskedOf, ownerBeadsOf, type OwnerAsked } from '../lib/ownerAsked';
+import { listSupervisorBeads, type SupervisorBead, type SupervisorBeadList } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
 import { useCachedData } from './useCachedData';
@@ -21,7 +22,16 @@ export const BOARD_RECENT_CLOSED_LIMIT = 100;
 export const BOARD_REFRESH_COALESCE_MS = 10_000;
 
 export interface BoardRead {
+  /** The open board, with each rig's open work store in `rigStoreItems` once it is in. */
   data: BoardData | undefined;
+  /**
+   * The one owner model (lib/ownerAsked), computed once from the raw read
+   * (ownerBeadsOf(data)) before any view filters it: the shelf, the badge and
+   * both graphs read it (REVIEW 16.11).
+   */
+  owner?: OwnerAsked | undefined;
+  /** Every rig store has been read (the graphs are partial until then). */
+  rigStoresIn?: boolean;
   rigs: readonly RigPrefix[];
   sessions: readonly BeadAttentionSession[];
   loading: boolean;
@@ -68,6 +78,21 @@ export function boardCacheKey(city: string | null): string {
 
 export function sessionsCacheKey(city: string | null): string {
   return `sessions:${city ?? 'no-city'}`;
+}
+
+export function rigStoresCacheKey(city: string | null, rigs: readonly string[]): string {
+  return `beads:board:${city ?? 'no-city'}:rig-stores:${rigs.join(',')}`;
+}
+
+/** Each rig's own open work store, merged (a failed leg reads as empty). */
+export function readRigStores(rigs: readonly string[]): Promise<SupervisorBead[]> {
+  return Promise.all(
+    rigs.map((rig) =>
+      listSupervisorBeads({ rigFilter: rig })
+        .then((list) => list.items)
+        .catch(() => [] as SupervisorBead[]),
+    ),
+  ).then((legs) => legs.flat());
 }
 
 export function rigsCacheKey(city: string | null): string {
@@ -138,7 +163,31 @@ export function useBoardData(): BoardRead {
     refreshFetcher: () => sharedRead(rigsKey, listSupervisorRigs, { fresh: true }),
   });
 
-  const refreshBoard = board.refresh;
+  // REVIEW 16.11: the unscoped window can miss a rig's tasks, so the board
+  // read also takes each rig's own open work store (the graph read them on
+  // its own before; now every page counts from the same set).
+  const rigNames = useMemo(
+    () => [...new Set((rigs.data?.items ?? []).map((rig) => rig.name).filter((name) => name.length > 0))].sort(),
+    [rigs.data],
+  );
+  // Until the rig list is in, the stores wait (a pending key that never
+  // resolves): data from an empty rig list must not read as «every store in».
+  const rigsKnown = rigs.data !== undefined;
+  const rigStoresKey = rigsKnown ? rigStoresCacheKey(city, rigNames) : `${rigStoresCacheKey(city, [])}pending`;
+  const readStores = (fresh: boolean): Promise<SupervisorBead[]> =>
+    !rigsKnown
+      ? new Promise<SupervisorBead[]>(() => undefined)
+      : rigNames.length === 0
+        ? Promise.resolve([] as SupervisorBead[])
+        : sharedRead(rigStoresKey, () => readRigStores(rigNames), { fresh });
+  const rigStores = useCachedData(rigStoresKey, () => readStores(false), {
+    refreshFetcher: () => readStores(true),
+  });
+  const refreshRigStores = rigStores.refresh;
+  const refreshBoardOnly = board.refresh;
+  const refreshBoard = useCallback(async () => {
+    await Promise.all([refreshBoardOnly(), refreshRigStores()]);
+  }, [refreshBoardOnly, refreshRigStores]);
   const [token] = useState(() => Symbol('board-consumer'));
   const refreshRef = useRef(refreshBoard);
   refreshRef.current = refreshBoard;
@@ -158,7 +207,11 @@ export function useBoardData(): BoardRead {
     coalesceMs: BOARD_REFRESH_COALESCE_MS,
   });
 
-  const data = useMemo(() => boardDataOf(board.data), [board.data]);
+  const data = useMemo(() => {
+    const base = boardDataOf(board.data);
+    return base === undefined || rigStores.data === undefined ? base : { ...base, rigStoreItems: rigStores.data };
+  }, [board.data, rigStores.data]);
+  const owner = useMemo(() => (data === undefined ? undefined : ownerAskedOf(ownerBeadsOf(data))), [data]);
   const rigItems = useMemo<readonly RigPrefix[]>(() => rigs.data?.items ?? EMPTY_RIGS, [rigs.data]);
   const sessionItems = useMemo<readonly BeadAttentionSession[]>(
     () => sessions.data?.items ?? EMPTY_SESSIONS,
@@ -172,6 +225,9 @@ export function useBoardData(): BoardRead {
 
   return {
     data,
+    owner,
+    // In only once the rig list is known and its stores are read for it.
+    rigStoresIn: rigs.data !== undefined && rigStores.data !== undefined && !rigStores.loading,
     rigs: rigItems,
     sessions: sessionItems,
     loading: board.loading,

@@ -14,7 +14,7 @@ import { NeedsShelves } from './Shelf';
 // the preview. A paused topic counts in the badge number; unread does not.
 
 const STAGES: TaskStages = { state: 'ready', inFlight: [], queued: 0, outsideWindow: 0 };
-const EMPTY: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0 };
+const EMPTY: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0, questionCount: 0 };
 const NOW = Date.parse('2026-11-15T19:00:00Z');
 
 beforeEach(() => {

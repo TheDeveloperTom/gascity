@@ -15,12 +15,7 @@
 
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { milestoneOf } from '../../lib/waitReasons';
-import { askedOwnerQuestions } from '../../lib/ownerAsked';
-
-/** What each asked question holds, by carrier id: the graph's view of lib/ownerAsked. */
-export function askedHoldsOf(beads: ReadonlyArray<GraphBead>): Map<string, number> {
-  return new Map([...askedOwnerQuestions(beads)].map(([id, q]) => [id, q.holds]));
-}
+import { ownerAskedOf, type OwnerAsked } from '../../lib/ownerAsked';
 import { cardLabel } from '../board/cardLabel';
 
 /** The bead element the graph reads: exactly what the board loads. */
@@ -40,6 +35,8 @@ export interface GraphNode {
   row: number;
   outside: boolean;
   assignee: string | null;
+  /** A question: the tasks that start the moment it is answered (lib/ownerAsked). */
+  opensNow?: number;
 }
 export interface GraphEdge {
   from: string;
@@ -111,8 +108,21 @@ function hasOwnQuestion(bead: GraphBead, asked: Asked): boolean {
 }
 
 /** An open owner gate nobody asked yet (the city asks it): it holds, but is not «От тебя». */
-function isUnaskedGate(bead: GraphBead | undefined, asked: Asked): boolean {
+function isUnaskedGate(bead: GraphBead | undefined, asked: Asked): bead is GraphBead {
   return bead !== undefined && bead.status !== 'closed' && isOwnerGate(bead) && !asked.has(bead.id);
+}
+
+/** Why a task waits on an owner gate or question that is not «От тебя» yet. */
+function pendingReason(gates: readonly GraphBead[], asking: ReadonlySet<string>): string {
+  // The feeder's own wording for class `no-plan` (feeder_contract.py).
+  if (gates.some((g) => meta(g, 'devwork.gate_kind') === 'plan')) return 'у этапа нет плана';
+  const names = listShort(gates.map((g) => shorten(g.title)));
+  return gates.some((g) => asking.has(g.id)) ? `ждёт: ${names} — вопрос задаётся` : `ждёт: ${names} — вопрос ещё не задан`;
+}
+
+/** A question card's «держит N»; N = 0 reads «ничего не держит» (owner 16.11). */
+export function holdsLabel(holds: number): string {
+  return holds === 0 ? 'ничего не держит' : `держит ${holds}`;
 }
 
 const QUESTION_SUFFIX = '::q';
@@ -261,14 +271,18 @@ export function buildGraph(
     focusIds?: string[];
     nowMs: number;
     partial?: boolean;
-    /** The «От тебя» set when the caller read it from beads this graph does not get as is (board graph). */
-    asked?: Asked;
+    /**
+     * The one owner model of the page's raw read (useBoardData.owner). Without
+     * it the graph computes one from `beads` (tests, standalone use).
+     */
+    owner?: OwnerAsked;
   },
 ): GraphModel {
   const all = beads.filter(isBead);
   const byId = new Map<string, GraphBead>();
   for (const b of all) if (!byId.has(b.id)) byId.set(b.id, b);
-  const asked: Asked = opts.asked ?? askedHoldsOf(all);
+  const owner = opts.owner ?? ownerAskedOf(all);
+  const asked: Asked = new Map([...owner.questions].map(([id, q]) => [id, q.holds]));
   const live = (id: string): GraphBead | undefined => {
     const b = byId.get(id);
     return b !== undefined && b.status !== 'closed' && !isPlumbing(b, asked) ? b : undefined;
@@ -364,21 +378,34 @@ export function buildGraph(
     const base = { id, kind: d.kind, label: d.label, title: d.title, holds, row: 0, outside: d.outside, assignee };
     if (d.kind === 'question') {
       // «Держит N» is the shared count (lib/ownerAsked), the same as in «Нужно от меня».
-      const n = asked.get(b.id) ?? holds;
-      return { ...base, holds: n, column: 0, state: 'waits_owner', reason: n === 0 ? 'ничего не держит' : `держит ${n}` };
+      const q = owner.questions.get(b.id);
+      const n = q?.holds ?? holds;
+      return {
+        ...base,
+        holds: n,
+        ...(q === undefined ? {} : { opensNow: q.opensNow }),
+        column: 0,
+        state: 'waits_owner',
+        reason: holdsLabel(n),
+      };
     }
     const column = depth.get(id) ?? 1;
     const qs = d.blockers.filter((x) => drafts.get(x)?.kind === 'question').map(shortOf);
-    const ts = d.blockers.filter((x) => drafts.get(x)?.kind === 'task').map(shortOf);
+    const taskBlockers = d.blockers.filter((x) => drafts.get(x)?.kind === 'task');
+    const ts = taskBlockers.map(shortOf);
     const unaskedGates = blockerIds(b)
       .map((x) => byId.get(x))
       .filter((g): g is GraphBead => isUnaskedGate(g, asked));
-    const unasked = unaskedGates.map((g) => shorten(g.title));
-    // The feeder's own wording for class `no-plan` (feeder_contract.py).
-    const noPlan = unaskedGates.some((g) => meta(g, 'devwork.gate_kind') === 'plan');
+    // REVIEW 16.11: held through what this graph does not draw (an epic, a
+    // dropped noise bead): lib/ownerAsked says which questions hold it.
+    const heldBy = (owner.heldBy.get(b.id) ?? []).map((qid) => drafts.get(qid)?.short ?? shorten(byId.get(qid)?.title ?? qid));
     let state: GraphNodeState;
     let reason: string;
-    if (b.status === 'in_progress') {
+    if (owner.asking.has(b.id) && b.status !== 'in_progress') {
+      // Marked for the owner, no Discord link yet: the question is being asked.
+      state = 'waits_owner';
+      reason = 'вопрос задаётся';
+    } else if (b.status === 'in_progress') {
       state = 'in_work';
       reason = qs.length > 0 ? `ждёт тебя: ${listShort(qs)}` : 'в работе';
     } else if (b.status === 'failed') {
@@ -389,12 +416,16 @@ export function buildGraph(
       reason = `ждёт тебя: ${listShort(qs)}`;
     } else if (ts.length > 0) {
       state = 'waits_task';
-      reason = `ждёт: ${listShort(ts)}`;
-    } else if (unasked.length > 0) {
+      const asking = taskBlockers.some((x) => owner.asking.has(beadIdOf(x)));
+      reason = `ждёт: ${listShort(ts)}${asking ? ' — вопрос задаётся' : ''}`;
+    } else if (unaskedGates.length > 0) {
       // An owner gate the city has not asked yet: it holds, but it is no
       // question for the owner, and the task is not «никто не взял».
       state = 'waits_task';
-      reason = noPlan ? 'у этапа нет плана' : `ждёт: ${listShort(unasked)} — вопрос ещё не задан`;
+      reason = pendingReason(unaskedGates, owner.asking);
+    } else if (heldBy.length > 0) {
+      state = 'waits_owner';
+      reason = `ждёт тебя: ${listShort([...new Set(heldBy)])}`;
     } else {
       const since = Date.parse(b.updated_at ?? b.created_at);
       const days = Number.isFinite(since) ? Math.floor((opts.nowMs - since) / DAY_MS) : 0;
@@ -535,8 +566,12 @@ export function whatIfBanner(model: GraphModel, id: string): string | null {
   const now = chain.downNow.size;
   const total = chain.down.size;
   if (node.kind === 'question') {
-    if (total === 0) return null;
-    return `Если ответишь: сразу ${now === 1 ? 'пойдёт' : 'пойдут'} ${now}, всего откроется ${total}`;
+    // REVIEW 16.11: what answering opens is the shared count (lib/ownerAsked),
+    // not this graph's edges (another epic's tasks and epic-held tasks count).
+    const all = node.holds;
+    const first = node.opensNow ?? now;
+    if (all === 0 && total === 0) return null;
+    return `Если ответишь: сразу ${first === 1 ? 'пойдёт' : 'пойдут'} ${first}, всего откроется ${Math.max(all, total)}`;
   }
   const byId = new Map(model.nodes.map((n) => [n.id, n]));
   const blockers = model.edges

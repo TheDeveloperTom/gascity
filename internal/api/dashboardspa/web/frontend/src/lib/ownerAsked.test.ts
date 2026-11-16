@@ -24,7 +24,7 @@ const asked = (qid: string) => ({
   'decision.asked_at': AT,
   'owner.link': LINK,
 });
-const blocks = (id: string) => [{ issue_id: '', depends_on_id: id, type: 'blocks' }] as SupervisorBead['dependencies'];
+const blocks = (id: string) => [{ issue_id: '', depends_on_id: id, type: 'blocks' }] as NonNullable<SupervisorBead['dependencies']>;
 
 const BEADS: SupervisorBead[] = [
   // dw-mjo5: asked gate holding a task.

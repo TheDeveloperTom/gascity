@@ -9,7 +9,8 @@
 import { isBoardNoise } from '../../lib/boardNoise';
 import { beadRole } from '../../lib/boardRoles';
 import { milestoneOf } from '../../lib/waitReasons';
-import { askedHoldsOf, beadIdOf, buildGraph, type GraphBead, type GraphColumn, type GraphEdge, type GraphNode } from './model';
+import { ownerAskedOf, type OwnerAsked } from '../../lib/ownerAsked';
+import { beadIdOf, buildGraph, type GraphBead, type GraphColumn, type GraphEdge, type GraphNode } from './model';
 
 export interface Lane {
   key: string;
@@ -37,6 +38,8 @@ export interface BoardGraphOptions {
   partial?: boolean;
   collapsed?: Record<string, boolean>;
   filter?: BoardFilter;
+  /** The one owner model of the page's raw read (useBoardData.owner); else computed from `beads`. */
+  owner?: OwnerAsked;
 }
 
 export const ASK_LANE = 'ask';
@@ -160,11 +163,19 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
   // sessions) and alarm cards; they are never tickets. Gates stay (decision
   // gates are owner questions; route gates are dropped by buildGraph), and
   // epics stay for lane titles. A link to a dropped bead is not a blocker.
+  // REVIEW 16.11: the owner model comes from the raw read, before this keep
+  // rule; a bead carrying an asked (or being-asked) question is never dropped.
+  const owner = opts.owner ?? ownerAskedOf(beads.filter((b) => typeof b?.id === 'string'));
   const dropped = new Set<string>();
   const byId = new Map<string, GraphBead>();
   for (const b of beads) {
     if (typeof b?.id !== 'string' || byId.has(b.id) || dropped.has(b.id)) continue;
-    const keep = isEpic(b) || isGate(b) || (beadRole(b) !== 'service' && !isBoardNoise(b));
+    const keep =
+      owner.carriers.has(b.id) ||
+      owner.asking.has(b.id) ||
+      isEpic(b) ||
+      isGate(b) ||
+      (beadRole(b) !== 'service' && !isBoardNoise(b));
     if (keep) byId.set(b.id, b);
     else dropped.add(b.id);
   }
@@ -230,7 +241,9 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     for (const id of ids) {
       if (dropped.has(id)) continue;
       const t = byId.get(id);
-      if (t !== undefined && isEpic(t)) {
+      // An epic carrying an asked question is that question: a real blocker
+      // edge, not a lane mark (REVIEW 16.11).
+      if (t !== undefined && isEpic(t) && !owner.questions.has(t.id)) {
         if (open(t)) markEpicWait(lane, t);
         continue;
       }
@@ -251,7 +264,7 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
 
   // «От тебя» from the beads as read (lib/ownerAsked), before epic blockers
   // turn into lane marks: «держит N» matches «Нужно от меня».
-  const model = buildGraph(input, { epicId: null, nowMs: opts.nowMs, asked: askedHoldsOf(all) });
+  const model = buildGraph(input, { epicId: null, nowMs: opts.nowMs, owner });
   const warnings: string[] = [];
   if (opts.partial === true) warnings.push('Прочитано не полностью — часть задач и связей может не попасть на граф.');
 
@@ -289,10 +302,17 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     let keep: Set<string>;
     if (filter === 'holds_me') {
       keep = new Set<string>();
+      // What a question holds is lib/ownerAsked's waiter set (through epics
+      // and dropped beads too), plus what the drawn edges reach.
+      const held = new Set<string>();
+      for (const q of owner.questions.values()) for (const w of q.waiters) held.add(w);
       for (const n of nodes) {
-        if (n.kind !== 'question') continue;
-        keep.add(n.id);
-        for (const x of walk(n.id, down)) keep.add(x);
+        if (n.kind === 'question') {
+          keep.add(n.id);
+          for (const x of walk(n.id, down)) keep.add(x);
+        } else if (held.has(beadIdOf(n.id))) {
+          keep.add(n.id);
+        }
       }
     } else if (filter === 'in_work') {
       keep = new Set(nodes.filter((n) => n.state === 'in_work').map((n) => n.id));

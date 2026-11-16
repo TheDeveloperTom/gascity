@@ -10,7 +10,7 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
 import { transitiveWaiters } from './holds';
-import { allAskedQuestionIds, askedOwnerQuestions, byHoldersFirst } from './ownerAsked';
+import { byHoldersFirst, ownerAskedOf, ownerBeadsOf, type OwnerAsked } from './ownerAsked';
 import { OWNER_QUESTION_LABEL } from './ownerQuestions';
 import { milestoneOf } from './waitReasons';
 
@@ -71,8 +71,10 @@ export interface NeedsModel {
   /** «Стоит»: shown under the needs; only `forOwner` ones count. */
   stalls: readonly StallItem[];
   quiet: readonly QuietItem[];
-  /** The badge number: needs + owner-marked stalls. */
+  /** The badge number: questions + mail/agent asks + owner-marked stalls. */
   count: number;
+  /** The badge's question part: equals the graph's «От тебя» header. */
+  questionCount: number;
 }
 
 /** The attention registry's id suffix for an owner question (mayorDecisionAttention). */
@@ -96,12 +98,25 @@ function milestoneRank(milestone: string): number {
   return match === null ? Number.POSITIVE_INFINITY : Number(match[1]);
 }
 
+function breakdownOf(
+  waiters: Iterable<string>,
+  byId: ReadonlyMap<string, SupervisorBead>,
+): readonly MilestoneCount[] {
+  return holdsFromWaiters([...waiters], byId).breakdown;
+}
+
 function holdsOf(
   id: string,
   waitersOf: ReadonlyMap<string, readonly string[]>,
   byId: ReadonlyMap<string, SupervisorBead>,
 ): Pick<NeedItem, 'holds' | 'breakdown'> {
-  const waiters = transitiveWaiters(id, waitersOf);
+  return holdsFromWaiters(transitiveWaiters(id, waitersOf), byId);
+}
+
+function holdsFromWaiters(
+  waiters: readonly string[],
+  byId: ReadonlyMap<string, SupervisorBead>,
+): Pick<NeedItem, 'holds' | 'breakdown'> {
   const counts = new Map<string, number>();
   for (const waiter of waiters) {
     const bead = byId.get(waiter);
@@ -126,6 +141,7 @@ export function needsFromBoard(
   nowMs: number,
   loading = true,
   ownerItems: readonly AttentionItem[] = [],
+  ownerIn?: OwnerAsked,
 ): NeedsModel {
   if (data === undefined) {
     // Owner questions arrive with the board: until then their attention
@@ -141,15 +157,19 @@ export function needsFromBoard(
       stalls: [],
       quiet: [],
       count: asks.length,
+      questionCount: 0,
     };
   }
   const model = buildBoardModel(data, rigs, FILTERS);
-  const everything = [...data.items, ...data.serviceItems];
+  // The page's raw read (unscoped window + rig stores + service beads) and
+  // the one owner model computed from it (useBoardData passes it in).
+  const everything = ownerBeadsOf(data);
   const byId = new Map(everything.map((bead) => [bead.id, bead]));
+  const owner = ownerIn ?? ownerAskedOf(everything);
 
   // «От тебя» (owner 16.11): the one shared rule with the graph column —
   // every asked question, once per question id, holders first (lib/ownerAsked).
-  const questions = [...askedOwnerQuestions(everything).values()]
+  const questions = [...owner.questions.values()]
     .map((q): NeedItem => {
       const askedMs = parseMs(q.askedAt);
       return {
@@ -159,7 +179,7 @@ export function needsFromBoard(
         summary: q.why,
         choices: q.choices.map((choice) => choice.label),
         waitedMs: askedMs === null ? null : Math.max(0, nowMs - askedMs),
-        breakdown: holdsOf(q.beadId, model.waitersOf, byId).breakdown,
+        breakdown: breakdownOf(q.waiters, byId),
         holds: q.holds,
         href: beadHref(q.beadId),
         questionId: q.questionId,
@@ -168,7 +188,7 @@ export function needsFromBoard(
     .sort(byHoldersFirst);
   // Every asked question, held or not: one that holds nothing is noise, so
   // it never comes back as an owner-marked stall or a mail/agent ask.
-  const questionIds = allAskedQuestionIds(everything);
+  const questionIds = owner.carriers;
 
   // «Стоит» (coordinator ruling 2): every stall the Mayor does not know about,
   // plus any stall marked as waiting for the owner. Only the marked ones
@@ -243,7 +263,10 @@ export function needsFromBoard(
     stalls: openStalls,
     quiet,
     // owner-marked stalls never fold, so this is exactly what the page shows
+    // The badge (REVIEW 16.11, one rule): questions + mail/agent asks +
+    // owner-marked stalls. Its question part is the graph's «От тебя» header.
     count: needs.length + openStalls.filter((s) => s.forOwner).length,
+    questionCount: questions.length,
   };
 }
 
@@ -288,10 +311,10 @@ function ownerAsks(
 export function useNeedsModel(): NeedsModel {
   const read = useBoardData();
   const ownerItems = useAttentionModel().owner.items;
-  const { data, rigs, sessions, loading } = read;
+  const { data, rigs, sessions, loading, owner } = read;
   return useMemo(
-    () => needsFromBoard(data, rigs, sessions, Date.now(), loading, ownerItems),
-    [data, rigs, sessions, loading, ownerItems],
+    () => needsFromBoard(data, rigs, sessions, Date.now(), loading, ownerItems, owner),
+    [data, rigs, sessions, loading, ownerItems, owner],
   );
 }
 

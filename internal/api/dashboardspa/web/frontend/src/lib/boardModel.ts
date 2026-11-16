@@ -92,6 +92,11 @@ export interface WaitingGroup {
 
 export interface BoardData {
   items: readonly SupervisorBead[];
+  /**
+   * Each rig's own open work store (REVIEW 16.11): the unscoped window can
+   * miss a rig's tasks, so the owner model and the graphs read these too.
+   */
+  rigStoreItems?: readonly SupervisorBead[];
   routeItems: readonly SupervisorBead[];
   serviceItems: readonly SupervisorBead[];
   routesComplete: boolean;

@@ -43,6 +43,7 @@ import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts
 import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel, CITY_PROJECT_KEY, rigProjectLabel } from '../lib/boardModel';
 import { isBoardNoise } from '../lib/boardNoise';
+import { ownerBeadsOf } from '../lib/ownerAsked';
 import { splitCityRestarting } from '../lib/cityRestarting';
 import {
   BOARD_RECENT_CLOSED_LIMIT,
@@ -482,46 +483,19 @@ export function BeadsPage() {
   const showAllGraph = viewGraphParam && !graphAvailable;
   const anyGraph = showGraph || showAllGraph;
   // Graph integration 16.11: the unscoped window can miss a rig's tasks (the
-  // model lane saw 2 of the M04 beads unscoped, all of them with rig=devwork),
-  // so the graph also reads each rig's own open work store, merged by id.
-  const graphRigNames = useMemo(
-    () => [...new Set(rigItems.map((rig) => rig.name).filter((name) => name.length > 0))].sort(),
-    [rigItems],
+  // model lane saw 2 of the M04 beads unscoped, all of them with rig=devwork).
+  // REVIEW 16.11: each rig's open work store is now part of the one board read
+  // (useBoardData), so the graphs, the shelf and the badge count from the
+  // same raw set and the same owner model (board.owner).
+  const rigStoreItems = board.data?.rigStoreItems;
+  const graphRows = useMemo(
+    () => ownerBeadsOf({ items: allRows, rigStoreItems: rigStoreItems ?? EMPTY_BEADS, serviceItems }),
+    [allRows, rigStoreItems, serviceItems],
   );
-  const graphRigs = useCachedData(
-    `beads:board:${cityCacheKey}:graph-rigs:${anyGraph ? graphRigNames.join(',') : 'off'}`,
-    () =>
-      anyGraph && graphRigNames.length > 0
-        ? Promise.all(
-            graphRigNames.map((rig) =>
-              listSupervisorBeads({ rigFilter: rig })
-                .then((list) => list.items)
-                .catch(() => [] as SupervisorBead[]),
-            ),
-          ).then((legs) => legs.flat())
-        : Promise.resolve([] as SupervisorBead[]),
-  );
-  const refreshGraphRigs = graphRigs.refresh;
-  useGcEventRefresh(
-    [GC_EVENT_PREFIX.bead],
-    () => {
-      if (anyGraph) void refreshGraphRigs();
-    },
-    { coalesceMs: BOARD_REFRESH_COALESCE_MS },
-  );
-  const graphRows = useMemo(() => {
-    const seen = new Set<string>();
-    const out: SupervisorBead[] = [];
-    for (const bead of [...allRows, ...(graphRigs.data ?? []), ...serviceItems]) {
-      if (seen.has(bead.id)) continue;
-      seen.add(bead.id);
-      out.push(bead);
-    }
-    return out;
-  }, [allRows, graphRigs.data, serviceItems]);
+  const owner = board.owner;
   // Until every read is in, the graphs are built from what has arrived and
   // marked partial (no «никто не взял», ALL-README rule 11).
-  const graphRigsIn = graphRigNames.length === 0 || graphRigs.data !== undefined;
+  const graphRigsIn = board.rigStoresIn !== false;
   const graphPartial = !unscopedIn || !graphRigsIn;
   const graphModel = useMemo(
     () =>
@@ -531,9 +505,10 @@ export function BeadsPage() {
             ...(focusParam !== null ? { focusIds: [focusParam] } : {}),
             nowMs,
             ...(graphPartial ? { partial: true } : {}),
+            ...(owner === undefined ? {} : { owner }),
           })
         : null,
-    [showGraph, graphRows, epic, focusParam, nowMs, graphPartial],
+    [showGraph, graphRows, epic, focusParam, nowMs, graphPartial, owner],
   );
   // Owner 16.11: on the all-tickets graph a card's chain sat far off screen.
   // A graph click selects the card (drawer, ?bead=) AND narrows the graph to
@@ -614,9 +589,10 @@ export function BeadsPage() {
             partial: graphPartial,
             collapsed: laneCollapsed,
             filter: graphFilter,
+            ...(owner === undefined ? {} : { owner }),
           })
         : null,
-    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, laneCollapsed, graphFilter],
+    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, laneCollapsed, graphFilter, owner],
   );
   const toggleLane = useCallback(
     (key: string) => {

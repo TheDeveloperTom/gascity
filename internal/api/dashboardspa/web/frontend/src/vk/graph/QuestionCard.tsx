@@ -1,5 +1,6 @@
 import { CardShell, type CardShellProps } from './GraphCard';
 import { GraphIcon } from './icons';
+import { holdsLabel } from './model';
 
 // An owner question in «От тебя» (Graph-Epic qcard): amber = «ждёт тебя»; the
 // same size as a task card; «держит N» and «Ответить». Hovering «Ответить»
@@ -22,7 +23,7 @@ export function QuestionCard({ onAnswer, onAnswerHover, ...shell }: QuestionCard
         {node.title}
       </span>
       <div className="vkg-row" style={{ justifyContent: 'space-between' }}>
-        <span className="vkg-holds">держит {node.holds}</span>
+        <span className="vkg-holds">{holdsLabel(node.holds)}</span>
         <button
           type="button"
           className="vkg-answer"

@@ -115,7 +115,10 @@ describe('useBoardData', () => {
     );
     await waitFor(() => expect(screen.getByTestId('beads').textContent).toBe('1/0/0/true/1/1'));
     expect(screen.getByTestId('home').textContent).toBe('1/0/0/true/1/1');
-    expect(beads).toHaveBeenCalledTimes(1);
+    // One unscoped board read, plus (REVIEW 16.11) one open-store read per rig
+    // for the owner model; both shared by every consumer.
+    await waitFor(() => expect(beads).toHaveBeenCalledWith({ rigFilter: 'devwork' }));
+    expect(beads).toHaveBeenCalledTimes(2);
     expect(beads).toHaveBeenCalledWith({ withRoutes: true, recentClosed: { limit: 100 } });
     expect(rigs).toHaveBeenCalledTimes(1);
     expect(sessions).toHaveBeenCalledTimes(1);
@@ -134,6 +137,7 @@ describe('useBoardData', () => {
       </>,
     );
     await waitFor(() => expect(screen.getByTestId('tabs').textContent).toBe('1/0/0/true/1/1'));
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(2));
     expect(activeStreams()).toHaveLength(1);
     expect(activeStreams()[0]?.prefixes).toBe('bead.');
 
@@ -152,7 +156,8 @@ describe('useBoardData', () => {
         expect(screen.getByTestId(name).textContent).toBe('0/0/0/true/1/1');
       }
     });
-    expect(beads).toHaveBeenCalledTimes(2);
+    // the event refreshes the board read and the rig store read once each
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(4));
 
     // The leader leaving hands the stream to another consumer.
     view.rerender(
