@@ -1,0 +1,194 @@
+/* «Эпик: Все» + «Граф» (16.11, allv): lanes with sticky labels, sticky wave
+   headers, collapse summary rows, off-screen chain hints, «вписать в экран». */
+
+.vkgb-warn {
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: oklch(var(--destructive) / 0.12);
+  color: oklch(var(--destructive));
+  font-size: 14px;
+}
+.vkgb-warn p {
+  margin: 0;
+}
+.vkgb-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.vkgb-top > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.vkgb-fit {
+  margin: 12px 16px 0 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid oklch(var(--vk-border));
+  background: transparent;
+  color: oklch(var(--vk-text-normal));
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vkgb-fit[aria-pressed='true'] {
+  background: oklch(var(--vk-text-high) / 0.08);
+}
+.vkgb-viewport {
+  position: relative;
+}
+.vkgb-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 220px);
+}
+.vkgb-sizer {
+  position: relative;
+  overflow: hidden;
+}
+.vkgb-canvas {
+  position: relative;
+  transform-origin: 0 0;
+}
+.vkgb-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+.vkgb-colheads {
+  background: oklch(var(--vk-bg-panel, var(--background)));
+  border-bottom: 1px solid oklch(var(--vk-border));
+}
+.vkgb-colhead {
+  top: 8px;
+}
+.vkgb-corner {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 0 8px 12px;
+  font-size: 12px;
+  color: oklch(var(--vk-text-low));
+  background: inherit;
+}
+.vkgb-body {
+  position: relative;
+}
+.vkgb-lane {
+  position: absolute;
+  left: 0;
+  border-top: 1px dashed oklch(var(--vk-border) / 0.6);
+  border-bottom: 1px dashed oklch(var(--vk-border) / 0.6);
+  background: oklch(var(--vk-text-high) / 0.02);
+}
+.vkgb-sticky-left {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+}
+.vkgb-lane-label {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 8px 8px 12px;
+  background: oklch(var(--vk-bg-panel, var(--background)));
+  border-right: 1px solid oklch(var(--vk-border));
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.vkgb-toggle,
+.vkgb-epic {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: oklch(var(--vk-text-high));
+  cursor: pointer;
+  font: inherit;
+}
+.vkgb-epic {
+  font-weight: 600;
+  font-size: 14px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vkgb-epic:hover {
+  text-decoration: underline;
+}
+.vkgb-toggle {
+  width: 18px;
+  color: oklch(var(--vk-text-low));
+}
+.vkgb-progress {
+  font-size: 12px;
+  color: oklch(var(--vk-text-low));
+  font-family: var(--vk-font-mono);
+}
+.vkgb-waits {
+  font-size: 12px;
+  color: oklch(var(--warn));
+}
+.vkgb-summary {
+  position: absolute;
+  top: 4px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px dashed oklch(var(--vk-border));
+  border-radius: 6px;
+  background: transparent;
+  color: oklch(var(--vk-text-low));
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  z-index: 2;
+}
+.vkgb-summary:hover {
+  color: oklch(var(--vk-text-high));
+}
+.vkgb-body .vkg-card {
+  z-index: 2;
+}
+.vkgb-hint {
+  position: absolute;
+  z-index: 6;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid oklch(var(--vk-border));
+  background: oklch(var(--vk-bg-panel, var(--background)));
+  color: oklch(var(--vk-text-high));
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+.vkgb-hint[data-dir='down'] {
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.vkgb-hint[data-dir='right'] {
+  right: 12px;
+  top: 50%;
+}
+.vkgb-plane {
+  border-bottom: 1px solid oklch(var(--vk-border));
+}
+.vkgb-phead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  color: oklch(var(--vk-text-high));
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
