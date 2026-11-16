@@ -73,21 +73,19 @@ describe('«Нужно от меня» shelves', () => {
   // boards after our board; landing above «Стоит» they pushed it and every
   // shelf below down (CLS 0.22). While the peer read settles, «Стоит» and the
   // shelves below wait too.
-  it('while the peer boards settle, holds «Стоит» and the shelves below', () => {
+  it('while the peer boards settle, holds the shelves below', () => {
     const model = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
     const view = render(
       <MemoryRouter>
         <NeedsShelves model={model} stages={STAGES} settling />
       </MemoryRouter>,
     );
-    expect(screen.queryByRole('heading', { level: 3, name: 'Стоит' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Работает/ })).toBeNull();
     view.rerender(
       <MemoryRouter>
         <NeedsShelves model={model} stages={STAGES} settling={false} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('heading', { level: 3, name: 'Стоит' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Работает/ })).toBeTruthy();
   });
 
@@ -145,30 +143,19 @@ describe('«Нужно от меня» shelves', () => {
     expect(within(item).getByRole('button', { name: 'Обсудить в Discord' })).toBeTruthy();
   });
 
-  it('stalls sit under «Стоит»; the owner-marked one is flagged as counted', () => {
-    show();
-    const stuck = screen.getByRole('heading', { level: 3, name: 'Стоит' }).closest('section');
-    if (stuck === null) throw new Error('no «Стоит» section');
-    expect(within(stuck).getByText('Миграция 0425')).toBeTruthy();
-    expect(itemOf(UNLINKED_ID).getAttribute('data-for-owner')).toBe('true');
-    expect(itemOf(STALLED_ID).getAttribute('data-for-owner')).toBe('false');
-    expect(within(itemOf(UNLINKED_ID)).queryByRole('list')).toBeNull();
-  });
-
-  it('a stall shows «Обсудить» and no «Ответить»', () => {
-    show();
-    const item = itemOf(STALLED_ID);
-    expect(within(item).getByText('Миграция 0425')).toBeTruthy();
-    expect(within(item).getByText(/стоит 20 ч/)).toBeTruthy();
-    expect(within(item).getAllByRole('button').map((b) => b.textContent)).toEqual(['Обсудить в Discord']);
-    expect(within(item).queryByText(/Ответить/)).toBeNull();
-  });
-
-  it('never offers an unlinked question an answer, and cuts reminders and PR states', () => {
+  // Owner 16.11: free tasks nobody took are a city alarm, not the owner's work.
+  it('renders no «Стоит» section and no free stall rows', () => {
     const { container } = show();
-    expect(within(itemOf(UNLINKED_ID)).queryByText(/Ответить/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Стоит' })).toBeNull();
+    expect(container.querySelector(`[data-need="${STALLED_ID}"]`)).toBeNull();
+    expect(container.querySelector(`[data-need="${UNLINKED_ID}"]`)).toBeNull();
+    expect(screen.queryByText('Миграция 0425')).toBeNull();
+    expect(container.querySelector('[data-kind="stall"]')).toBeNull();
+  });
+
+  it('cuts reminders and PR states', () => {
+    const { container } = show();
     expect(container.textContent).not.toMatch(/напомнит/);
-    expect(itemOf(UNLINKED_ID).getAttribute('data-kind')).toBe('stall');
     expect(container.textContent).not.toMatch(/\b(merged|checks)\b|PR открыт|влит|проверки/i);
     expect(container.querySelector('[target="_blank"]')).toBeNull();
   });
@@ -188,15 +175,14 @@ describe('«Нужно от меня» shelves', () => {
     expect(container.innerHTML).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]/);
   });
 
-  // polish2 16.11 (owner, 2000 px screenshot)
-  it('wide screens: two columns, «Нужно от меня» left and «Стоит» right; phones stay one column', () => {
+  // Owner 16.11: with «Стоит» gone the questions are one readable column, not edge to edge.
+  it('wide screens: one readable column, no right column, no 2-up grid', () => {
     const { container } = show();
     const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toContain('xl:grid-cols-2');
-    const [left, right] = Array.from(root.children) as HTMLElement[];
-    expect(within(left!).getByRole('button', { name: /Нужно от меня/ })).toBeTruthy();
-    expect(within(right!).getByRole('heading', { level: 3, name: 'Стоит' })).toBeTruthy();
-    expect(within(left!).queryByRole('heading', { level: 3, name: 'Стоит' })).toBeNull();
+    expect(root.className).not.toContain('xl:grid-cols-2');
+    expect(root.className).toMatch(/max-w-/);
+    const list = itemOf(QUESTION_ID).parentElement as HTMLElement;
+    expect(list.className).not.toContain('grid-cols-2');
   });
 
   // vk11: canvas type — phone question card 17 px medium; desktop row 15 px on one line.
@@ -215,8 +201,6 @@ describe('«Нужно от меня» shelves', () => {
         <NeedsShelves model={model} stages={STAGES} />
       </MemoryRouter>,
     );
-    const stuck = screen.getByRole('heading', { level: 3, name: 'Стоит' }).closest('section')!;
-    expect(within(stuck).queryByText('Удалить mp_assignment после переноса ящика')).toBeNull();
     const question = itemOf(QUESTION_ID);
     expect(within(question).getByText(/держит 24 задачи/)).toBeTruthy();
     const toggle = within(question).getByRole('button', { name: /из них стоит/ });
@@ -228,34 +212,9 @@ describe('«Нужно от меня» shelves', () => {
     expect(row.getAttribute('href')).toBe(`/beads?bead=${HELD_STALL_ID}`);
   });
 
-  // polish2 16.11 (coordinator, needs-2000 shot): no reserved empty half.
-  it('no «Стоит» items: one column, the questions 2 per row from 1440 px, nothing reserved on the right', () => {
-    const base = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
-    const model = { ...base, stalls: [] };
-    const { container } = render(
-      <MemoryRouter>
-        <NeedsShelves model={model} stages={STAGES} />
-      </MemoryRouter>,
-    );
-    const root = container.firstElementChild as HTMLElement;
-    expect(root.className).not.toContain('xl:grid-cols-2');
-    const list = itemOf(QUESTION_ID).parentElement as HTMLElement;
-    expect(list.className).toContain('min-[1440px]:grid-cols-2');
-  });
-
-  it('while the boards settle, no column is reserved for «Стоит»', () => {
-    const model = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
-    const { container } = render(
-      <MemoryRouter>
-        <NeedsShelves model={model} stages={STAGES} settling />
-      </MemoryRouter>,
-    );
-    expect((container.firstElementChild as HTMLElement).className).not.toContain('xl:grid-cols-2');
-  });
-
   it('«Обсудить в Discord» on a row is not faded when enabled', () => {
     show();
-    const btn = within(itemOf(STALLED_ID)).getByRole('button', { name: 'Обсудить в Discord' });
+    const btn = within(itemOf('mail:M-1:unread')).getByRole('button', { name: 'Обсудить в Discord' });
     expect(btn.className).not.toMatch(/(^|\s)sm:opacity-70(\s|$)/);
   });
 
@@ -265,7 +224,7 @@ describe('«Нужно от меня» shelves', () => {
     expect(rowTitle('Миграция 0425')).toBe('Миграция 0425');
     expect(rowTitle('M02 #7 — Выполнить 58 сценариев')).toBe('M02 #7 — Выполнить 58 сценариев');
     show();
-    const meta = within(itemOf(STALLED_ID)).getByText(/стоит 20 ч/);
+    const meta = within(itemOf(QUESTION_ID)).getByTestId('need-meta');
     expect(meta.className).toContain('truncate');
   });
 });

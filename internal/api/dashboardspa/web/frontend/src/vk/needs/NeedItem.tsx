@@ -1,5 +1,5 @@
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { t, tn } from '../../i18n';
 import type { DiscussContext } from '../../lib/discussWithMayor';
@@ -128,19 +128,49 @@ export function rowTitle(title: string): string {
   return m?.[1] ?? title;
 }
 
-/** The title block opens: its page, else an ask's chat thread, else nothing to open. */
+/** The board card a row's link opens (`/beads?bead=<id>`), else null. */
+export function boardBeadOf(href: string | null): string | null {
+  if (href === null) return null;
+  const [path, query = ''] = href.split('?', 2);
+  if (path !== '/beads') return null;
+  const params = new URLSearchParams(query);
+  if ([...params.keys()].some((key) => key !== 'bead')) return null;
+  return params.get('bead');
+}
+
+/**
+ * The title block opens: its page, else an ask's chat thread, else nothing to
+ * open. Owner 16.11: with `onOpenBead`, a board card opens in the page's
+ * drawer instead (the href stays for a new tab).
+ */
 function RowLink({
   need,
   labelledBy,
+  onOpenBead,
   children,
 }: {
   need: Need;
   labelledBy: string;
+  onOpenBead?: ((id: string) => void) | undefined;
   children: ReactNode;
 }) {
   if (need.href !== null) {
+    const bead = onOpenBead === undefined ? null : boardBeadOf(need.href);
     return (
-      <Link to={need.href} aria-labelledby={labelledBy} className={LINK}>
+      <Link
+        to={need.href}
+        aria-labelledby={labelledBy}
+        className={LINK}
+        {...(bead !== null && onOpenBead !== undefined
+          ? {
+              onClick: (e: MouseEvent<HTMLAnchorElement>) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                e.preventDefault();
+                onOpenBead(bead);
+              },
+            }
+          : {})}
+      >
         {children}
       </Link>
     );
@@ -207,7 +237,13 @@ function HeldStalls({ need, stalls }: { need: Need; stalls: readonly StallItem[]
   );
 }
 
-export function NeedItem({ need }: { need: Need }) {
+export function NeedItem({
+  need,
+  onOpenBead,
+}: {
+  need: Need;
+  onOpenBead?: (id: string) => void;
+}) {
   const titleId = useId();
   const held = need.heldStalls ?? [];
   const question = need.kind === 'question';
@@ -241,7 +277,7 @@ export function NeedItem({ need }: { need: Need }) {
           {need.kind === 'stall' ? <WarnIcon /> : <HandIcon />}
         </span>
         <div className="flex min-w-0 flex-1 flex-col items-start">
-          <RowLink need={need} labelledBy={titleId}>
+          <RowLink need={need} labelledBy={titleId} onOpenBead={onOpenBead}>
             {/* Phone-Needs: the Mayor's options first, read-only (the card answers). */}
             {need.choices.length > 0 && (
               <ul

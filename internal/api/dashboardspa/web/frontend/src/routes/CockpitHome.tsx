@@ -26,7 +26,7 @@ import { topicNeedsOf } from '../lib/peerTopics';
 import { peerNeedsCount, pendingTopicQuestions } from '../lib/topicQuestions';
 import { useCappedHold } from '../hooks/useCappedHold';
 import { PEER_SETTLE_CAP_MS, usePeerBoards, usePeerBoardsSettled } from '../hooks/usePeerBoards';
-import { NeedsShelves } from '../vk/needs/Shelf';
+import { NeedsSection } from '../vk/needs/NeedsSection';
 import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
 import { useCachedData } from '../hooks/useCachedData';
@@ -252,7 +252,7 @@ export function CockpitHomePage() {
 
       {/* vk lane 3: «Нужно от меня», «Работает», «Тихо» (Attention / Phone-Needs). */}
       <div className="mb-10 min-w-0">
-        <NeedsShelves
+        <NeedsSection
           model={needs}
           stages={taskStages}
           topicNeeds={topicNeeds}
