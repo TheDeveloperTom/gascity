@@ -110,7 +110,13 @@ function WarnIcon() {
   );
 }
 
-const LINK = 'focus-mark flex min-w-0 flex-col items-start gap-0';
+const LINK = 'focus-mark flex min-w-0 max-w-full flex-col items-start gap-0 self-stretch';
+
+/** Content rule (no raw ids): drop a leading slug id («m03-d3-fixed-dispatch — …»). */
+export function rowTitle(title: string): string {
+  const m = /^[a-z0-9][a-z0-9._]*-[a-z0-9._-]+\s+[—–-]\s+(.+)$/.exec(title);
+  return m?.[1] ?? title;
+}
 
 /** The title block opens: its page, else an ask's chat thread, else nothing to open. */
 function RowLink({
@@ -251,10 +257,10 @@ export function NeedItem({ need }: { need: Need }) {
                   : 'truncate text-[15px] leading-6',
               )}
             >
-              {need.title}
+              {rowTitle(need.title)}
             </span>
             {meta !== '' && (
-              <span className="text-[13px] leading-5 text-vk-text-low">{meta}</span>
+              <span className="max-w-full truncate text-[13px] leading-5 text-vk-text-low">{meta}</span>
             )}
             {question && need.summary !== null && (
               <span className="mt-1 line-clamp-2 text-sm leading-[1.45] text-vk-text-normal [overflow-wrap:anywhere] md:hidden">

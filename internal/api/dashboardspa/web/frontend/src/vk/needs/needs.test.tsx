@@ -249,4 +249,14 @@ describe('«Нужно от меня» shelves', () => {
     const btn = within(itemOf(STALLED_ID)).getByRole('button', { name: 'Обсудить в Discord' });
     expect(btn.className).not.toMatch(/(^|\s)sm:opacity-70(\s|$)/);
   });
+
+  it('drops a leading slug id from a row title and keeps the meta on one line', async () => {
+    const { rowTitle } = await import('./NeedItem');
+    expect(rowTitle('m03-d3-fixed-dispatch — фиксированный диспатч')).toBe('фиксированный диспатч');
+    expect(rowTitle('Миграция 0425')).toBe('Миграция 0425');
+    expect(rowTitle('M02 #7 — Выполнить 58 сценариев')).toBe('M02 #7 — Выполнить 58 сценариев');
+    show();
+    const meta = within(itemOf(STALLED_ID)).getByText(/стоит 20 ч/);
+    expect(meta.className).toContain('truncate');
+  });
 });
