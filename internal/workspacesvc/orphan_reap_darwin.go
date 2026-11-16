@@ -61,6 +61,7 @@ func platformOrphanTable() (orphanProcTable, bool) {
 		cmdline:  pidutil.Cmdline,
 		envValue: pidutil.EnvironValue,
 		cwd:      darwinProcessCwd,
+		sid:      unix.Getsid,
 	}, true
 }
 
@@ -91,8 +92,10 @@ func darwinProcessCwd(pid int) (string, error) {
 
 func darwinOrphanEntry(kp *unix.KinfoProc) orphanProcEntry {
 	return orphanProcEntry{
-		pid:    int(kp.Proc.P_pid),
-		ppid:   int(kp.Eproc.Ppid),
-		zombie: kp.Proc.P_stat == darwinZombieState,
+		pid:       int(kp.Proc.P_pid),
+		ppid:      int(kp.Eproc.Ppid),
+		pgid:      int(kp.Eproc.Pgid),
+		zombie:    kp.Proc.P_stat == darwinZombieState,
+		startTime: kp.Proc.P_starttime.Sec*1_000_000 + int64(kp.Proc.P_starttime.Usec),
 	}
 }

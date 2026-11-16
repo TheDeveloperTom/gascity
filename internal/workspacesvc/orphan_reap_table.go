@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/gastownhall/gascity/internal/runtime/proctable"
 )
 
 // The table-driven orphan sweep is the counterpart of the /proc sweep in
@@ -15,10 +17,8 @@ import (
 // on macOS spawns duplicates next to the survivors, which keep holding the
 // service's locks and ports.
 //
-// It reads the process table through an injectable orphanProcTable and keeps
-// the /proc sweep's rules, applied cheapest first so that a process's
-// environment is only ever read once it is already known to be an orphan
-// running this service's exact command:
+// It reads the process table through an injectable orphanProcTable. A
+// process matches only if every rule holds, applied cheapest first:
 //
 //  1. not init, not the sweeper, and the sweeper itself is not init;
 //  2. not a zombie, and re-parented to init (ppid 1) — no live supervisor
@@ -28,22 +28,40 @@ import (
 //     restarts) and unique per city+service, except that services of one
 //     pack source may share it — so it scopes the match to this city's
 //     instance, and a same-root sibling service's orphan can match too. That
-//     is safe: ppid 1 already proves no live supervisor owns it; and
-//  4. it runs this service's command, by one of: its argv equals the
+//     is safe: ppid 1 already proves no live supervisor owns it;
+//  4. its argv is readable and is NOT city infrastructure
+//     (proctable.IsCityInfrastructureArgv: bd's db-proxy-child, gc's
+//     managed-Dolt scope watchdog, gc's nudge poller). Those inherit the env
+//     and cwd of whatever ran `gc bd …` — a service included — reparent to
+//     init by design, and supervise the city's dolt server, so signaling one
+//     takes the store down. The session and order-exec reapers apply the
+//     same fence; and
+//  5. it runs this service's command, by one of: its argv equals the
 //     configured command; or the arguments after argv[0] equal the
 //     configured ones (an interpreter re-exec — Homebrew python3 re-execs
-//     through Python.app and rewrites argv[0]); or its cwd is the service's
-//     command dir (a wrapper such as run.sh exec'd a different binary). The
-//     cwd is read only for processes that already passed rule 3, since on
-//     darwin it costs an lsof call.
+//     through Python.app and rewrites argv[0]); or (the cwd rule, for a
+//     wrapper such as run.sh that exec'd a different binary) it leads its own
+//     process group but not its session — exactly what the spawn path's
+//     Setpgid-without-Setsid produces, and what a Setsid daemon a service
+//     started (bd's proxy) is not — and its cwd is the service's command
+//     dir. The cwd rule is off when that dir is the city root (see
+//     orphanCwdRuleDir), and its lsof call only runs for processes that
+//     passed every other rule.
 //
-// Rule 4 reads exactly one environment variable. A service's environment
+// Rule 3 reads exactly one environment variable. A service's environment
 // holds bot tokens and API keys; the reader never asks for, materializes or
 // logs any other entry, and the logs carry only pids and the service name.
 //
-// The whole identity is re-read on every escalation pass and once more
-// immediately before SIGKILL, so a pid recycled after SIGTERM is dropped
-// instead of killed.
+// Kill path: each match is re-read in full immediately before its SIGTERM
+// (later candidates' matching can take seconds), and its process group is
+// checked for city infrastructure — or a member whose argv cannot be read —
+// before the group is signaled at all. During the bounded wait and before
+// SIGKILL a pid is re-checked by its kernel start time, which detects pid
+// reuse exactly without re-running lsof on every poll.
+//
+// By design, a copy someone starts by hand with this instance's
+// GC_SERVICE_STATE_ROOT exported, detached to ppid 1 and running the service
+// command, is reaped too: it would contend for the same locks and ports.
 
 // stateRootEnvKey is the only environment variable the table-driven sweep
 // reads. The spawn path exports it on every proxy_process child.
@@ -58,7 +76,11 @@ const orphanReapPollInterval = 50 * time.Millisecond
 type orphanProcEntry struct {
 	pid    int
 	ppid   int
+	pgid   int
 	zombie bool
+	// startTime is the kernel's process start time; with pid it identifies
+	// one process exactly, so a reused pid never compares equal.
+	startTime int64
 }
 
 // orphanProcTable is the injectable process lister the table-driven sweep
@@ -74,12 +96,23 @@ type orphanProcTable struct {
 	envValue func(pid int, key string) (string, bool, error)
 	// cwd returns the pid's current working directory.
 	cwd func(pid int) (string, error)
+	// sid returns the pid's session id (getsid(2)).
+	sid func(pid int) (int, error)
 }
 
 // find returns the pids in the table that satisfy the full orphan identity.
-// An incomplete identity, an init sweeper (see
-// findOrphanedServiceProcessesFrom) or an unlistable table finds nothing.
 func (tb orphanProcTable) find(self int, id orphanIdentity) []int {
+	var pids []int
+	for _, e := range tb.findEntries(self, id) {
+		pids = append(pids, e.pid)
+	}
+	return pids
+}
+
+// findEntries returns the rows that satisfy the full orphan identity. An
+// incomplete identity, an init sweeper (see findOrphanedServiceProcessesFrom)
+// or an unlistable table finds nothing.
+func (tb orphanProcTable) findEntries(self int, id orphanIdentity) []orphanProcEntry {
 	if len(id.command) == 0 || id.stateRoot == "" || self == 1 {
 		return nil
 	}
@@ -88,16 +121,16 @@ func (tb orphanProcTable) find(self int, id orphanIdentity) []int {
 		log.Printf("workspacesvc: orphan sweep for service %q could not list processes: %v", id.serviceName, err)
 		return nil
 	}
-	var pids []int
+	var matches []orphanProcEntry
 	for _, e := range entries {
 		if e.pid == self {
 			continue
 		}
 		if tb.entryMatches(id, e) {
-			pids = append(pids, e.pid)
+			matches = append(matches, e)
 		}
 	}
-	return pids
+	return matches
 }
 
 // entryMatches applies the identity rules to one row, cheapest first. Any
@@ -111,10 +144,17 @@ func (tb orphanProcTable) entryMatches(id orphanIdentity, e orphanProcEntry) boo
 	if err != nil || !ok || root != id.stateRoot {
 		return false
 	}
-	if argv, err := tb.cmdline(e.pid); err == nil && orphanCommandMatches(argv, id.command) {
+	argv, err := tb.cmdline(e.pid)
+	if err != nil || proctable.IsCityInfrastructureArgv(argv) {
+		return false
+	}
+	if orphanCommandMatches(argv, id.command) {
 		return true
 	}
-	if id.dir == "" {
+	if id.dir == "" || e.pgid != e.pid {
+		return false
+	}
+	if sid, err := tb.sid(e.pid); err != nil || sid == e.pid {
 		return false
 	}
 	cwd, err := tb.cwd(e.pid)
@@ -135,56 +175,112 @@ func orphanCommandMatches(argv, command []string) bool {
 	return len(command) > 1 && argvEquals(argv[1:], command[1:])
 }
 
-// stillMatches re-reads pid and reports whether it is still this service's
-// orphan.
-func (tb orphanProcTable) stillMatches(id orphanIdentity, pid int) bool {
-	e, ok, err := tb.lookup(pid)
-	if err != nil || !ok || e.pid != pid {
+// rematch re-reads e's pid in full and reports whether it is still the same
+// process (same start time) and still this service's orphan.
+func (tb orphanProcTable) rematch(id orphanIdentity, e orphanProcEntry) bool {
+	fresh, ok, err := tb.lookup(e.pid)
+	if err != nil || !ok || fresh.pid != e.pid || fresh.startTime != e.startTime {
 		return false
 	}
-	return tb.entryMatches(id, e)
+	return tb.entryMatches(id, fresh)
+}
+
+// stillOrphaned is the cheap re-check used while waiting: the same process
+// (pid and start time) is still alive, not a zombie, and still under init.
+// argv, environment and cwd are fixed for a process's lifetime as far as the
+// sweep is concerned, so they are not re-read on every poll.
+func (tb orphanProcTable) stillOrphaned(e orphanProcEntry) bool {
+	fresh, ok, err := tb.lookup(e.pid)
+	return err == nil && ok && fresh.pid == e.pid && fresh.startTime == e.startTime &&
+		!fresh.zombie && fresh.ppid == 1
+}
+
+// groupIsSafe reports whether every live member of process group pgid is
+// readable and none is city infrastructure, so kill(-pgid) cannot reach the
+// city's store. Any read failure makes the group unsafe.
+func (tb orphanProcTable) groupIsSafe(pgid int) bool {
+	entries, err := tb.list()
+	if err != nil {
+		return false
+	}
+	for _, m := range entries {
+		if m.pgid != pgid || m.zombie {
+			continue
+		}
+		argv, err := tb.cmdline(m.pid)
+		if err != nil || proctable.IsCityInfrastructureArgv(argv) {
+			return false
+		}
+	}
+	return true
 }
 
 // reapOrphansFromTable finds this service instance's orphans in tb, sends
 // SIGTERM to each one's process group, waits up to wait for them to exit,
-// then SIGKILLs those that still match the full identity. It returns the
-// pids it signaled. signal is signalProcessOrGroup in production.
+// then SIGKILLs the same processes if they are still there. Each one is
+// re-read in full, and its group checked, right before its SIGTERM; a group
+// is re-checked again before SIGKILL. It returns the pids it signaled.
+// signal is signalProcessOrGroup in production.
 func reapOrphansFromTable(tb orphanProcTable, id orphanIdentity, self int, signal func(int, syscall.Signal), wait time.Duration) []int {
-	pids := tb.find(self, id)
-	if len(pids) == 0 {
+	var termed []orphanProcEntry
+	for _, e := range tb.findEntries(self, id) {
+		if !tb.rematch(id, e) {
+			continue
+		}
+		if !tb.groupIsSafe(e.pid) {
+			log.Printf("workspacesvc: not reaping orphaned process of service %q: pid %d's process group holds city infrastructure or an unreadable process", id.serviceName, e.pid)
+			continue
+		}
+		log.Printf("workspacesvc: reaping orphaned process of service %q: pid %d (ppid 1), SIGTERM to its process group", id.serviceName, e.pid)
+		signal(e.pid, syscall.SIGTERM)
+		termed = append(termed, e)
+	}
+	if len(termed) == 0 {
 		return nil
 	}
-	for _, pid := range pids {
-		log.Printf("workspacesvc: reaping orphaned process of service %q: pid %d (ppid 1), SIGTERM to its process group", id.serviceName, pid)
-		signal(pid, syscall.SIGTERM)
-	}
-	remaining := append([]int(nil), pids...)
+	remaining := append([]orphanProcEntry(nil), termed...)
 	deadline := time.Now().Add(wait)
 	for {
-		remaining = filterStillMatching(tb, id, remaining)
+		remaining = filterStillOrphaned(tb, remaining)
 		if len(remaining) == 0 || !time.Now().Before(deadline) {
 			break
 		}
 		time.Sleep(orphanReapPollInterval)
 	}
-	for _, pid := range remaining {
-		if !tb.stillMatches(id, pid) {
+	for _, e := range remaining {
+		if !tb.stillOrphaned(e) || !tb.groupIsSafe(e.pid) {
 			continue
 		}
-		log.Printf("workspacesvc: orphaned process of service %q: pid %d survived SIGTERM for %v, SIGKILL to its process group", id.serviceName, pid, wait)
-		signal(pid, syscall.SIGKILL)
+		log.Printf("workspacesvc: orphaned process of service %q: pid %d survived SIGTERM for %v, SIGKILL to its process group", id.serviceName, e.pid, wait)
+		signal(e.pid, syscall.SIGKILL)
+	}
+	pids := make([]int, 0, len(termed))
+	for _, e := range termed {
+		pids = append(pids, e.pid)
 	}
 	return pids
 }
 
-func filterStillMatching(tb orphanProcTable, id orphanIdentity, pids []int) []int {
-	live := pids[:0]
-	for _, pid := range pids {
-		if tb.stillMatches(id, pid) {
-			live = append(live, pid)
+func filterStillOrphaned(tb orphanProcTable, entries []orphanProcEntry) []orphanProcEntry {
+	live := entries[:0]
+	for _, e := range entries {
+		if tb.stillOrphaned(e) {
+			live = append(live, e)
 		}
 	}
 	return live
+}
+
+// orphanCwdRuleDir returns the dir the cwd rule compares against for a
+// service run in commandDir, or "" (rule off) when that is the city root:
+// a root-pack service's `gc`/`bd` calls leave daemons whose cwd is the city
+// root, so there it identifies nothing.
+func orphanCwdRuleDir(commandDir, cityPath string) string {
+	dir := resolveOrphanCommandDir(commandDir)
+	if dir == "" || dir == resolveOrphanCommandDir(cityPath) {
+		return ""
+	}
+	return dir
 }
 
 // resolveOrphanCommandDir returns dir with symlinks resolved, the form the

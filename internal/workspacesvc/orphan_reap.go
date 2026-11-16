@@ -121,8 +121,9 @@ func (id orphanIdentity) parentIsSubreaper(ppid int) bool {
 
 // reapOrphanedServiceProcesses terminates orphaned survivors of previous
 // hard exits that match the service instance's identity. Best-effort: scan
-// or signal failures are logged and never block the spawn; on hosts without
-// /proc the sweep is a no-op.
+// or signal failures are logged and never block the spawn. Hosts without
+// /proc (darwin) sweep the sysctl process table instead, with the rules in
+// orphan_reap_table.go.
 func reapOrphanedServiceProcesses(id orphanIdentity) {
 	// Hosts without /proc (darwin) read the process table through sysctl
 	// instead; see orphan_reap_table.go.
