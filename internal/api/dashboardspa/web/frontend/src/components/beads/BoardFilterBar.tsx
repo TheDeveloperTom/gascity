@@ -13,7 +13,6 @@ import { ownerChoicesEnabled, type BoardSource, type OwnerFilter } from '../../l
 import { ALL_EPICS, epicLabel, epicProgress, NO_EPIC, type EpicSummary } from '../../lib/epics';
 import { cn } from '../../vk/cn';
 import { ExternalLink } from '../../vk/ExternalLink';
-import { ListSearchBar } from '../ListSearchBar';
 
 // The board's one filter row, VK look (vk lane 4): [Все | Мои | Ричарда],
 // «Эпик: Все ▾», search «Найти задачу…», «Новая задача +». Nothing here is
@@ -221,7 +220,7 @@ function EpicSelect({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           ROW,
-          'inline-flex max-w-full items-center gap-1.5 rounded-[3px] border bg-vk-bg-primary pl-2.5 pr-2 font-vk-sans text-[15px] text-vk-text-high focus-mark',
+          'inline-flex max-w-full items-center gap-1.5 rounded-[3px] border bg-vk-bg-secondary pl-2.5 pr-2 font-vk-sans text-[15px] text-vk-text-normal focus-mark',
           open ? 'border-vk-brand' : 'border-vk-border',
         )}
       >
@@ -296,121 +295,6 @@ function EpicSelect({
   );
 }
 
-/**
- * «Проект: Все ▾» (vk-final part 2): the project choice as a VK menu beside
- * «Эпик», with each project's count inside the menu. Same keyboard model as
- * the epic menu (arrows, Enter/Space, Escape, outside click closes).
- */
-function ProjectSelect({
-  projects,
-  value,
-  onChange,
-}: {
-  projects: readonly { key: string; label: string; count: number }[];
-  value: string;
-  onChange: (key: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  useKeepMenuOnScreen(open, listRef);
-  const listId = useId();
-  const chosen = projects.find((p) => p.key === value) ?? projects[0];
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: PointerEvent | MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    listRef.current?.querySelector<HTMLElement>('[aria-selected="true"], [role="option"]')?.focus();
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  const choose = (key: string) => {
-    onChange(key);
-    setOpen(false);
-    buttonRef.current?.focus();
-  };
-
-  const onListKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const options = [...(listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
-    const at = options.indexOf(document.activeElement as HTMLElement);
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setOpen(false);
-      buttonRef.current?.focus();
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      options[(at + step + options.length) % options.length]?.focus();
-    } else if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
-      event.preventDefault();
-      const key = options[at]?.dataset.key;
-      if (key !== undefined) choose(key);
-    }
-  };
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          ROW,
-          'inline-flex max-w-full items-center gap-1.5 rounded-[3px] border bg-vk-bg-primary pl-2.5 pr-2 font-vk-sans text-[15px] text-vk-text-high focus-mark',
-          open ? 'border-vk-brand' : 'border-vk-border',
-        )}
-      >
-        <span className="text-vk-text-low">{t('Project:')}</span>{' '}
-        <span className="min-w-0 truncate">{chosen?.label ?? t('All')}</span>
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path
-            d={open ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'}
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      {open && (
-        <div
-          ref={listRef}
-          id={listId}
-          role="listbox"
-          aria-label={t('Choose a project')}
-          onKeyDown={onListKey}
-          className="absolute left-0 top-full z-30 mt-1 flex w-[min(280px,calc(100vw-32px))] flex-col gap-0.5 rounded-[4.5px] border border-vk-border bg-vk-bg-primary p-1 font-vk-sans shadow-lg"
-        >
-          {projects.map((p) => (
-            <div
-              key={p.key}
-              role="option"
-              tabIndex={-1}
-              data-key={p.key}
-              aria-selected={p.key === value}
-              onClick={() => choose(p.key)}
-              className={cn(
-                'flex min-h-11 cursor-pointer items-center gap-2 rounded-[3px] px-2 text-[15px] focus-mark md:min-h-9',
-                p.key === value ? 'bg-vk-bg-panel text-vk-text-high' : 'text-vk-text-normal hover:bg-vk-bg-secondary',
-              )}
-            >
-              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{p.label}</span>
-              <span className="tnum shrink-0 text-[13px] text-vk-text-low">{p.count}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function NewTask({ url }: { url: string | null | undefined }) {
   const className = cn(
     ROW,
@@ -462,9 +346,14 @@ export function BoardFilterBar({
   newTaskUrl,
   plannedEmpty,
 }: BoardFilterBarProps) {
-  const testsId = useId();
-  // `all` plus at least two projects with cards.
-  const showProjects = projects.length > 2;
+  // VK 1:1 (16.11): the left rail chooses the project and the canvas row has
+  // no test checkbox, so neither renders here (props kept for callers).
+  void projects;
+  void project;
+  void onProject;
+  void testCount;
+  void showTests;
+  void onShowTests;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <OwnerChips sources={sources} value={ownerFilter} {...(onOwnerFilter ? { onChange: onOwnerFilter } : {})} />
@@ -474,31 +363,21 @@ export function BoardFilterBar({
         plannedEmpty={plannedEmpty}
         {...(onEpic ? { onChange: onEpic } : {})}
       />
-      {showProjects && <ProjectSelect projects={projects} value={project} onChange={onProject} />}
-      <div className="min-w-0 basis-full md:basis-[220px]">
-        <ListSearchBar
-          value={search}
-          onChange={onSearch}
-          placeholder={t('Find a task…')}
-          matchCount={matched}
-          totalCount={total}
-          ariaLabel={t('Search beads')}
-        />
-      </div>
+      {/* VK 1:1: the canvas search is a plain 32 px field, 220 px wide. */}
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => onSearch(event.target.value)}
+        placeholder={t('Find a task…')}
+        aria-label={t('Find a task')}
+        title={search.trim().length > 0 ? t('{matched} of {total}', { matched, total }) : undefined}
+        className={cn(
+          ROW,
+          'w-full min-w-0 rounded-[3px] border border-vk-border bg-vk-bg-secondary px-2 font-vk-sans text-[15px] text-vk-text-normal placeholder:text-vk-text-low focus-mark md:w-[220px]',
+        )}
+      />
       {/* undefined = the page has not wired the seam yet (it still has its own button). */}
       {newTaskUrl !== undefined && <NewTask url={newTaskUrl} />}
-      {testCount > 0 && (
-        <label htmlFor={testsId} className="flex items-center gap-2 font-vk-sans text-[15px] text-vk-text-normal">
-          <input
-            id={testsId}
-            type="checkbox"
-            checked={showTests}
-            onChange={(event) => onShowTests(event.target.checked)}
-            className="h-4 w-4 accent-[oklch(var(--fg))] focus-mark"
-          />
-          {t('Show test tasks ({n})', { n: testCount })}
-        </label>
-      )}
     </div>
   );
 }

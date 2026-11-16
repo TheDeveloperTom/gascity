@@ -163,7 +163,7 @@ function renderPage(
   options: { readOnly?: boolean } = {},
 ) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[allProjects(path)]}>
       <NowProvider intervalMs={1_000_000}>
         <ReadOnlyProvider readOnly={options.readOnly ?? false}>
           <AttentionProvider contributors={contributors}>
@@ -339,4 +339,11 @@ function contributor(
     domain,
     getItems: () => items,
   };
+}
+
+// VK 1:1 (16.11): the board opens on the devwork product; these tests read the
+// whole board, so they ask for every project unless the entry names one.
+function allProjects(entry: string): string {
+  if (/[?&]project=/.test(entry)) return entry;
+  return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
 }

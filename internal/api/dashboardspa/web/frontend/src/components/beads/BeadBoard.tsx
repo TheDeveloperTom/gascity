@@ -36,6 +36,8 @@ export interface BeadBoardProps {
   noteOf?: (beadId: string) => string | null;
   /** Peer cards' «💬 N» (vk-final part 4). */
   commentCountOf?: (card: BoardCard) => number;
+  /** A column header's «+» (Main.dc.html): start a new task. */
+  onAddTask?: () => void;
 }
 
 export function BeadBoard({
@@ -49,6 +51,7 @@ export function BeadBoard({
   className,
   attentionSeverity,
   commentCountOf,
+  onAddTask,
 }: BeadBoardProps) {
   const [showOld, setShowOld] = useState(showAllHistory);
   const [phoneColumn, setPhoneColumn] = useState<VkColumnId>('waiting');
@@ -85,20 +88,22 @@ export function BeadBoard({
         onPick={setPhoneColumn}
         className="md:hidden"
       />
+      {/* Main.dc.html: the columns scroll sideways inside the page. */}
       <div className="min-w-0 md:overflow-x-auto md:pb-4">
-        <KanbanProvider className="md:min-h-[720px]">
+        <KanbanProvider>
           {columns.map((column) => (
             <KanbanColumn
               key={column.id}
               column={column}
               phoneActive={column.id === phoneColumn}
+              {...(onAddTask === undefined ? {} : { onAdd: onAddTask })}
               footer={
                 column.id === 'merged' ? (
                   <button
                     type="button"
                     aria-expanded={showOld}
                     onClick={toggleOld}
-                    className="m-1 h-11 self-start rounded-sm px-2 text-sm text-vk-text-low focus-mark hover:text-vk-text-high md:h-8"
+                    className="m-1 h-11 self-start rounded-sm px-2 font-vk-sans text-sm text-vk-text-low focus-mark hover:text-vk-text-high md:h-8"
                   >
                     {showOld ? t('Hide older') : t('Show older')}
                   </button>

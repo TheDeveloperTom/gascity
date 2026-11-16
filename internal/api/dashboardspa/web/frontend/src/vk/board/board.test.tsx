@@ -69,6 +69,31 @@ describe('VK board', () => {
     expect(within(merged).getByText('old merge')).toBeTruthy();
   });
 
+  // VK 1:1 (Main.dc.html): «Влито · за 7 дней» shows the newest three; the
+  // rest of the week and older merges sit behind «Показать старые».
+  it('«Влито» shows the newest three merges, the count is the whole week', () => {
+    renderBoard(
+      [1, 2, 3, 4, 5].map((n) => bead(`dw-m${n}`, 'closed', { title: `merge ${n}`, updated_at: ago(n * HOUR) })),
+      { nowMs: NOW },
+    );
+    const merged = column('Влито · за 7 дней');
+    const titles = Array.from(merged.querySelectorAll('article')).map((a) => a.textContent ?? '');
+    expect(titles).toHaveLength(3);
+    expect(titles[0]).toContain('merge 1');
+    expect(within(merged).queryByText('merge 4')).toBeNull();
+    expect(merged.querySelector('.tnum')?.textContent).toBe('5');
+    fireEvent.click(within(merged).getByRole('button', { name: 'Показать старые' }));
+    expect(within(merged).getByText('merge 5')).toBeTruthy();
+  });
+
+  // VK 1:1 (Main.dc.html): a column header is dot + name + count + «+».
+  it('every column header has its «+» button, «Добавить в «…»»', () => {
+    renderBoard([bead('dw-a', 'open')], { nowMs: NOW });
+    for (const name of ['Ждёт', 'В работе', 'Ревью', 'Влито · за 7 дней']) {
+      expect(within(column(name)).getByRole('button', { name: `Добавить в «${name}»` })).toBeTruthy();
+    }
+  });
+
   it('shows «нужен ты», «срочно» and «стоит 2 ч»', () => {
     renderBoard(
       [

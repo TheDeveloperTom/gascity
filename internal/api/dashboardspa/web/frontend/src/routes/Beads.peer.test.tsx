@@ -103,7 +103,7 @@ function NeedsCount() {
 function renderPage(entry = '/beads', readOnly = false) {
   return render(
     <LocaleProvider>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter initialEntries={[allProjects(entry)]}>
         <NowProvider intervalMs={1_000_000}>
           <ReadOnlyProvider readOnly={readOnly}>
             <OperatorConfigProvider
@@ -574,3 +574,10 @@ describe('BeadsPage with Richard’s board', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+// VK 1:1 (16.11): the board opens on the devwork product; these tests read the
+// whole board, so they ask for every project unless the entry names one.
+function allProjects(entry: string): string {
+  if (/[?&]project=/.test(entry)) return entry;
+  return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
+}
