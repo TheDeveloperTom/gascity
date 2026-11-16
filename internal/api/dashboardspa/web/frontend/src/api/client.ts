@@ -319,6 +319,7 @@ const decodeLiveHealth = objectDecoder<LiveHealth>('live health', (record, url) 
   });
   const processes = requireRecord(record.processes, url, 'live health.processes');
   requireStringField(processes, url, 'live health.processes', 'status');
+  requireStringField(processes, url, 'live health.processes', 'coverage');
   requireNumberField(processes, url, 'live health.processes', 'total');
   requireArrayField(processes, url, 'live health.processes', 'items');
   (processes.items as unknown[]).forEach((item, i) => {

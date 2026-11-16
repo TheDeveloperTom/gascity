@@ -13,17 +13,20 @@ func liveDiskPath() string { return "/" }
 // memoryPressureLevel has no portable kernel source off macOS.
 func memoryPressureLevel() string { return "unknown" }
 
-// listProcesses reads each process's short name (Linux: /proc/<pid>/comm or status,
-// never cmdline), CPU time and resident memory. It never reads argv or environment.
-func listProcesses(ctx context.Context) ([]processSample, error) {
+// listProcesses reads each process's short name, CPU time and resident
+// memory; /proc is world-readable, so it sees every process. On Linux the
+// name is /proc/<pid>/comm; when that is 15 bytes or longer gopsutil may
+// extend it from the basename of argv[0] (review M-4). Only that basename
+// reaches the wire: never other arguments or the environment.
+func listProcesses(ctx context.Context) (processList, error) {
 	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
-		return nil, err
+		return processList{}, err
 	}
 	out := make([]processSample, 0, len(procs))
 	for _, p := range procs {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return processList{}, ctx.Err()
 		}
 		name, err := p.NameWithContext(ctx)
 		if err != nil {
@@ -38,5 +41,5 @@ func listProcesses(ctx context.Context) ([]processSample, error) {
 		}
 		out = append(out, sample)
 	}
-	return out, nil
+	return processList{Samples: out, Coverage: processCoverageAll}, nil
 }

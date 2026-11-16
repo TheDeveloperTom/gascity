@@ -29,6 +29,7 @@ describe('api.liveHealth', () => {
       processes: {
         status: 'unavailable',
         reason: 'not_loopback',
+        coverage: 'none',
         total: 0,
         items: [],
         rest: { count: 0, cpu_pct: 0, rss_bytes: 0 },
@@ -43,6 +44,13 @@ describe('api.liveHealth', () => {
     (body.processes.items as unknown[]).push({ name: 'claude', count: 1, rss_bytes: 1 });
     stubJson(body);
     await expect(api.liveHealth()).rejects.toThrow(/cpu_pct/);
+  });
+
+  it('rejects a process list without its coverage', async () => {
+    const body = liveFixture();
+    delete (body.processes as { coverage?: string }).coverage;
+    stubJson(body);
+    await expect(api.liveHealth()).rejects.toThrow(/coverage/);
   });
 
   it('rejects a body without the cpu block', async () => {

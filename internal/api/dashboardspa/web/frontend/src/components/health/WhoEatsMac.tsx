@@ -1,7 +1,12 @@
 import type { LiveHealth, ProcessUsage } from 'gas-city-dashboard-shared';
 import { t, tn } from '../../i18n';
 import { formatBytes, formatPct } from '../../lib/hostHeadline';
-import { groupProcesses, type ProcessGroup, type ProcessGroupId } from '../../lib/processGroups';
+import {
+  groupProcesses,
+  unattributedCpu,
+  type ProcessGroup,
+  type ProcessGroupId,
+} from '../../lib/processGroups';
 
 // «Кто ест Мак» (owner 16.11): the process list grouped the way the owner
 // thinks of the machine: agent sessions, the bead stores, the city's own
@@ -50,15 +55,21 @@ export function WhoEatsMac({ live }: { live: LiveHealth | null }) {
         </p>
       ) : (
         <div className="grid min-w-0 lg:grid-cols-2 lg:divide-x lg:divide-rule">
-          {(['cpu', 'memory'] as const).map((measure) => (
-            <MeasureColumn
-              key={measure}
-              measure={measure}
-              groups={groupProcesses(processes.items, processes.rest, cores)}
-              items={processes.items}
-              cores={cores}
-            />
-          ))}
+          {(['cpu', 'memory'] as const).map((measure) => {
+            const groups = groupProcesses(processes.items, processes.rest, cores);
+            const busy = live?.cpu.busy_pct.status === 'available' ? live.cpu.busy_pct.value : null;
+            return (
+              <MeasureColumn
+                key={measure}
+                measure={measure}
+                groups={groups}
+                items={processes.items}
+                cores={cores}
+                unexplained={measure === 'cpu' ? unattributedCpu(busy, groups) : null}
+                ownOnly={processes.coverage === 'own_processes'}
+              />
+            );
+          })}
         </div>
       )}
     </section>
@@ -70,15 +81,21 @@ function MeasureColumn({
   groups,
   items,
   cores,
+  unexplained,
+  ownOnly,
 }: {
   measure: Measure;
   groups: ProcessGroup[];
   items: readonly ProcessUsage[];
   cores: number;
+  /** CPU the named processes do not explain (review I-1); null for memory. */
+  unexplained: number | null;
+  /** Only the owner's own processes were readable. */
+  ownOnly: boolean;
 }) {
   const valueOf = (g: ProcessGroup) => (measure === 'cpu' ? g.cpuPctOfMac : g.rssBytes);
   const format = (v: number) => (measure === 'cpu' ? formatPct(v, v < 10 ? 1 : 0) : formatBytes(v));
-  const largest = Math.max(...groups.map(valueOf), measure === 'cpu' ? 1 : 1);
+  const largest = Math.max(...groups.map(valueOf), unexplained ?? 0, 1);
   const top = [...items]
     .sort((a, b) => (measure === 'cpu' ? b.cpu_pct - a.cpu_pct : b.rss_bytes - a.rss_bytes))
     .slice(0, TOP_NAMES)
@@ -125,6 +142,36 @@ function MeasureColumn({
             </li>
           );
         })}
+        {unexplained !== null && (
+          <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-dashed border-rule pt-2.5 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_5.5rem]">
+            <div className="min-w-0 sm:col-start-1 sm:row-start-1">
+              <p className="text-body text-fg">
+                {t('System and the rest (not visible per process)')}
+              </p>
+              <p className="text-[12px] leading-4 text-fg-faint">
+                {ownOnly
+                  ? t(
+                      'system and other users’ processes are not visible without administrator rights',
+                    )
+                  : t('the macOS kernel and processes that came and went between samples')}
+              </p>
+            </div>
+            <span className="text-right text-body font-medium text-fg tabular-nums sm:col-start-3 sm:row-start-1">
+              {format(unexplained)}
+            </span>
+            <div
+              className="col-span-2 h-2 min-w-0 rounded-full bg-surface-tint sm:col-span-1 sm:col-start-2 sm:row-start-1"
+              aria-hidden="true"
+            >
+              <div
+                className="h-2 rounded-full bg-fg-faint/60 transition-[width] duration-500 ease-out-quart motion-reduce:transition-none"
+                style={{
+                  width: `${Math.max(unexplained > 0 ? 2 : 0, (unexplained / largest) * 100)}%`,
+                }}
+              />
+            </div>
+          </li>
+        )}
       </ul>
       {top.length > 0 && (
         <div className="mt-5 border-t border-rule pt-4">

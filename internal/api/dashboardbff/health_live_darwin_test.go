@@ -27,11 +27,21 @@ func TestLiveSamplerReadsTheRealMac(t *testing.T) {
 		t.Fatalf("processes = %d total, %d items (%s), want the host's list", first.Processes.Total, len(first.Processes.Items), first.Processes.Status)
 	}
 	var rss uint64
+	names := map[string]processUsage{}
 	for _, item := range first.Processes.Items {
 		rss += item.RSSBytes
+		names[item.Name] = item
 	}
 	if rss == 0 {
 		t.Fatalf("no process reported resident memory")
+	}
+	// Review I-1: setuid /bin/ps sees other users' processes; WindowServer
+	// (owned by _windowserver) must carry its memory, not a silent zero.
+	if first.Processes.Coverage != processCoverageAll {
+		t.Fatalf("coverage = %q, want %q via /bin/ps", first.Processes.Coverage, processCoverageAll)
+	}
+	if ws, ok := names["WindowServer"]; ok && ws.RSSBytes == 0 {
+		t.Fatalf("WindowServer reads 0 B: other users' processes are invisible")
 	}
 
 	time.Sleep(liveMinInterval)

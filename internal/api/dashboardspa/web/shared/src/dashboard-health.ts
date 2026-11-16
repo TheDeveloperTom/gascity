@@ -121,11 +121,22 @@ export interface ProcessRest {
 
 export type LiveProcessesUnavailableReason = 'not_loopback' | 'sample_failed';
 
+/** Which processes the list could read: every one (via setuid /bin/ps on
+ *  macOS), only the caller's own (system processes missing), or none. */
+export type ProcessCoverage = 'all_processes' | 'own_processes' | 'none';
+
 export type LiveProcesses =
-  | { status: 'available'; total: number; items: ProcessUsage[]; rest: ProcessRest }
+  | {
+      status: 'available';
+      coverage: ProcessCoverage;
+      total: number;
+      items: ProcessUsage[];
+      rest: ProcessRest;
+    }
   | {
       status: 'unavailable';
       reason: LiveProcessesUnavailableReason;
+      coverage: ProcessCoverage;
       total: number;
       items: ProcessUsage[];
       rest: ProcessRest;
