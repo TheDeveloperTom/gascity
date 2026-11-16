@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { formatApiError } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
@@ -117,7 +117,41 @@ export function BeadsPage() {
       setOwnerFilter('all');
     }
   }, [ownerFilter, peerSources]);
-  const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
+  // polish2 16.11 (owner): the open card IS the URL (`?bead=<id>`), so a link
+  // can be shared and survives a reload. Opening or switching a card pushes a
+  // history entry (Back closes it, Forward reopens it). Closing a card that
+  // this board opened steps back to the entry it came from (review M-1: a
+  // replace left a dead Back step); a card that arrived by link (a reload, a
+  // shared URL) closes by replacing. Re-selecting the open card is a no-op.
+  const selectedId = selectedBeadParam;
+  const location = useLocation();
+  const navigate = useNavigate();
+  // How many card entries this board pushed since an entry with NO card open.
+  // 0 means «not steppable»: the chain started at a card reached by link (a
+  // reload, a shared URL, «Нужно от меня»), so closing must replace, never go
+  // back (re-review: going back reopened that card).
+  const depth = (location.state as { beadDepth?: number } | null)?.beadDepth ?? 0;
+  const setSelectedId = useCallback(
+    (id: string | null) => {
+      if (id === selectedId) return;
+      if (id === null && depth > 0) {
+        void navigate(-depth);
+        return;
+      }
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id === null) next.delete('bead');
+          else next.set('bead', id);
+          return next;
+        },
+        id === null
+          ? { replace: true }
+          : { state: { beadDepth: selectedId === null || depth > 0 ? depth + 1 : 0 } },
+      );
+    },
+    [setSearchParams, selectedId, depth, navigate],
+  );
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
@@ -183,10 +217,6 @@ export function BeadsPage() {
     },
     { coalesceMs: BOARD_REFRESH_COALESCE_MS },
   );
-
-  useEffect(() => {
-    if (selectedBeadParam !== null) setSelectedId(selectedBeadParam);
-  }, [selectedBeadParam]);
 
   useEffect(() => {
     if (epicParam !== null) setEpic(epicParam);
@@ -320,10 +350,19 @@ export function BeadsPage() {
   }, [selectedId, rigItems, peerBoards.result, ownLogin]);
   const openTopicFromCard = useCallback(
     (login: string, topicId: string) => {
-      setSelectedId(null);
-      setTopicsParams(login, topicId);
+      // one URL write: two functional updates in one tick would race
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('bead');
+          next.set('topics', login);
+          next.set('topic', topicId);
+          return next;
+        },
+        { replace: true },
+      );
     },
-    [setTopicsParams],
+    [setSearchParams],
   );
   const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
   const epics = useMemo(

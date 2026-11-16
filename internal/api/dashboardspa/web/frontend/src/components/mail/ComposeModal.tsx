@@ -13,6 +13,7 @@ import { Button } from '../Button';
 import { Field } from '../Field';
 import { Modal } from '../Modal';
 import { StatusBadge } from '../StatusBadge';
+import { t } from '../../i18n';
 
 // Input recipe (DESIGN-PLAN §7); the fill differs between the editable
 // fields and the fixed sender.
@@ -72,13 +73,13 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
     <Modal
       open={open}
       onClose={onClose}
-      title="New message"
-      caption="Sends from the operator. Reading-as has no effect on the sender."
+      title={t('New message')}
+      caption={t('Sends from the operator. Reading-as has no effect on the sender.')}
       widthClass="max-w-2xl"
       footer={
         <>
           <Button size="sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             tone="accent"
@@ -87,13 +88,13 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             title={readOnly ? READ_ONLY_CONTROL_TITLE : undefined}
             onClick={() => void onSend()}
           >
-            {sending ? 'Sending' : 'Send'}
+            {sending ? t('Sending') : t('Send')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="From" variant="form">
+        <Field label={t('From')} variant="form">
           <input
             type="text"
             value={
@@ -105,7 +106,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             className={`${INPUT_CLASS} cursor-not-allowed bg-surface-tint text-fg-muted`}
           />
         </Field>
-        <Field label="To (alias)" variant="form">
+        <Field label={t('To (alias)')} variant="form">
           <input
             type="text"
             autoFocus
@@ -115,7 +116,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             className={`${INPUT_CLASS} bg-surface-raised text-fg`}
           />
         </Field>
-        <Field label="Subject" variant="form">
+        <Field label={t('Subject')} variant="form">
           <input
             type="text"
             value={subject}
@@ -124,7 +125,7 @@ export function ComposeModal({ open, onClose, onSent }: ComposeModalProps) {
             className={`${INPUT_CLASS} bg-surface-raised text-fg`}
           />
         </Field>
-        <Field label="Body" variant="form">
+        <Field label={t('Body')} variant="form">
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}

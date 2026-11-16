@@ -43,6 +43,7 @@ import {
   markSupervisorMailUnread,
   replySupervisorMail,
 } from '../supervisor/mailWrites';
+import { t } from '../i18n';
 
 // Mail chips operate on read-state. "Sent" box has no unread concept;
 // the chips still render but their match predicates are box-aware.
@@ -435,14 +436,14 @@ export function MailPage() {
                 readOnly
                   ? READ_ONLY_CONTROL_TITLE
                   : viewingAs.isOperator
-                    ? 'Compose a new message (sends as the operator)'
-                    : 'Switch back to the operator to compose'
+                    ? t('Compose a new message (sends as the operator)')
+                    : t('Switch back to the operator to compose')
               }
             >
-              Compose
+              {t('Compose')}
             </Button>
             <Button size="sm" onClick={() => void refresh()} disabled={loading}>
-              {loading ? 'Refreshing' : 'Refresh'}
+              {loading ? t('Refreshing') : t('Refresh')}
             </Button>
           </>
         }
@@ -472,7 +473,7 @@ export function MailPage() {
             <ListSearchBar
               value={filters.search}
               onChange={filters.setSearch}
-              placeholder="Search mail by sender, subject, rig"
+              placeholder={t('Search mail by sender, subject, rig')}
               matchCount={filters.totalMatches}
               totalCount={items.length}
               ariaLabel="Search mail"
@@ -522,10 +523,12 @@ export function MailPage() {
             rowProps={rowProps}
             emptyMessage={
               filters.search.length > 0 || filters.activeChipIds.size > 0
-                ? 'No messages match the current search or filter.'
-                : `${box === 'inbox' ? 'Inbox' : 'Sent'} empty for ${aliasLabel}.`
+                ? t('No messages match the current search or filter.')
+                : t(box === 'inbox' ? 'Inbox empty for {who}.' : 'Sent empty for {who}.', {
+                    who: aliasLabel,
+                  })
             }
-            perProjectEmpty="No messages in this project."
+            perProjectEmpty={t('No messages in this project.')}
             initialSort={{ key: 'created_at', dir: 'desc' }}
           />
         </div>
@@ -571,7 +574,7 @@ export function MailPage() {
       >
         <div className="space-y-6">
           {threadLoading ? (
-            <p className="text-body text-fg-muted">Loading thread.</p>
+            <p className="text-body text-fg-muted">{t('Loading thread.')}</p>
           ) : threadItems.length === 0 && threadFor ? (
             <ThreadMessage message={threadFor} attentionSeverity={mailSeverity(threadFor)} />
           ) : (
@@ -585,7 +588,7 @@ export function MailPage() {
           )}
           {threadFor !== null && (
             <div className="border-t border-rule pt-4">
-              <Field label="Reply" variant="form">
+              <Field label={t('Reply')} variant="form">
                 <textarea
                   value={replyBody}
                   onChange={(e) => setReplyBody(e.target.value)}
@@ -619,7 +622,7 @@ function BoxTabs({ box, onChange }: { box: MailBox; onChange: (b: MailBox) => vo
   return (
     <div
       role="group"
-      aria-label="Mailbox"
+      aria-label={t('Mailbox')}
       className="inline-flex rounded-md border border-rule bg-surface-raised p-0.5"
     >
       {(['inbox', 'sent', 'all'] as MailBox[]).map((b) => (
@@ -672,7 +675,7 @@ function MailSelectionBar({
         someSelected ? 'bg-primary/[0.06]' : ''
       }`}
       role="region"
-      aria-label="bulk mail selection"
+      aria-label={t('bulk mail selection')}
     >
       <label className="flex cursor-pointer items-center gap-3 text-label font-medium text-fg-muted">
         <input
@@ -681,10 +684,10 @@ function MailSelectionBar({
           className="h-4 w-4 cursor-pointer accent-primary focus-mark"
           checked={allSelected}
           onChange={onToggleAll}
-          aria-label="select all mail"
+          aria-label={t('select all mail')}
         />
         <span className={someSelected ? 'text-fg tnum' : undefined}>
-          {someSelected ? `${selectedCount} selected` : 'Select all'}
+          {someSelected ? t('{n} selected', { n: selectedCount }) : t('Select all')}
         </span>
       </label>
       {someSelected && (
@@ -716,9 +719,9 @@ function MailHistoryControls({
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       <label className="flex items-center gap-2 text-label font-medium text-fg-muted">
-        <span>Window</span>
+        <span>{t('Window')}</span>
         <select
-          aria-label="Mail time window"
+          aria-label={t('Mail time window')}
           value={window}
           onChange={(e) => onWindowChange(toMailHistoryWindow(e.target.value))}
           className={SELECT_CLASS}
@@ -731,16 +734,16 @@ function MailHistoryControls({
         </select>
       </label>
       <label className="flex items-center gap-2 text-label font-medium text-fg-muted">
-        <span>History</span>
+        <span>{t('History')}</span>
         <select
-          aria-label="Mail history limit"
+          aria-label={t('Mail history limit')}
           value={limit}
           onChange={(e) => onLimitChange(toMailHistoryLimit(e.target.value))}
           className={SELECT_CLASS}
         >
           {MAIL_HISTORY_LIMITS.map((historyLimit) => (
             <option key={historyLimit} value={historyLimit}>
-              Recent {historyLimit}
+              {t('Recent {n}', { n: historyLimit })}
             </option>
           ))}
         </select>

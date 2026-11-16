@@ -1,5 +1,6 @@
 import { Fragment, useId, useState, type ReactNode } from 'react';
 import { Button } from './Button';
+import { t } from '../i18n';
 
 // Show less, reveal on demand (DESIGN-PLAN R8, §9.5). A list shows its first
 // `limit` items, then one toggle unfolds the rest. Local UI state only: the
@@ -16,7 +17,7 @@ interface FoldListProps<T> {
   className?: string;
 }
 
-const defaultShowLabel = (total: number) => `Show all ${total}`;
+const defaultShowLabel = (total: number) => t('Show all {n}', { n: total });
 
 export function FoldList<T>({
   items,

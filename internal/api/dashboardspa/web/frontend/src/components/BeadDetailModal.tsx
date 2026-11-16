@@ -4,8 +4,8 @@ import type { BeadNode } from '../lib/beadGraph';
 import { useBeadDetail } from '../hooks/useBeadDetail';
 import { useBoardData } from '../hooks/useBoardData';
 import { useEntityLinks } from '../hooks/useEntityLinks';
-import { t } from '../i18n';
-import { renderMiniMarkdown } from '../lib/miniMarkdown';
+import { getLocale, t } from '../i18n';
+import { MARKDOWN_CLASS, renderMiniMarkdown } from '../lib/miniMarkdown';
 import { ownerQuestionOf } from '../lib/ownerQuestions';
 import { milestoneOf } from '../lib/waitReasons';
 import type { SupervisorBead } from '../supervisor/beadReads';
@@ -22,12 +22,9 @@ import {
   taskSummary,
   type Answer,
 } from '../vk/panel/TaskDrawer';
-import { BeadBody } from './BeadBody';
-import { BeadDependencies } from './beads/BeadDependencies';
 import { BeadLiveRunModal } from './beads/BeadLiveRunModal';
-import { Button } from './Button';
 import { isSessionStreamable } from './LiveSessionPeek';
-import { RelatedEntities } from './RelatedEntities';
+import { otherLinkCount, RelatedEntities } from './RelatedEntities';
 
 // Click-to-read task panel for a single bead (vk lane 2): a right-side VK
 // drawer from `md`, a full-screen card below. The export name and props are
@@ -53,7 +50,7 @@ interface BeadDetailModalProps {
    * navigation) so the panel can be used standalone.
    */
   onOpenBead?: (beadId: string) => void;
-  /** Resolved graph node for the bead; when present, shows the dependency tree. */
+  /** Kept for callers; unused since polish2 (one «Связи» section). */
   depNode?: BeadNode | null;
   /** Session list for assignee to live-run resolution; enables "View live run". */
   sessions?: readonly SupervisorSession[];
@@ -71,7 +68,8 @@ export function BeadDetailModal({
   beadId,
   initialBead = null,
   onOpenBead,
-  depNode = null,
+  // polish2 item 8: relations live in «Связи»; the dependency tree is gone.
+  depNode: _depNode = null,
   sessions,
   renderActions,
   extra = null,
@@ -110,16 +108,7 @@ export function BeadDetailModal({
   const idTag = (id: string) => (
     <code className="font-vk-mono text-sm text-vk-text-low [overflow-wrap:anywhere]">{id}</code>
   );
-  const chips = bead ? (
-    <>
-      <Chip>{statusLabel(bead.status)}</Chip>
-      {milestone !== null && <Chip>{milestone}</Chip>}
-      {question !== null && answer === null && <Chip tone="brand">{t('needs you')}</Chip>}
-      {idTag(bead.id)}
-    </>
-  ) : beadId ? (
-    idTag(beadId)
-  ) : null;
+  const chips = bead ? <>{idTag(bead.id)}</> : beadId ? idTag(beadId) : null;
 
   const actions =
     bead && discussCtx ? (
@@ -136,9 +125,18 @@ export function BeadDetailModal({
         onClose={onClose}
         chips={chips}
         title={bead?.title ?? beadId ?? t('Task')}
+        meta={
+          bead ? (
+            <TaskMeta
+              bead={bead}
+              milestone={milestone}
+              needsYou={question !== null && answer === null}
+            />
+          ) : undefined
+        }
         top={
           question !== null && answer === null && discussCtx ? (
-            <QuestionCard q={question} discussCtx={discussCtx} onAnswered={setAnswer} />
+            <QuestionCard q={question} onAnswered={setAnswer} />
           ) : undefined
         }
         actions={actions}
@@ -146,10 +144,11 @@ export function BeadDetailModal({
       >
         {notFound ? (
           <div className="space-y-2">
-            <p className="text-vk-text-low">This decision was resolved or removed.</p>
+            <p className="text-vk-text-low">{t('This decision was resolved or removed.')}</p>
             <p className="text-sm text-vk-text-low">
-              The bead it pointed to is no longer in the supervisor — it was likely closed or pruned
-              since this link was surfaced.
+              {t(
+                'The task it pointed to is no longer in the supervisor — it was likely closed or pruned since this link was surfaced.',
+              )}
             </p>
           </div>
         ) : error ? (
@@ -163,15 +162,28 @@ export function BeadDetailModal({
         ) : (
           <>
             {bead.description && bead.description.length > 0 && (
-              <div className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">
-                {renderMiniMarkdown(bead.description)}
+              <div
+                data-testid="task-description"
+                className={`text-[15px] text-vk-text-normal ${MARKDOWN_CLASS}`}
+              >
+                {renderMiniMarkdown(bead.description, { headingFrom: 3 })}
               </div>
             )}
             <Relationships
               bead={bead}
               items={items}
+              hasOtherLinks={otherLinkCount(links.view) > 0 || links.error !== null}
               {...(onOpenBead !== undefined ? { onOpenBead } : {})}
-            />
+            >
+              <RelatedEntities
+                embedded
+                view={links.view}
+                loading={links.loading}
+                error={links.error}
+                now={now}
+                {...(onOpenBead !== undefined ? { onOpenBead } : {})}
+              />
+            </Relationships>
             <AgentWork
               bead={bead}
               sessions={board.sessions}
@@ -181,32 +193,6 @@ export function BeadDetailModal({
             {question !== null && answer !== null && (
               <QuestionHistory q={question} answer={answer} />
             )}
-            <details className="text-sm">
-              <summary className="flex min-h-[44px] cursor-pointer items-center text-vk-text-low">
-                {t('Details')}
-              </summary>
-              <div className="space-y-6 pt-2">
-                <BeadBody bead={bead} />
-                {depNode && (
-                  <BeadDependencies
-                    node={depNode}
-                    {...(onOpenBead !== undefined ? { onOpenBead } : {})}
-                  />
-                )}
-                <RelatedEntities
-                  view={links.view}
-                  loading={links.loading}
-                  error={links.error}
-                  now={now}
-                  {...(onOpenBead !== undefined ? { onOpenBead } : {})}
-                />
-                {liveRunnable && (
-                  <Button size="sm" tone="quiet" onClick={() => setRunOpen(true)}>
-                    View live run
-                  </Button>
-                )}
-              </div>
-            </details>
           </>
         )}
       </TaskDrawer>
@@ -220,5 +206,65 @@ export function BeadDetailModal({
         />
       )}
     </>
+  );
+}
+
+/** Labels the meta line already says another way (the stage chip, «нужен ты»). */
+const SHOWN_ELSEWHERE = /^(milestone:|needs\/operator$)/;
+
+function createdText(iso: string | undefined): string | null {
+  if (iso === undefined) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const sameYear = at.getFullYear() === new Date().getFullYear();
+  const date = new Intl.DateTimeFormat(getLocale() === 'ru' ? 'ru-RU' : 'en-US', {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  }).format(at);
+  return t('created {date}', { date });
+}
+
+/**
+ * polish2 16.11 (owner, item 8): the card's facts in ONE line under the title
+ * (status, stage, executor, created, labels). It replaces «Подробности».
+ */
+function TaskMeta({
+  bead,
+  milestone,
+  needsYou,
+}: {
+  bead: SupervisorBead;
+  milestone: string | null;
+  needsYou: boolean;
+}) {
+  const recipe = bead.metadata?.['gc.kind'] === 'run';
+  const created = createdText(bead.created_at);
+  const labels = (bead.labels ?? []).filter((l) => !SHOWN_ELSEWHERE.test(l));
+  const assignee = bead.assignee && bead.assignee.length > 0 ? bead.assignee : t('nobody');
+  return (
+    <div
+      data-testid="task-meta"
+      className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-vk-text-low"
+    >
+      {needsYou && <Chip tone="brand">{t('needs you')}</Chip>}
+      <Chip>{statusLabel(bead.status)}</Chip>
+      {milestone !== null && <Chip>{milestone}</Chip>}
+      {recipe && (
+        <span className="font-medium text-warn">
+          {t('A formula recipe, not work: do not close it')}
+        </span>
+      )}
+      <span className="[overflow-wrap:anywhere]">{t('Executor: {who}', { who: assignee })}</span>
+      {created !== null && <span className="tnum">{created}</span>}
+      {labels.map((label) => (
+        <span
+          key={label}
+          className="inline-flex max-w-full rounded-full bg-vk-bg-panel px-2 py-0.5 text-[13px] text-vk-text-normal [overflow-wrap:anywhere]"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
   );
 }

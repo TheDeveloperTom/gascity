@@ -20,13 +20,14 @@ function measureOf(path: string): string {
 }
 
 describe('Layout', () => {
-  it('/beads is wide, / keeps a centred reading measure, /runs keeps max-w-dashboard', () => {
+  // polish2 16.11 (owner, 2000 px): «Нужно от меня» uses the width on wide screens.
+  it('/beads is wide, / is centred and up to 1600 px, /runs keeps max-w-dashboard', () => {
     const board = measureOf('/beads');
     expect(board).toContain('max-w-[120rem]');
     expect(board).not.toContain('max-w-dashboard');
     cleanup();
     const home = measureOf('/');
-    expect(home).toContain('max-w-[64rem]');
+    expect(home).toContain('max-w-[100rem]');
     expect(home).toContain('mx-auto');
     cleanup();
     for (const path of ['/runs', '/health', '/agents']) {

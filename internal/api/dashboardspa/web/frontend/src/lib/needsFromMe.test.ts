@@ -6,9 +6,11 @@ import {
   OWNER_ITEMS,
   QUESTION_ID,
   SECOND_QUESTION_ID,
+  HELD_STALL_ID,
   STALLED_ID,
   UNLINKED_ID,
   needsBoard,
+  needsBoardWithHeldStall,
 } from '../vk/needs/needsFixture';
 import { needsFromBoard, useNeedsFromMeCount } from './needsFromMe';
 
@@ -55,6 +57,51 @@ describe('needsFromBoard', () => {
     ]);
     expect(question?.waitedMs).toBe((3 * 24 + 8) * 3_600_000);
     expect(question?.choices).toEqual(['Сегодня в 18:00', 'Завтра в 10:00']);
+  });
+
+  // polish2 16.11 (owner): a stall held behind an owner question is noise in
+  // «Стоит»; it folds under that question instead.
+  it('a stall held behind an owner question folds under it, out of «Стоит»', () => {
+    const m = needsFromBoard(needsBoardWithHeldStall(), [], [], NOW_MS, false, OWNER_ITEMS);
+    expect(m.stalls.map((s) => s.id)).not.toContain(HELD_STALL_ID);
+    const question = m.needs.find((n) => n.id === QUESTION_ID);
+    expect(question?.heldStalls?.map((s) => s.id)).toEqual([HELD_STALL_ID]);
+    expect(m.needs.find((n) => n.id === SECOND_QUESTION_ID)?.heldStalls ?? []).toEqual([]);
+    // the badge count does not change because of the fold
+    expect(m.count).toBe(model().count);
+  });
+
+  // review I-2: only a «Никто не взял» blocker folds; an owner-marked stall
+  // never starts collapsed, so the badge equals what the page shows.
+  it('an owner-marked stall behind a question stays in «Стоит» and the badge equals the visible owner items', () => {
+    const board = needsBoardWithHeldStall();
+    board.items = board.items.map((b) =>
+      b.id === HELD_STALL_ID ? { ...b, labels: ['needs/operator'] } : b,
+    );
+    const m = needsFromBoard(board, [], [], NOW_MS, false, OWNER_ITEMS);
+    expect(m.stalls.map((s) => s.id)).toContain(HELD_STALL_ID);
+    expect(m.needs.flatMap((n) => n.heldStalls ?? []).map((s) => s.id)).not.toContain(
+      HELD_STALL_ID,
+    );
+    const visibleOwnerStalls = m.stalls.filter((s) => s.forOwner).length;
+    expect(m.count).toBe(m.needs.length + visibleOwnerStalls);
+  });
+
+  it('a stalled card at work behind a question is not folded (only «Никто не взял» folds)', () => {
+    const board = needsBoardWithHeldStall();
+    board.items = board.items.map((b) =>
+      b.id === HELD_STALL_ID
+        ? {
+            ...b,
+            status: 'in_progress',
+            assignee: 'devwork/polecat-9',
+            updated_at: '2026-11-14T20:46:00Z',
+          }
+        : b,
+    );
+    const m = needsFromBoard(board, [], [], NOW_MS, false, OWNER_ITEMS);
+    expect(m.stalls.map((s) => s.id)).toContain(HELD_STALL_ID);
+    expect(m.needs.flatMap((n) => n.heldStalls ?? [])).toEqual([]);
   });
 
   it('keeps owner asks while the board is unread', () => {

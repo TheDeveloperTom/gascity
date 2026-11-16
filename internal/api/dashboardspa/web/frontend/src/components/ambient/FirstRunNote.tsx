@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { readBrowserStorage, writeBrowserStorage } from '../../lib/browserStorage';
+import { t } from '../../i18n';
 
 const STORAGE_KEY = 'gascity:home-intro-dismissed';
 const COMPONENT = 'FirstRunNote';
@@ -37,7 +38,7 @@ export function FirstRunNote() {
         onClick={onDismiss}
         className="mt-2 text-label uppercase tracking-wider text-fg-muted hover:text-fg transition-colors duration-150 ease-out-quart focus-mark"
       >
-        Dismiss
+        {t('Dismiss')}
       </button>
     </aside>
   );

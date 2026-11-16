@@ -29,6 +29,7 @@ import { ALL_VIEWS } from './views/registry';
 import { filterEnabledViews, resolveDefaultViewWithLogging } from './views/resolve';
 import type { FrontendViewDescriptor } from './views/types';
 import { CommandBar } from './vk/CommandBar';
+import { t } from './i18n';
 
 const AgentsPage = lazy(() => import('./routes/Agents').then((m) => ({ default: m.AgentsPage })));
 const AgentDetailPage = lazy(() =>
@@ -215,8 +216,8 @@ function ConfigErrorBanner({ message }: { message: string }) {
       role="alert"
       className="mb-6 rounded-md border border-warn/50 bg-surface-raised px-3 py-2 text-body text-fg"
     >
-      <span className="font-semibold text-warn">config unavailable:</span> {message} · some controls
-      may be disabled until it loads.
+      <span className="font-semibold text-warn">{t('config unavailable:')}</span> {message} ·{' '}
+      {t('some controls may be disabled until it loads.')}
     </section>
   );
 }
@@ -228,9 +229,9 @@ function NotFoundPage() {
       className="mx-auto mt-6 max-w-[40rem] space-y-2 rounded-lg border border-rule bg-surface-raised p-6"
     >
       <h1 id="not-found-title" className="text-headline font-semibold text-fg">
-        Page not found
+        {t('Page not found')}
       </h1>
-      <p className="text-body text-fg-muted">No dashboard route matches this path.</p>
+      <p className="text-body text-fg-muted">{t('No dashboard route matches this path.')}</p>
     </section>
   );
 }

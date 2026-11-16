@@ -74,7 +74,9 @@ describe('BeadsPage supervisor reads', () => {
     );
   });
 
-  it('renders dependency navigation and live-run access in the bead detail modal', async () => {
+  // polish2 item 8: one «Связи» section (no «Dependencies» tree under a
+  // «Подробности» block); the live run opens from «Работа агентов».
+  it('renders the relations once and live-run access in the bead detail modal', async () => {
     renderPage('/beads?bead=td-bead-abc123');
 
     const dialog = await screen.findByRole('dialog');
@@ -82,12 +84,12 @@ describe('BeadsPage supervisor reads', () => {
     expect(
       await within(dialog).findByRole('heading', { name: 'direct supervisor bead' }),
     ).toBeTruthy();
-    expect(await within(dialog).findByText('Dependencies')).toBeTruthy();
-    expect(within(dialog).getByText('td-parent-1')).toBeTruthy();
-    // vk integration: the parent shows twice, in lane 2's «Связи» and in the
-    // old Dependencies tree under «Подробности».
-    expect(within(dialog).getAllByText(/parent bead/).length).toBeGreaterThan(0);
-    expect(within(dialog).getByRole('button', { name: /view live run/i })).toBeTruthy();
+    expect(within(dialog).queryByText('Dependencies')).toBeNull();
+    expect(within(dialog).queryByText('Details')).toBeNull();
+    const relations = within(dialog).getByTestId('task-relationships');
+    expect(await within(relations).findByText(/parent bead/)).toBeTruthy();
+    expect(within(dialog).getAllByText(/parent bead/)).toHaveLength(1);
+    expect(within(dialog).getByRole('button', { name: /watch what it writes/i })).toBeTruthy();
   });
 
   // vk integration: the header create-and-sling «New bead» button is gone;

@@ -13,6 +13,7 @@ import { Button } from './Button';
 import { Modal } from './Modal';
 import { LiveSessionPeek } from './LiveSessionPeek';
 import { StatusBadge, stateTone } from './StatusBadge';
+import { t } from '../i18n';
 
 // "Workers active" — the operator's calm at-a-glance answer to "what is
 // actually working right now".
@@ -113,7 +114,7 @@ function WorkerRow({
               SessionInfo carries only the name). Peek opens that session's
               transcript in the shared LiveSessionPeek modal. */}
           <Button size="sm" tone="quiet" onClick={() => onPeek(session.id)}>
-            Peek
+            {t('Peek')}
           </Button>
         </div>
       </div>
@@ -170,9 +171,9 @@ export function WorkInFlight({
   const countLabel = sessionsUnavailable || sessionsPending ? '—' : active.total;
 
   return (
-    <section className="mb-10" aria-label="Working now">
+    <section className="mb-10" aria-label={t('Working now')}>
       <header className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-title font-semibold text-fg">Working now</h2>
+        <h2 className="text-title font-semibold text-fg">{t('Working now')}</h2>
         <span className="inline-flex min-w-[1.375rem] justify-center rounded-full bg-fg/[0.06] px-1.5 text-label font-semibold text-fg-muted tnum">
           {countLabel}
         </span>
@@ -180,14 +181,14 @@ export function WorkInFlight({
       <div className="rounded-lg border border-rule bg-surface-raised">
         {sessionsUnavailable ? (
           <p className="px-4 py-3 text-body text-fg-muted" role="status">
-            Worker status unavailable.
+            {t('Worker status unavailable.')}
           </p>
         ) : sessionsPending ? (
           <p className="px-4 py-3 text-body text-fg-muted" role="status">
-            Checking worker status…
+            {t('Checking worker status…')}
           </p>
         ) : active.total === 0 ? (
-          <p className="px-4 py-3 text-body text-fg-muted">No workers active right now.</p>
+          <p className="px-4 py-3 text-body text-fg-muted">{t('No workers active right now.')}</p>
         ) : (
           <>
             <p className="border-b border-rule px-4 py-3 text-body text-fg-muted">{summary}</p>

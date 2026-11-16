@@ -55,6 +55,12 @@ export interface RelatedEntitiesProps {
   loading: boolean;
   error: string | null;
   now: number;
+  /**
+   * polish2 item 8: inside the card's ONE «Связи» section. No header, no
+   * summary, no «нет»; tasks are already the section's own rows, so only the
+   * other kinds (sessions, PRs, runs) show, and nothing at all when empty.
+   */
+  embedded?: boolean;
   /** Open the bead modal for a related bead. */
   onOpenBead?: (beadId: string) => void;
 }
@@ -64,10 +70,77 @@ interface GroupRow {
   relation: string;
 }
 
-export function RelatedEntities({ view, loading, error, now, onOpenBead }: RelatedEntitiesProps) {
+export function RelatedEntities({
+  view,
+  loading,
+  error,
+  now,
+  onOpenBead,
+  embedded = false,
+}: RelatedEntitiesProps) {
   const [expanded, setExpanded] = useState(false);
 
   const groups = useMemo(() => buildGroups(view), [view]);
+  if (embedded) {
+    const others = groups.filter((group) => group.type !== 'bead');
+    if (error !== null) {
+      // review M-3: a failed read is not «no links»
+      return (
+        <p className="py-1 text-sm text-vk-text-low">
+          {t('Could not read the linked sessions and PRs.')}
+        </p>
+      );
+    }
+    if (loading || others.length === 0) return null;
+    return (
+      <div data-testid="related-embedded" className="flex flex-col gap-3 pt-2">
+        {others.map((group) => (
+          <RelatedGroup
+            key={group.type}
+            type={group.type}
+            rows={group.rows}
+            now={now}
+            {...(onOpenBead !== undefined ? { onOpenBead } : {})}
+          />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <RelatedFull
+      view={view}
+      loading={loading}
+      error={error}
+      now={now}
+      groups={groups}
+      expanded={expanded}
+      setExpanded={setExpanded}
+      {...(onOpenBead !== undefined ? { onOpenBead } : {})}
+    />
+  );
+}
+
+/** Linked things other than tasks (sessions, PRs, runs) in a view. */
+export function otherLinkCount(view: EntityLinkView | null): number {
+  return buildGroups(view)
+    .filter((group) => group.type !== 'bead')
+    .reduce((n, group) => n + group.rows.length, 0);
+}
+
+function RelatedFull({
+  view,
+  loading,
+  error,
+  now,
+  onOpenBead,
+  groups,
+  expanded,
+  setExpanded,
+}: Omit<RelatedEntitiesProps, 'embedded'> & {
+  groups: ReturnType<typeof buildGroups>;
+  expanded: boolean;
+  setExpanded: (update: (v: boolean) => boolean) => void;
+}) {
   const counts = useMemo(() => summarize(view), [view]);
 
   const showMark = counts.unresolved >= UNRESOLVED_MARK_THRESHOLD;
@@ -79,7 +152,7 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
         <div className="flex items-baseline gap-3 min-w-0">
           {view && view.asOf && (
             <span className="text-label text-fg-faint tnum shrink-0">
-              as of {formatRelative(view.asOf, now)}
+              {t('as of {time} ago', { time: formatRelative(view.asOf, now) })}
             </span>
           )}
           <SummaryLine loading={loading} counts={counts} showMark={showMark} />
@@ -98,7 +171,7 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
         <>
           {view.partial && (
             <p className="text-label text-warn mb-4" role="status">
-              Partial: some sources did not load. Links may be incomplete.
+              {t('Partial: some sources did not load. Links may be incomplete.')}
             </p>
           )}
           <button
@@ -171,7 +244,7 @@ function RelatedGroup({
   return (
     <div>
       <header className="flex items-baseline justify-between mb-2">
-        <h3 className="text-label text-fg-faint">{GROUP_LABEL[type]}</h3>
+        <h3 className="text-label text-fg-faint">{t(GROUP_LABEL[type])}</h3>
         <span className="text-label text-fg-faint tnum">{rows.length}</span>
       </header>
       <ul className="space-y-2">

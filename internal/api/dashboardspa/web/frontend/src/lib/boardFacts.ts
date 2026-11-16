@@ -435,7 +435,7 @@ export function isServiceAgent(
   return CITY_ROLES.has(role);
 }
 
-/** A project's name for the owner: the HQ rig, named after the city, is «Город». */
+/** A project's name for the owner: the HQ rig, named after the city, is «Город (служебное)». */
 export function projectLabel(rigName: string, cityName: string): string {
-  return rigName === cityName ? t('City') : rigName;
+  return rigName === cityName ? t('City (service)') : t('{rig} product', { rig: rigName });
 }

@@ -19,7 +19,7 @@ export const RU_VK2: Readonly<Record<string, string | RuPlural>> = {
   'needs you': 'нужен ты',
   'Waiting on: {tags}': 'ждёт: {tags}',
   'Waiting on nothing': 'ничего не ждёт',
-  'status.open': 'Ждёт',
+  'status.open': 'Открыта',
   'status.in_progress': 'В работе',
   'status.blocked': 'Заблокирована',
   'status.closed': 'Готово',

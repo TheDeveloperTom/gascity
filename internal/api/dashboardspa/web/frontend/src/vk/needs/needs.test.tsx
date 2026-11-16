@@ -8,9 +8,11 @@ import {
   NOW_MS,
   OWNER_ITEMS,
   QUESTION_ID,
+  HELD_STALL_ID,
   STALLED_ID,
   UNLINKED_ID,
   needsBoard,
+  needsBoardWithHeldStall,
 } from './needsFixture';
 import { NeedsShelves } from './Shelf';
 
@@ -166,5 +168,72 @@ describe('«Нужно от меня» shelves', () => {
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toMatch(/\bmin-w-0\b/);
     expect(container.innerHTML).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]/);
+  });
+
+  // polish2 16.11 (owner, 2000 px screenshot)
+  it('wide screens: two columns, «Нужно от меня» left and «Стоит» right; phones stay one column', () => {
+    const { container } = show();
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain('xl:grid-cols-2');
+    const [left, right] = Array.from(root.children) as HTMLElement[];
+    expect(within(left!).getByRole('button', { name: /Нужно от меня/ })).toBeTruthy();
+    expect(within(right!).getByRole('heading', { level: 3, name: 'Стоит' })).toBeTruthy();
+    expect(within(left!).queryByRole('heading', { level: 3, name: 'Стоит' })).toBeNull();
+  });
+
+  it('larger type on desktop', () => {
+    show();
+    const title = within(itemOf(QUESTION_ID)).getByText('Когда окно для переноса ящика на основной аккаунт?');
+    expect(title.className).toContain('xl:text-[17px]');
+  });
+
+  it('a stall held behind the question folds under it: «держит N задач ▸» expands it', () => {
+    const model = needsFromBoard(needsBoardWithHeldStall(), [], [], NOW_MS, false, OWNER_ITEMS);
+    render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} />
+      </MemoryRouter>,
+    );
+    const stuck = screen.getByRole('heading', { level: 3, name: 'Стоит' }).closest('section')!;
+    expect(within(stuck).queryByText('Удалить mp_assignment после переноса ящика')).toBeNull();
+    const question = itemOf(QUESTION_ID);
+    const toggle = within(question).getByRole('button', { name: /держит 24 задачи/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(within(question).queryByText('Удалить mp_assignment после переноса ящика')).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const row = within(question).getByRole('link', { name: /Удалить mp_assignment после переноса ящика/ });
+    expect(row.getAttribute('href')).toBe(`/beads?bead=${HELD_STALL_ID}`);
+  });
+
+  // polish2 16.11 (coordinator, needs-2000 shot): no reserved empty half.
+  it('no «Стоит» items: one column, the questions 2 per row from 1440 px, nothing reserved on the right', () => {
+    const base = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
+    const model = { ...base, stalls: [] };
+    const { container } = render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} />
+      </MemoryRouter>,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).not.toContain('xl:grid-cols-2');
+    const list = itemOf(QUESTION_ID).parentElement as HTMLElement;
+    expect(list.className).toContain('min-[1440px]:grid-cols-2');
+  });
+
+  it('while the boards settle, no column is reserved for «Стоит»', () => {
+    const model = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
+    const { container } = render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} settling />
+      </MemoryRouter>,
+    );
+    expect((container.firstElementChild as HTMLElement).className).not.toContain('xl:grid-cols-2');
+  });
+
+  it('«Обсудить в Discord» on a row is not faded when enabled', () => {
+    show();
+    const btn = within(itemOf(QUESTION_ID)).getByRole('button', { name: 'Обсудить в Discord' });
+    expect(btn.className).not.toMatch(/(^|\s)sm:opacity-70(\s|$)/);
   });
 });

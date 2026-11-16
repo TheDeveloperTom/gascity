@@ -107,15 +107,43 @@ function parseBlocks(source: string): Block[] {
   return blocks;
 }
 
-export function renderMiniMarkdown(source: string): ReactNode {
+/**
+ * Styles for a rendered description: Tailwind's preflight resets headings,
+ * bold and list bullets, so a container must give them back (polish2 16.11:
+ * the drawer read as one flat paragraph).
+ */
+export const MARKDOWN_CLASS = [
+  'flex flex-col gap-2 [overflow-wrap:anywhere]',
+  '[&_h1]:mt-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-vk-text-high',
+  '[&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-vk-text-high',
+  '[&_h3]:mt-2 [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:text-vk-text-high',
+  '[&_h4]:mt-2 [&_h4]:font-semibold [&_h4]:text-vk-text-high [&_h5]:mt-2 [&_h5]:font-semibold [&_h5]:text-vk-text-high',
+  '[&_strong]:font-semibold [&_strong]:text-vk-text-high',
+  '[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5',
+  '[&_code]:rounded-sm [&_code]:bg-vk-bg-panel [&_code]:px-1 [&_code]:font-vk-mono [&_code]:text-[13px]',
+].join(' ');
+
+export interface MiniMarkdownOptions {
+  /**
+   * The level a `#` heading renders at (review M-4: inside the card drawer the
+   * title is an h2, so `#` starts at h3). Default 1.
+   */
+  headingFrom?: 1 | 2 | 3;
+}
+
+export function renderMiniMarkdown(source: string, options: MiniMarkdownOptions = {}): ReactNode {
+  const shift = (options.headingFrom ?? 1) - 1;
   return parseBlocks(source).map((block, i) => {
     const key = `b${i}`;
     switch (block.kind) {
       case 'heading': {
         const children = renderInline(block.text, key);
-        if (block.level === 1) return <h1 key={key}>{children}</h1>;
-        if (block.level === 2) return <h2 key={key}>{children}</h2>;
-        return <h3 key={key}>{children}</h3>;
+        const level = Math.min(6, block.level + shift);
+        if (level === 1) return <h1 key={key}>{children}</h1>;
+        if (level === 2) return <h2 key={key}>{children}</h2>;
+        if (level === 3) return <h3 key={key}>{children}</h3>;
+        if (level === 4) return <h4 key={key}>{children}</h4>;
+        return <h5 key={key}>{children}</h5>;
       }
       case 'ul':
       case 'ol': {
@@ -125,7 +153,16 @@ export function renderMiniMarkdown(source: string): ReactNode {
         return block.kind === 'ul' ? <ul key={key}>{items}</ul> : <ol key={key}>{items}</ol>;
       }
       case 'p':
-        return <p key={key}>{renderInline(block.lines.join(' '), key)}</p>;
+        // polish2 16.11 (owner): a line break inside a paragraph is kept (the
+        // card descriptions are one «**Lead:** text» per line).
+        return (
+          <p key={key}>
+            {block.lines.flatMap((line, j) => [
+              ...(j > 0 ? [<br key={`${key}-br${j}`} />] : []),
+              ...renderInline(line, `${key}-${j}`),
+            ])}
+          </p>
+        );
     }
   });
 }

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../i18n';
 import { formatClockTime, formatRelative, formatShortDate } from './time';
 
 const NOW = Date.parse('2026-05-20T12:00:00.000Z');
@@ -6,6 +7,19 @@ const NOW = Date.parse('2026-05-20T12:00:00.000Z');
 function isoAgo(ms: number): string {
   return new Date(NOW - ms).toISOString();
 }
+
+describe('formatRelative in Russian (polish2 16.11: «as of 5m» was English)', () => {
+  afterEach(() => setLocale('en'));
+  it('speaks Russian units', () => {
+    setLocale('ru');
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    expect(formatRelative(now - 2_000, now)).toBe('сейчас');
+    expect(formatRelative(now - 30_000, now)).toBe('30 с');
+    expect(formatRelative(now - 5 * 60_000, now)).toBe('5 мин');
+    expect(formatRelative(now - 3 * 3_600_000, now)).toBe('3 ч');
+    expect(formatRelative(now - 2 * 86_400_000, now)).toBe('2 дн.');
+  });
+});
 
 describe('formatRelative', () => {
   it('returns the interpunct sentinel for undefined input', () => {

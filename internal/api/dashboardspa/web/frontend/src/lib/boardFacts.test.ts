@@ -372,8 +372,8 @@ describe('agents and projects', () => {
     expect(isServiceAgent({ name: 'devwork/worker', rig: null }, RIGS)).toBe(true);
   });
 
-  it('HQ rig devwork-platform is labelled Город', () => {
-    expect(projectLabel('devwork-platform', 'devwork-platform')).toBe('Город');
-    expect(projectLabel('devwork', 'devwork-platform')).toBe('devwork');
+  it('HQ rig devwork-platform is labelled «Город (служебное)», a rig «Продукт <rig>» (polish2)', () => {
+    expect(projectLabel('devwork-platform', 'devwork-platform')).toBe('Город (служебное)');
+    expect(projectLabel('devwork', 'devwork-platform')).toBe('Продукт devwork');
   });
 });

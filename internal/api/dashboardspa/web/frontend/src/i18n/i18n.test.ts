@@ -4,6 +4,7 @@ import {
   collectMissing,
   getLocale,
   resetMissing,
+  readInitialLocale,
   resolveInitialLocale,
   setLocale,
   t,
@@ -155,5 +156,47 @@ describe('i18n', () => {
     installStorage(throwing);
     expect(() => setLocale('ru')).not.toThrow();
     expect(getLocale()).toBe('ru');
+  });
+
+  // polish2 16.11 (owner): a raw key such as `status.open` must never reach the screen.
+  it('a dotted key without a translation shows a readable label, never the raw key', () => {
+    setLocale('en');
+    expect(t('status.open')).toBe('Open');
+    expect(t('status.in_progress')).toBe('In progress');
+    setLocale('ru');
+    expect(t('status.open')).toBe('Открыта');
+    expect(t('kind.never_seen_kind')).toBe('Never seen kind');
+    // review M-5: only label-map prefixes; a server reason keeps its text
+    expect(t('dolt.unreachable')).toBe('dolt.unreachable');
+  });
+
+  // polish2 16.11 (owner, Brave at 2000 px rendered in English with the toggle
+  // on «RU»): an `en` left under the old storage key is not his choice today.
+  // Russian by default; only a choice made with the toggle under the current
+  // key switches to English.
+  it('a stale stored `en` under the pre-polish2 key is ignored', () => {
+    window.localStorage.setItem('gascity:locale', 'en');
+    expect(LOCALE_STORAGE_KEY).not.toBe('gascity:locale');
+    expect(readInitialLocale()).toBe('ru');
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
+    expect(readInitialLocale()).toBe('en');
+  });
+
+  it('the polish2 dictionary never overrides a key of another dictionary', async () => {
+    const others = await Promise.all([
+      import('./ru').then((m) => m.RU),
+      import('./ru.home').then((m) => m.RU_HOME),
+      import('./ru.board').then((m) => m.RU_BOARD),
+      import('./ru.debug').then((m) => m.RU_DEBUG),
+      import('./ru.vk2').then((m) => m.RU_VK2),
+      import('./ru.vk4').then((m) => m.RU_VK4),
+      import('./ru.vk5').then((m) => m.RU_VK5),
+      import('./ru.vk6').then((m) => m.RU_VK6),
+      import('./ru.vkfinal').then((m) => m.RU_VKFINAL),
+      import('./ru.h1').then((m) => m.RU_H1),
+    ]);
+    const { RU_POLISH2 } = await import('./ru.polish2');
+    const taken = new Set(others.flatMap((d) => Object.keys(d)));
+    expect(Object.keys(RU_POLISH2).filter((k) => taken.has(k))).toEqual([]);
   });
 });

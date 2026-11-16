@@ -22,6 +22,8 @@ vi.mock('../../lib/mayorLink', () => ({
   mayorChannelUrl: vi.fn(() => 'https://discord.com/channels/1/2'),
 }));
 
+import { DISPATCH_CARD } from './dispatchCardFixture';
+
 const mockDetail = useBeadDetail as unknown as Mock;
 const mockBoard = useBoardData as unknown as Mock;
 const mockAgentNow = useAgentNow as unknown as Mock;
@@ -144,9 +146,8 @@ describe('question card', () => {
     expect(within(card).getByText('Что случилось')).toBeTruthy();
     expect(within(card).getByText('Только ты можешь войти под основным аккаунтом.')).toBeTruthy();
     expect(within(card).getByText('Перенос утром, 22 задачи подождут ещё ночь')).toBeTruthy();
-    expect(
-      within(card).getByRole('button', { name: 'Другое — обсудить в Discord' }),
-    ).toBeTruthy();
+    // polish2 16.11 (owner): one Russian primary button, no «Другое — обсудить в Discord».
+    expect(within(card).queryByText(/Другое —|Other|discuss/i)).toBeNull();
     // Owner change 15.11: no «Мэр спрашивает», no «Почему нужен ты», no hint line.
     const text = card.textContent ?? '';
     expect(text).not.toContain('Мэр спрашивает');
@@ -159,31 +160,45 @@ describe('question card', () => {
     expect(screen.getByRole('button', { name: 'Обсудить с Мэром' })).toBeTruthy();
   });
 
-  it('a choice opens the Mayor’s Discord message and sends nothing (owner 16.11: answers live in Discord)', () => {
+  it('one primary «Ответить в Discord» opens the question message; the choices are read-only (polish2 16.11)', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     show(question);
-    const choices = within(screen.getByTestId('question-choices')).getAllByRole('button');
-    expect(choices).toHaveLength(3);
-    fireEvent.click(choices[1]!);
+    const card = screen.getByTestId('question-card');
+    const buttons = within(card).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual(['Ответить в Discord']);
+    // the options stay visible as text so the owner knows what he will pick
+    expect(within(card).getByText('Завтра в 10:00')).toBeTruthy();
+    fireEvent.click(buttons[0]!);
     expect(mockOpen).toHaveBeenCalledWith(CHAT);
     expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
-    // Nothing was sent from here: the question stays open, no «отвечено» claim.
     expect(screen.getByTestId('question-card')).toBeTruthy();
     expect(screen.queryByText(/отвечено/)).toBeNull();
   });
 
-
-  it('a legacy question with no choices offers «Ответить в Discord», which opens the message', () => {
+  it('a legacy question with no choices has the same single button, which opens the message', () => {
     const legacy = bead({
       id: 'gc-legacy',
       labels: ['needs/operator'],
       metadata: { 'decision.question_id': 'q-3', 'decision.chat_url': CHAT },
     });
     show(legacy);
+    const card = screen.getByTestId('question-card');
+    expect(within(card).getAllByRole('button').map((b) => b.textContent)).toEqual(['Ответить в Discord']);
     fireEvent.click(screen.getByRole('button', { name: 'Ответить в Discord' }));
     expect(mockOpen).toHaveBeenCalledWith(CHAT);
+  });
+
+  it('the status reads «Открыта», never a raw key, in Russian and in English', () => {
+    show(question);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('Открыта');
+    expect(dialog.textContent).not.toMatch(/status\./);
+    cleanup();
+    setLocale('en');
+    show(question);
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/status\./);
   });
 });
 
@@ -224,3 +239,99 @@ describe('relationships', () => {
   });
 });
 
+// polish2 16.11 item 8 (owner screenshots of dw-11d21b41c8f56781): the drawer
+// is one screen: title, one meta line, the description once as Markdown, one
+// «Связи» section. No «Подробности», no raw `**`/`###`, no English.
+describe('the drawer is one screen (item 8)', () => {
+  const PARENT = bead({ id: 'dw-eba63b7db1e9a14e', title: 'M03 #2 / Task 6: допуск по собственному ящику' });
+  const BLOCKER = bead({ id: 'dw-76d30a7621ef3a49', title: 'm03-d2-provider-binding — привязка провайдера' });
+  const items = [DISPATCH_CARD, PARENT, BLOCKER];
+
+  it('renders the description once, as Markdown: bold, a heading, line breaks; no raw markers', () => {
+    show(DISPATCH_CARD, items);
+    const dialog = screen.getByRole('dialog');
+    const text = dialog.textContent ?? '';
+    expect(text.split('Что меняем и зачем').length - 1).toBe(1);
+    expect(text).not.toContain('**');
+    expect(text).not.toContain('###');
+    const md = screen.getByTestId('task-description');
+    expect(within(md).getAllByText(/:$/, { selector: 'strong' }).length).toBe(6);
+    expect(within(md).getByRole('heading', { name: 'Исходные сведения и технические ссылки' })).toBeTruthy();
+    // each source line keeps its own line
+    expect(md.querySelectorAll('br').length).toBeGreaterThanOrEqual(5);
+    // a visible heading and bold (Tailwind preflight resets both)
+    expect(md.className).toContain('[&_h3]:font-semibold');
+    expect(md.className).toContain('[&_strong]:font-semibold');
+  });
+
+  it('has no «Подробности» block and no English section names', () => {
+    show(DISPATCH_CARD, items);
+    const text = screen.getByRole('dialog').textContent ?? '';
+    for (const gone of ['Подробности', 'Details', 'Description', 'Описание', 'Зависимости', 'Dependencies', 'Связанное', 'Related']) {
+      expect(text, gone).not.toContain(gone);
+    }
+    expect(screen.queryByRole('group')).toBeNull();
+  });
+
+  it('one meta line under the title: «Открыта», the stage, «Исполнитель: нет», the date, the labels', () => {
+    show(DISPATCH_CARD, items);
+    const meta = screen.getByTestId('task-meta');
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading.nextElementSibling).toBe(meta);
+    const text = meta.textContent ?? '';
+    expect(text).toContain('Открыта');
+    expect(text).toContain('M03');
+    expect(text).toContain('Исполнитель: нет');
+    expect(text).toMatch(/создана 28 окт/);
+    expect(text).not.toMatch(/\bopen\b|\btask\b|·$/);
+    // the description comes right after the meta line, before the relations
+    const md = screen.getByTestId('task-description');
+    const rel = screen.getByTestId('task-relationships');
+    expect(meta.compareDocumentPosition(md) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(md.compareDocumentPosition(rel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('relations are ONE «Связи» section: waits on, part of', () => {
+    show(DISPATCH_CARD, items);
+    expect(screen.getAllByRole('heading', { name: 'Связи' })).toHaveLength(1);
+    const rel = screen.getByTestId('task-relationships');
+    expect(within(rel).getByText('ждёт')).toBeTruthy();
+    expect(within(rel).getByText('m03-d2-provider-binding — привязка провайдера')).toBeTruthy();
+    expect(within(rel).getByText('часть')).toBeTruthy();
+    expect(within(rel).getByText('M03 #2 / Task 6: допуск по собственному ящику')).toBeTruthy();
+  });
+
+  // review M-2: «Подробности» used to warn on formula templates; the meta line does now.
+  it('a formula template says in the meta line that it is a recipe, not work', () => {
+    const recipe = { ...DISPATCH_CARD, id: 'gc-recipe', metadata: { 'gc.kind': 'run' } };
+    show(recipe, [recipe]);
+    expect(screen.getByTestId('task-meta').textContent).toContain('Рецепт прогона, а не работа: не закрывай её');
+    cleanup();
+    show(DISPATCH_CARD, items);
+    expect(screen.getByTestId('task-meta').textContent).not.toContain('Рецепт');
+  });
+
+  // review M-3: no links at all reads «Связей нет.»
+  it('a card with no links says «Связей нет.»', () => {
+    const { parent: _parent, ...noParent } = DISPATCH_CARD;
+    const lone = { ...noParent, id: 'gc-lone', dependencies: [] };
+    show(lone, [lone]);
+    expect(within(screen.getByTestId('task-relationships')).getByText('Связей нет.')).toBeTruthy();
+  });
+
+  // review M-4: the drawer title is an h2, so description headings start at h3.
+  it('description headings sit below the drawer title (no h1/h2 inside)', () => {
+    const md = { ...DISPATCH_CARD, id: 'gc-md', description: '# Большой\n\n## Средний\n\nтекст' };
+    show(md, [md]);
+    const body = screen.getByTestId('task-description');
+    expect(body.querySelector('h1, h2')).toBeNull();
+    expect(within(body).getByRole('heading', { level: 3, name: 'Большой' })).toBeTruthy();
+    expect(within(body).getByRole('heading', { level: 4, name: 'Средний' })).toBeTruthy();
+  });
+
+  // review M-8: «нужен ты» sits in the meta line, not in the phone's back row.
+  it('«нужен ты» is in the meta line, not in the header row', () => {
+    show(question);
+    expect(within(screen.getByTestId('task-meta')).getByText('нужен ты')).toBeTruthy();
+  });
+});

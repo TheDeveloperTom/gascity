@@ -28,8 +28,8 @@
  */
 // Source: packages/ui/src/components/IssueRelationshipsSection.tsx and
 // packages/ui/src/components/RelationshipBadge.tsx
-import { ArrowBendUpRightIcon, ProhibitIcon } from '@phosphor-icons/react';
-import { useMemo } from 'react';
+import { ArrowBendUpRightIcon, ProhibitIcon, TreeStructureIcon } from '@phosphor-icons/react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { t } from '../../i18n';
 import { transitiveWaiters } from '../../lib/holds';
 import { blockerIds, buildWaitersIndex, milestoneOf, titleStartsWithTag } from '../../lib/waitReasons';
@@ -38,7 +38,7 @@ import { cn } from '../cn';
 
 export const RELATIONSHIP_ROWS = 2;
 
-type DisplayType = 'blocks' | 'blocked_by';
+type DisplayType = 'blocks' | 'blocked_by' | 'part_of';
 
 interface Row {
   id: string;
@@ -47,7 +47,8 @@ interface Row {
   title: string;
 }
 
-const ICONS = { blocks: ArrowBendUpRightIcon, blocked_by: ProhibitIcon } as const;
+const ICONS = { blocks: ArrowBendUpRightIcon, blocked_by: ProhibitIcon, part_of: TreeStructureIcon } as const;
+const LABELS = { blocks: 'blocks', blocked_by: 'waits on', part_of: 'part of' } as const;
 
 /** Blocker tags (milestone, else id) for the «ждёт: …» summary. */
 export function blockerTags(bead: SupervisorBead, items: readonly SupervisorBead[]): string[] {
@@ -66,10 +67,10 @@ function RelationshipBadge({
   onClick?: (id: string) => void;
 }) {
   const Icon = ICONS[row.displayType];
-  const label = row.displayType === 'blocks' ? t('blocks') : t('waits on');
+  const label = t(LABELS[row.displayType]);
   const body = (
     <>
-      <span className="flex shrink-0 text-vk-error">
+      <span className={cn('flex shrink-0', row.displayType === 'part_of' ? 'text-vk-text-low' : 'text-vk-error')}>
         <Icon size={15} weight="bold" aria-hidden="true" />
       </span>
       <span className="shrink-0 whitespace-nowrap text-vk-text-low">{label}</span>
@@ -98,9 +99,24 @@ export interface RelationshipsProps {
   /** The shared board read (useBoardData); empty while it loads. */
   items: readonly SupervisorBead[];
   onOpenBead?: (beadId: string) => void;
+  /** Other linked things (sessions, PRs, runs), shown in this same section. */
+  children?: ReactNode;
+  /** True when `children` shows something (review M-3: else «Связей нет.»). */
+  hasOtherLinks?: boolean;
 }
 
-export function Relationships({ bead, items, onOpenBead }: RelationshipsProps) {
+/** The card's parent (`parent`, else a parent-child dependency). */
+function parentOf(bead: SupervisorBead): string | null {
+  if (typeof bead.parent === 'string' && bead.parent.length > 0) return bead.parent;
+  const dep = (bead.dependencies ?? []).find((d) => d.type === 'parent-child' && d.issue_id === bead.id);
+  return dep?.depends_on_id ?? null;
+}
+
+// polish2 16.11 (owner, item 8): «Связи» is the ONE relations section of the
+// card: what it waits on, what waits on it, what it is part of, and (children)
+// the other linked things. The old «Зависимости» and «Связанное» are gone.
+export function Relationships({ bead, items, onOpenBead, children, hasOtherLinks = false }: RelationshipsProps) {
+  const [all, setAll] = useState(false);
   const { rows, extra, holds } = useMemo(() => {
     const byId = new Map(items.map((b) => [b.id, b]));
     const waitersOf = buildWaitersIndex(items);
@@ -110,16 +126,28 @@ export function Relationships({ bead, items, onOpenBead }: RelationshipsProps) {
       const title = b?.title ?? id;
       return { id, displayType, tag: tag !== null && titleStartsWithTag(title, tag) ? null : tag, title };
     };
-    const all: Row[] = [
+    const parent = parentOf(bead);
+    const every: Row[] = [
       ...(waitersOf.get(bead.id) ?? []).map((id) => toRow(id, 'blocks')),
-      ...blockerIds(bead).map((id) => toRow(id, 'blocked_by')),
+      ...blockerIds(bead)
+        .filter((id) => id !== parent)
+        .map((id) => toRow(id, 'blocked_by')),
+      ...(parent === null ? [] : [toRow(parent, 'part_of')]),
     ];
+    // the parent stays visible even when the waiters fold
+    const head = every.slice(0, RELATIONSHIP_ROWS);
+    const parentRow = every.find((r) => r.displayType === 'part_of');
+    const shown = all
+      ? every
+      : parentRow !== undefined && !head.includes(parentRow)
+        ? [...head, parentRow]
+        : head;
     return {
-      rows: all.slice(0, RELATIONSHIP_ROWS),
-      extra: Math.max(0, all.length - RELATIONSHIP_ROWS),
+      rows: shown,
+      extra: Math.max(0, every.length - shown.length),
       holds: transitiveWaiters(bead.id, waitersOf).length,
     };
-  }, [bead, items]);
+  }, [bead, items, all]);
 
   return (
     <section data-testid="task-relationships" className="flex flex-col gap-0.5">
@@ -129,7 +157,7 @@ export function Relationships({ bead, items, onOpenBead }: RelationshipsProps) {
           <span className="text-sm text-vk-text-low">{t('holds {n}', { n: holds })}</span>
         )}
       </div>
-      {rows.length === 0 ? (
+      {rows.length === 0 && !hasOtherLinks ? (
         <p className="py-1 text-sm text-vk-text-low">{t('No links.')}</p>
       ) : (
         rows.map((row) => (
@@ -141,10 +169,15 @@ export function Relationships({ bead, items, onOpenBead }: RelationshipsProps) {
         ))
       )}
       {extra > 0 && (
-        <span className="pl-[21px] pt-1 text-sm text-vk-text-low">
+        <button
+          type="button"
+          onClick={() => setAll(true)}
+          className="min-h-11 self-start rounded-sm pl-[21px] pt-1 text-left text-sm text-vk-text-low hover:text-vk-text-high focus-mark md:min-h-0"
+        >
           {t('and {n} more', { n: extra })}
-        </span>
+        </button>
       )}
+      {children}
     </section>
   );
 }

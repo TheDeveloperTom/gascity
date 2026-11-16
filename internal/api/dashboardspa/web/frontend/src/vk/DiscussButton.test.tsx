@@ -91,4 +91,14 @@ describe('DiscussButton', () => {
     render(<DiscussButton ctx={ctx} label="Другое — обсудить в Discord" />);
     expect(screen.getByRole('button', { name: 'Другое — обсудить в Discord' })).toBeTruthy();
   });
+
+  // polish2 16.11 (coordinator): with a channel the button must not look
+  // disabled; only the disabled state is dimmed.
+  it('enabled reads at normal contrast; only disabled is dimmed', () => {
+    render(<DiscussButton ctx={ctx} />);
+    const btn = screen.getByRole('button') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.className.split(/\s+/)).not.toContain('text-vk-text-low');
+    expect(btn.className).toContain('disabled:opacity-60');
+  });
 });

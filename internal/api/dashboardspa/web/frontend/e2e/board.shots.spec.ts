@@ -34,7 +34,7 @@ test.describe('board screenshots', () => {
           await page.addInitScript((t) => {
             try {
               window.localStorage.setItem('gascity:theme', t);
-              window.localStorage.setItem('gascity:locale', 'ru');
+              window.localStorage.setItem('gascity:locale:v2', 'ru');
             } catch {
               // storage may be unavailable; the media query still applies
             }

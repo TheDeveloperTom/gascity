@@ -128,15 +128,26 @@ export interface BoardModel {
   waitersOf: ReadonlyMap<string, readonly string[]>;
 }
 
+// polish2 16.11 (owner asked what «City» is): the hq store holds the city's
+// own service tasks, so it reads «Город (служебное)»; a rig is «Продукт <rig>».
+// The menu, the button and the card tags use the same names.
+export function cityProjectLabel(): string {
+  return t('City (service)');
+}
+
+export function rigProjectLabel(rig: string): string {
+  return t('{rig} product', { rig });
+}
+
 function cityRef(): ProjectRef {
-  return { key: CITY_PROJECT_KEY, label: t('City'), kind: 'city' };
+  return { key: CITY_PROJECT_KEY, label: cityProjectLabel(), kind: 'city' };
 }
 
 export function projectOf(bead: SupervisorBead, rigs: readonly RigPrefix[]): ProjectRef {
   for (const rig of rigs) {
     const prefix = rig.prefix?.trim() ?? '';
     if (prefix.length > 0 && bead.id.startsWith(`${prefix}-`)) {
-      return { key: rig.name, label: rig.name, kind: 'rig' };
+      return { key: rig.name, label: rigProjectLabel(rig.name), kind: 'rig' };
     }
   }
   return cityRef();
@@ -432,7 +443,7 @@ export function buildBoardModel(
   if (prefixComplete) {
     for (const rig of rigs) {
       const count = counts.get(rig.name) ?? 0;
-      if (count > 0) projects.push({ key: rig.name, label: rig.name, count });
+      if (count > 0) projects.push({ key: rig.name, label: rigProjectLabel(rig.name), count });
     }
   }
   // Every peer (city, rig) is its own project, after ours (L14).
@@ -442,7 +453,7 @@ export function buildBoardModel(
   }
   if (prefixComplete) {
     const city = counts.get(CITY_PROJECT_KEY) ?? 0;
-    if (city > 0) projects.push({ key: CITY_PROJECT_KEY, label: t('City'), count: city });
+    if (city > 0) projects.push({ key: CITY_PROJECT_KEY, label: cityProjectLabel(), count: city });
   }
 
   // vk-final: with more than one project on the board every card carries its
