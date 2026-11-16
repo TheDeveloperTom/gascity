@@ -70,14 +70,16 @@ function useKeepMenuOnScreen(open: boolean, listRef: RefObject<HTMLDivElement | 
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!open || list === null) return;
-    list.style.transform = '';
+    list.style.left = '';
     const rect = list.getBoundingClientRect();
     // The layout viewport, not window.innerWidth: mobile Chrome zooms out to
     // fit an overflowing menu, and innerWidth then grows with it.
     const viewport = document.documentElement.clientWidth || window.innerWidth;
     const over = rect.right - (viewport - MENU_GUTTER_PX);
     const shift = Math.min(Math.max(over, 0), Math.max(rect.left - MENU_GUTTER_PX, 0));
-    if (shift > 0) list.style.transform = `translateX(-${Math.round(shift)}px)`;
+    // Move the layout box (left), not a transform: a translated menu still
+    // widened the page by its untransformed box (live: 133 px to scroll).
+    if (shift > 0) list.style.left = `-${Math.round(shift)}px`;
   }, [open, listRef]);
 }
 

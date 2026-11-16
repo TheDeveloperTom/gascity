@@ -100,7 +100,8 @@ describe('BoardFilterBar (vk)', () => {
       renderBar(extra as Partial<ComponentProps<typeof BoardFilterBar>>);
       fireEvent.click(screen.getByRole('button', { name: button }));
       // 523 - (390 - 16) = 149 px to the left
-      expect((screen.getByRole('listbox') as HTMLElement).style.transform).toBe('translateX(-149px)');
+      // The layout box moves (a transform left the page 133 px wide to scroll on the live phone).
+      expect((screen.getByRole('listbox') as HTMLElement).style.left).toBe('-149px');
     } finally {
       HTMLElement.prototype.getBoundingClientRect = rect;
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
