@@ -1,0 +1,220 @@
+import { describe, expect, it } from 'vitest';
+import { buildGraph, chainOf, whatIfBanner, type GraphBead } from './model';
+
+// The M04 chain of the owner-approved mockups (gen.py EPIC_ID / EPIC_EDGES),
+// in the live bead shape: `needs` and `dependencies[]` both carry blockers,
+// owner questions carry `needs/operator`, M03 T6 lives in another epic.
+const NOW = Date.parse('2026-11-16T12:00:00Z');
+const DAY = 86_400_000;
+
+function bead(id: string, title: string, extra: Partial<GraphBead> = {}): GraphBead {
+  return {
+    id,
+    title,
+    status: 'open',
+    issue_type: 'task',
+    created_at: new Date(NOW - DAY / 2).toISOString(),
+    labels: ['milestone:M04'],
+    ...extra,
+  };
+}
+const q = (id: string, title: string, milestone = 'M04') =>
+  bead(id, title, { labels: [`milestone:${milestone}`, 'needs/operator'] });
+const blocks = (issue: string, target: string) => ({ issue_id: issue, depends_on_id: target, type: 'blocks' });
+
+const ID = {
+  m3: 'dw-37352d0f782d1d17',
+  t6: 'dw-eba63b7db1e9a14e.2',
+  s3: 'dw-3511d68caffe01f8.3',
+  s1: 'dw-3511d68caffe01f8.1',
+  s4: 'dw-3511d68caffe01f8.4',
+  s6: 'dw-3511d68caffe01f8.6',
+  s7: 'dw-3511d68caffe01f8.7',
+  s8: 'dw-3511d68caffe01f8.8',
+  e5: 'dw-43cc',
+  a1: 'dw-a4e4d4b8c7da1166',
+  gw: 'dw-6a4i',
+  s9: 'dw-3511d68caffe01f8.9',
+  acc: 'dw-iy9a',
+  qv3: 'dw-qv3',
+  qv4: 'dw-qv4',
+  ql1: 'dw-ssmbcp',
+  qv6: 'dw-cs2w',
+};
+const SEVEN = [ID.s1, ID.s4, ID.s6, ID.s7, ID.s8, ID.e5, ID.a1];
+
+function m04(): GraphBead[] {
+  return [
+    bead('dw-m04', 'M04 · Понимание вакансии', { issue_type: 'epic' }),
+    q(ID.qv3, 'M04 ВВ-3: траты около $7.3'),
+    q(ID.qv4, 'M04 ВВ-4: миграция 0426'),
+    q(ID.ql1, 'Окно L1 и ключ Clerk', 'M03'),
+    q(ID.qv6, 'M04 ВВ-6: как платит клиент'),
+    bead(ID.s9, 'M04 — Разделить страны', { needs: [ID.qv3] }),
+    bead(ID.m3, 'M04 #3 — Пересчёт при правках', { status: 'in_progress', assignee: 'devwork/worker-1', needs: [ID.qv4] }),
+    bead(ID.t6, 'M03 #6 — Допуск по своему ящику', { labels: ['milestone:M03'], needs: [ID.ql1] }),
+    bead(ID.s3, 'M04 #33 — Не затирать оценку', { needs: [ID.m3], dependencies: [blocks(ID.s3, ID.t6)] }),
+    bead(ID.s1, 'M04 #31 — Смена вакансии', { needs: [ID.s3] }),
+    bead(ID.s4, 'M04 #34 — Оценка ждущей подачи', { needs: [ID.s3] }),
+    bead(ID.s6, 'M04 #56 — Ручные записи оценки', { needs: [ID.s3] }),
+    bead(ID.s7, 'M04 #57 — Удаление заглушек', { needs: [ID.s3] }),
+    bead(ID.s8, 'M04 #58 — Чтение из снимка', { needs: [ID.s3] }),
+    bead(ID.e5, 'M04 Task 5E — Мост досье для подбора', { needs: [ID.s3] }),
+    // a redundant edge (a1 → m3 is implied through s3) must be pruned
+    bead(ID.a1, 'M04 #1 — Перенести расчёт', { needs: [ID.s3, ID.m3] }),
+    bead(ID.gw, 'M04 — Шлюз LLM для векторов', { needs: [ID.a1] }),
+    bead(ID.acc, 'M04 — приёмка этапа', {
+      needs: [...SEVEN, ID.gw, ID.s9, ID.s3],
+      dependencies: [blocks(ID.acc, ID.qv6), { issue_id: ID.acc, depends_on_id: 'dw-m04', type: 'parent-child' }],
+    }),
+    bead('dw-done1', 'M04 #0 — Готово 1', { status: 'closed' }),
+    bead('dw-done2', 'M04 #0.1 — Готово 2', { status: 'closed' }),
+    bead('dw-done3', 'M04 #0.2 — Готово 3', { status: 'closed' }),
+    bead('dw-done4', 'M04 #0.3 — Готово 4', { status: 'closed' }),
+    bead('dw-done5', 'M04 #0.4 — Готово 5', { status: 'closed' }),
+    bead('dw-other', 'M05 #1 — Чужая задача', { labels: ['milestone:M05'] }),
+  ];
+}
+
+const node = (m: ReturnType<typeof buildGraph>, id: string) => {
+  const n = m.nodes.find((x) => x.id === id);
+  if (n === undefined) throw new Error(`no node ${id}`);
+  return n;
+};
+
+describe('buildGraph on the M04 chain', () => {
+  const m = buildGraph(m04(), { epicId: 'M04', nowMs: NOW });
+
+  it('keeps the epic tasks, the outside blocker and the questions; drops closed, epic and other epics', () => {
+    const ids = new Set(m.nodes.map((n) => n.id));
+    expect(ids.has('dw-m04')).toBe(false);
+    expect(ids.has('dw-done1')).toBe(false);
+    expect(ids.has('dw-other')).toBe(false);
+    expect(ids.has(ID.t6)).toBe(true);
+    expect(node(m, ID.t6).outside).toBe(true);
+    expect(node(m, ID.s3).outside).toBe(false);
+    expect(m.nodes).toHaveLength(17);
+  });
+
+  it('puts questions in column 0 and tasks in waves by longest path', () => {
+    for (const id of [ID.qv3, ID.qv4, ID.ql1, ID.qv6]) {
+      expect(node(m, id).kind).toBe('question');
+      expect(node(m, id).column).toBe(0);
+    }
+    expect(node(m, ID.m3).column).toBe(1);
+    expect(node(m, ID.t6).column).toBe(1);
+    expect(node(m, ID.s9).column).toBe(1);
+    expect(node(m, ID.s3).column).toBe(2);
+    for (const id of SEVEN) expect(node(m, id).column).toBe(3);
+    expect(node(m, ID.gw).column).toBe(4);
+    expect(node(m, ID.acc).column).toBe(5);
+  });
+
+  it('prunes transitively redundant edges', () => {
+    const has = (a: string, b: string) => m.edges.some((e) => e.from === a && e.to === b);
+    expect(has(ID.m3, ID.a1)).toBe(false);
+    expect(has(ID.s3, ID.acc)).toBe(false);
+    expect(has(ID.s3, ID.a1)).toBe(true);
+    expect(has(ID.t6, ID.s3)).toBe(true);
+    expect(has(ID.ql1, ID.t6)).toBe(true);
+    expect(has(ID.qv6, ID.acc)).toBe(true);
+    expect(has(ID.a1, ID.acc)).toBe(false); // implied by a1 → gw → acc
+    expect(has(ID.s1, ID.acc)).toBe(true);
+  });
+
+  it('counts holds transitively', () => {
+    expect(node(m, ID.ql1).holds).toBe(11); // t6, s3, seven, gw, acc
+    expect(node(m, ID.s3).holds).toBe(9);
+    expect(node(m, ID.qv6).holds).toBe(1);
+    expect(node(m, ID.acc).holds).toBe(0);
+  });
+
+  it('labels with cardLabel and sets states and reasons in Russian', () => {
+    expect(node(m, ID.s3).label).toBe('M04 #33');
+    expect(node(m, ID.s3).title).toBe('Не затирать оценку');
+    expect(node(m, ID.qv4).label).toBe('вопрос · ВВ-4');
+    expect(node(m, ID.ql1).label).toBe('вопрос · Окно L1 и ключ Clerk');
+    expect(node(m, ID.qv4).state).toBe('waits_owner');
+    expect(node(m, ID.qv4).reason).toBe('держит 11');
+    expect(node(m, ID.m3).state).toBe('in_work');
+    expect(node(m, ID.m3).reason).toBe('ждёт тебя: ВВ-4');
+    expect(node(m, ID.m3).assignee).toBe('devwork/worker-1');
+    expect(node(m, ID.t6).state).toBe('waits_owner');
+    expect(node(m, ID.s3).state).toBe('waits_task');
+    expect(node(m, ID.s3).reason).toBe('ждёт: M04 #3, M03 #6');
+    expect(node(m, ID.s1).reason).toBe('ждёт: M04 #33');
+  });
+
+  it('builds column headers with verdicts', () => {
+    expect(m.columns.map((c) => c.title)).toEqual(['От тебя', 'Сейчас', 'Следом', 'Потом', 'Ещё позже', 'В конце']);
+    expect(m.columns.map((c) => c.count)).toEqual([4, 3, 1, 7, 1, 1]);
+    expect(m.columns[0]?.verdict).toBe('4 вопроса · больше всех держит ВВ-4');
+    expect(m.columns[1]?.verdict).toBe('в работе 1 из 3 · 2 ждут твоих ответов');
+    expect(m.columns[2]?.verdict).toBe('ждёт M04 #3 и M03 #6');
+    expect(m.columns[3]?.verdict).toBe('7 пойдут параллельно после M04 #33');
+    expect(m.columns[4]?.verdict).toBe('ждёт M04 #1');
+    expect(m.columns[5]?.verdict).toBe('приёмка ждёт всё, что левее');
+  });
+
+  it('writes the headline and subline', () => {
+    expect(m.headline).toBe('M04: 5 из 17 закрыто. Всё дальше стоит за M04 #33: она ждёт M04 #3 и M03 #6.');
+    expect(m.subline).toBe(
+      'Без причины не стоит ничего: всё, что сейчас не в работе, ждёт твоих ответов — они слева, в колонке «От тебя».',
+    );
+  });
+
+  it('orders rows inside a column 0..n-1', () => {
+    for (const col of [0, 1, 3]) {
+      const rows = m.nodes.filter((n) => n.column === col).map((n) => n.row).sort((a, b) => a - b);
+      expect(rows).toEqual(rows.map((_, i) => i));
+    }
+  });
+});
+
+describe('chainOf and whatIfBanner', () => {
+  const m = buildGraph(m04(), { epicId: 'M04', nowMs: NOW });
+
+  it('walks ancestors, descendants and those that start right after', () => {
+    const c = chainOf(m, ID.s3);
+    expect([...c.up].sort()).toEqual([ID.m3, ID.t6, ID.qv4, ID.ql1].sort());
+    expect(c.down.size).toBe(9);
+    expect([...c.downNow].sort()).toEqual([...SEVEN].sort());
+  });
+
+  it('a question banner says what answering opens', () => {
+    expect(whatIfBanner(m, ID.ql1)).toBe('Если ответишь: сразу пойдёт 1, всего откроется 11');
+    expect(whatIfBanner(m, ID.qv6)).toBe('Если ответишь: сразу пойдут 0, всего откроется 1');
+  });
+
+  it('a task banner says what it waits for and what it opens', () => {
+    expect(whatIfBanner(m, ID.s3)).toBe('M04 #33 ждёт 2: M04 #3 в работе, M03 #6 ждёт тебя · откроет 7 сразу, 9 всего');
+    expect(whatIfBanner(m, ID.acc)).toMatch(/^M04 приёмка ждёт 9: .* · откроет 0 сразу, 0 всего$/);
+  });
+});
+
+describe('buildGraph edges of the live data', () => {
+  it('marks an untaken free task «никто не взял · N дн» and says so in the subline', () => {
+    const beads = [bead('dw-a', 'M04 #9 — Старое', { created_at: new Date(NOW - 5 * DAY).toISOString() })];
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
+    expect(m.nodes[0]?.state).toBe('nobody_took');
+    expect(m.nodes[0]?.reason).toBe('никто не взял · 5 дн');
+    expect(m.columns[1]?.alarm).toBe(true);
+    expect(m.subline).toBe('Без причины стоит 1: никто не взял.');
+  });
+
+  it('focusIds restrict the graph to the chains of those beads', () => {
+    const m = buildGraph(m04(), { epicId: null, focusIds: [ID.qv6], nowMs: NOW });
+    expect(m.nodes.map((n) => n.id).sort()).toEqual([ID.acc, ID.qv6].sort());
+  });
+
+  it('survives a dependency cycle and unknown values', () => {
+    const beads: unknown[] = [
+      bead('dw-x', 'M04 #1 — X', { needs: ['dw-y'] }),
+      bead('dw-y', 'M04 #2 — Y', { needs: ['dw-x', 'dw-missing'] }),
+      null,
+      { nope: true },
+    ];
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
+    expect(m.nodes).toHaveLength(2);
+  });
+});
