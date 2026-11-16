@@ -108,7 +108,7 @@ func resolveSource(dir string, owner func(fs.FileInfo) bool) (*uiSource, string)
 		return nil, reasonRootPerms
 	}
 
-	name, reason := readCurrent(root)
+	name, reason := readCurrent(root, owner)
 	if reason != "" {
 		return nil, reason
 	}
@@ -146,8 +146,10 @@ func resolveSource(dir string, owner func(fs.FileInfo) bool) (*uiSource, string)
 	return &uiSource{name: name, root: vroot, index: index, csp: csp}, ""
 }
 
-// readCurrent reads <root>/current per C3.
-func readCurrent(root *os.Root) (string, string) {
+// readCurrent reads <root>/current per C3. The pointer itself must pass the
+// owner check (C11): a pointer someone else can write could select any
+// version that already passed every check.
+func readCurrent(root *os.Root, owner func(fs.FileInfo) bool) (string, string) {
 	fi, err := root.Lstat(currentFile)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", reasonNoCurrent
@@ -163,6 +165,9 @@ func readCurrent(root *os.Root) (string, string) {
 	fi, err = f.Stat()
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() < 1 || fi.Size() > maxCurrentBytes {
 		return "", reasonBadCurrent
+	}
+	if !owner(fi) {
+		return "", reasonRootPerms
 	}
 	buf, err := io.ReadAll(io.LimitReader(f, maxCurrentBytes+1))
 	if err != nil || len(buf) > maxCurrentBytes {

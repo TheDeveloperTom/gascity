@@ -312,3 +312,33 @@ func TestCSPCacheRevalidates(t *testing.T) {
 		t.Fatalf("csp = %q, want the new index's CSP %q", src3.csp, want)
 	}
 }
+
+// A pointer someone else can write could select any version that already
+// passed every check (including one extracted for an older engine), so the
+// pointer file itself must pass the owner check (C11).
+func TestWritableCurrentRefused(t *testing.T) {
+	for _, mode := range []os.FileMode{0o664, 0o646, 0o666} {
+		root := newUIRoot(t)
+		addVersion(t, root, testSHA, indexWithScript("a"))
+		setCurrent(t, root, testSHA+"\n")
+		if err := os.Chmod(filepath.Join(root, "current"), mode); err != nil {
+			t.Fatal(err)
+		}
+		src, reason := resolveT(t, root)
+		if src != nil || reason != "root-perms" {
+			t.Errorf("current mode %o: resolve = (dir source %v, %q), want (nil, root-perms)", mode, src != nil, reason)
+		}
+	}
+}
+
+func TestOwnerSeamRefusesCurrentOnly(t *testing.T) {
+	root := newUIRoot(t)
+	addVersion(t, root, testSHA, indexWithScript("a"))
+	setCurrent(t, root, testSHA+"\n")
+	refuseCurrent := func(fi fs.FileInfo) bool { return fi.Name() != "current" && defaultOwner(fi) }
+	src, reason := resolveSource(root, refuseCurrent)
+	if src != nil || reason != "root-perms" {
+		src.Close()
+		t.Fatalf("resolve with an owner refusing only current = (dir source %v, %q), want (nil, root-perms)", src != nil, reason)
+	}
+}
