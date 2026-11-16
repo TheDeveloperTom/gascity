@@ -8,6 +8,7 @@ import {
   REVIEW_BEAD_ID,
   REVIEW_BEAD_TITLE,
 } from './fixtures/expected';
+import { ru } from './support/ru';
 import { gotoCityRoute } from './support/renderGuards';
 import { expect, test } from './support/fixtures';
 
@@ -40,16 +41,28 @@ function inCity(path: string): (url: URL) => boolean {
   return (url) => url.pathname === `${CITY_BASE}${path}`;
 }
 
-// Header nav entries in render order. Names are prefix regexes: a nav link's
-// accessible name also carries its attention badge count (e.g. "Beads3").
+// The vk header keeps «Нужно от меня» and «Доска» in the bar; every page is in
+// the «Ещё» menu («Все разделы»), in render order. Names are prefix matches: a
+// nav link's accessible name also carries its attention badge count.
 const NAV_ROUTES = [
-  { name: /^Agents/, path: '/agents', heading: 'Agents' },
-  { name: /^Beads/, path: '/beads', heading: 'Beads' },
-  { name: /^Runs/, path: '/runs', heading: 'Runs' },
-  { name: /^Mail/, path: '/mail', heading: 'Mail' },
-  { name: /^Activity/, path: '/activity', heading: 'Activity' },
-  { name: /^Health/, path: '/health', heading: 'Health' },
+  { label: 'Runs', path: '/runs', heading: ru('Runs') },
+  { label: 'Agents', path: '/agents', heading: ru('Agents') },
+  { label: 'Beads', path: '/beads', heading: ru('Beads') },
+  { label: 'Mail', path: '/mail', heading: ru('Mail') },
+  { label: 'Activity', path: '/activity', heading: ru('Activity') },
+  { label: 'Health', path: '/health', heading: ru('Health') },
 ] as const;
+
+const startsWith = (label: string) => new RegExp(`^${ru(label)}`);
+
+/** Opens the header's «Ещё» menu and returns its «Все разделы» nav. */
+async function allPages(page: Page) {
+  const nav = page.getByRole('navigation', { name: ru('All pages') });
+  if (!(await nav.isVisible()))
+    await page.locator(`header summary[aria-label="${ru('More')}"]`).click();
+  await expect(nav).toBeVisible();
+  return nav;
+}
 
 test.describe('dashboard client-side navigation', () => {
   test('header nav links route client-side under the city basename', async ({ page }) => {
@@ -61,38 +74,47 @@ test.describe('dashboard client-side navigation', () => {
     });
 
     await gotoCityRoute(page, CITY_BASE, '');
-    await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Needs from me'), level: 1 })).toBeAttached();
     await markDocument(page);
 
-    const nav = page.locator('header nav');
-    const home = nav.getByRole('link', { name: 'Home', exact: true });
+    const home = (await allPages(page)).getByRole('link', { name: ru('Home'), exact: true });
     await expect(home).toHaveAttribute('aria-current', 'page');
 
     for (const route of NAV_ROUTES) {
-      const link = nav.getByRole('link', { name: route.name });
+      const link = (await allPages(page)).getByRole('link', { name: startsWith(route.label) });
       // The basename prefixes every rendered href.
       await expect(link).toHaveAttribute('href', `${CITY_BASE}${route.path}`);
       await link.click();
       await expect(page).toHaveURL(inCity(route.path));
       await expect(page.getByRole('heading', { name: route.heading, level: 1 })).toBeVisible();
-      await expect(link).toHaveAttribute('aria-current', 'page');
+      const nav = await allPages(page);
+      await expect(nav.getByRole('link', { name: startsWith(route.label) })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
       // `end` keeps Home inactive on every nested route.
-      await expect(home).not.toHaveAttribute('aria-current', 'page');
+      await expect(nav.getByRole('link', { name: ru('Home'), exact: true })).not.toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      await page.keyboard.press('Escape');
       await expectSameDocument(page);
     }
 
     // Back and forward replay history entries through popstate.
     await page.goBack();
     await expect(page).toHaveURL(inCity('/activity'));
-    await expect(page.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Activity'), level: 1 })).toBeVisible();
     await page.goForward();
     await expect(page).toHaveURL(inCity('/health'));
-    await expect(page.getByRole('heading', { name: 'Health', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Health'), level: 1 })).toBeVisible();
     await expectSameDocument(page);
 
-    await home.click();
-    await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
-    await expect(home).toHaveAttribute('aria-current', 'page');
+    await (await allPages(page)).getByRole('link', { name: ru('Home'), exact: true }).click();
+    await expect(page.getByRole('heading', { name: ru('Needs from me'), level: 1 })).toBeAttached();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === CITY_BASE || url.pathname === `${CITY_BASE}/`,
+    );
     await expectSameDocument(page);
 
     expect(routerWarnings).toEqual([]);
@@ -102,10 +124,10 @@ test.describe('dashboard client-side navigation', () => {
     page,
   }) => {
     await gotoCityRoute(page, CITY_BASE, '/agents');
-    await expect(page.getByRole('heading', { name: 'Agents', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Agents'), level: 1 })).toBeVisible();
     await markDocument(page);
     // The seeded pool members are idle; the default running-only filter hides them.
-    await page.getByRole('checkbox', { name: 'running' }).uncheck();
+    await page.getByRole('checkbox', { name: ru('running') }).uncheck();
 
     // Pool members are rig-qualified ("demo/builder-1"): the link encodes the
     // slash into the :slug segment and the detail page reads it back decoded.
@@ -115,13 +137,13 @@ test.describe('dashboard client-side navigation', () => {
     await expect(page).toHaveURL(inCity('/agents/demo%2Fbuilder-1'));
     // An idle pool member has no live session, so the detail page renders its
     // no-session state, which echoes the decoded slug.
-    await expect(page.getByText('No session matches demo/builder-1.')).toBeVisible();
+    await expect(page.getByText(ru('No session matches demo/builder-1.'))).toBeVisible();
     await expectSameDocument(page);
 
     // The no-session state's back button navigates with useNavigate.
-    await page.getByRole('button', { name: '← Agents' }).click();
+    await page.getByRole('button', { name: ru('← Agents') }).click();
     await expect(page).toHaveURL(inCity('/agents'));
-    await expect(page.getByRole('heading', { name: 'Agents', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Agents'), level: 1 })).toBeVisible();
     await expectSameDocument(page);
   });
 
@@ -129,7 +151,7 @@ test.describe('dashboard client-side navigation', () => {
     page,
   }) => {
     await gotoCityRoute(page, CITY_BASE, '/runs');
-    await expect(page.getByRole('heading', { name: 'Runs', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Runs'), level: 1 })).toBeVisible();
     await markDocument(page);
 
     // useSearchParams' setter adds ?history=1; back removes it again.
@@ -137,12 +159,12 @@ test.describe('dashboard client-side navigation', () => {
     await expect(page).toHaveURL(
       (url) => url.pathname === `${CITY_BASE}/runs` && url.searchParams.get('history') === '1',
     );
-    await expect(page.getByRole('region', { name: 'Historical runs' })).toBeVisible();
+    await expect(page.getByRole('region', { name: ru('Historical runs') })).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(
       (url) => url.pathname === `${CITY_BASE}/runs` && !url.searchParams.has('history'),
     );
-    await expect(page.getByRole('region', { name: 'Historical runs' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: ru('Historical runs') })).toHaveCount(0);
     await expectSameDocument(page);
 
     // A lane links to its run detail with the run's scope in the query string.
@@ -156,10 +178,11 @@ test.describe('dashboard client-side navigation', () => {
     await expect(page.getByRole('heading', { name: ANCHOR_FORMULA, level: 1 })).toBeVisible();
     await expectSameDocument(page);
 
-    // The detail page's breadcrumb returns to the list.
+    // The detail page's breadcrumb returns to the list (the run page's
+    // breadcrumb is not translated yet: it reads «Runs»).
     await page.locator('main').getByRole('link', { name: 'Runs', exact: true }).click();
     await expect(page).toHaveURL(inCity('/runs'));
-    await expect(page.getByRole('heading', { name: 'Runs', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Runs'), level: 1 })).toBeVisible();
     await expectSameDocument(page);
   });
 
@@ -179,15 +202,12 @@ test.describe('dashboard client-side navigation', () => {
     page,
   }) => {
     await gotoCityRoute(page, CITY_BASE, '/no-such-route');
-    await expect(page.getByRole('heading', { name: 'Page not found', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Page not found'), level: 1 })).toBeVisible();
     await markDocument(page);
 
-    await page
-      .locator('header nav')
-      .getByRole('link', { name: /^Agents/ })
-      .click();
+    await (await allPages(page)).getByRole('link', { name: startsWith('Agents') }).click();
     await expect(page).toHaveURL(inCity('/agents'));
-    await expect(page.getByRole('heading', { name: 'Agents', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ru('Agents'), level: 1 })).toBeVisible();
     await expectSameDocument(page);
   });
 });

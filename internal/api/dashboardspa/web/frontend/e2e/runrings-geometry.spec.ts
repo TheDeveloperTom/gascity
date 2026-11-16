@@ -180,6 +180,10 @@ function overflowReport(measurements: readonly RingMeasurement[]) {
 }
 
 test.describe('cockpit run-ring geometry', () => {
+  // Home stopped rendering the run rings in task8 (b30468b26: «Run progress»
+  // superseded by «Нужно от меня» and the City block); RunRings has no page
+  // now, so there is nothing to measure. Kept for the day it returns.
+  test.skip(true, 'Home no longer renders the run rings (task8, b30468b26)');
   test('every ring text node stays within its ring container', async ({
     page,
   }, testInfo: TestInfo) => {

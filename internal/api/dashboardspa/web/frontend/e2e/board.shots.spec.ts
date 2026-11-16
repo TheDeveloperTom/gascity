@@ -16,7 +16,8 @@ const VIEWPORTS = [
 ] as const;
 
 const FIXTURES = [
-  { name: 'busy', inject: injectStageBoard, ready: 'Влито' },
+  // The column name also labels the phone column tab (hidden on desktop).
+  { name: 'busy', inject: injectStageBoard, ready: 'Влито · за 7 дней' },
   { name: 'idle', inject: injectIdleBoard, ready: 'Сейчас никто не работает.' },
 ] as const;
 
@@ -40,7 +41,9 @@ test.describe('board screenshots', () => {
           }, theme);
           await fixture.inject(page);
           await gotoCityRoute(page, CITY_BASE, '/beads');
-          await expect(page.getByText(fixture.ready).first()).toBeVisible();
+          await expect(
+            page.getByText(fixture.ready).filter({ visible: true }).first(),
+          ).toBeVisible();
           await page.waitForTimeout(600);
           await page.screenshot({
             path: join(OUT ?? '.', `board-${fixture.name}-${vp.name}-${theme}.png`),

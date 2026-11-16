@@ -32,7 +32,10 @@ test.describe('stage board screenshots', () => {
         }, theme);
         await injectStageBoard(page);
         await gotoCityRoute(page, CITY_BASE, '/beads');
-        await expect(page.getByText(STAGE_TASKS.pr.title, { exact: true })).toBeVisible();
+        // On a phone only the chosen column shows («Ждёт»); the PR card sits in
+        // «Ревью», so wait for the board itself, then for the PR card's text.
+        await expect(page.getByRole('region', { name: 'Доска', exact: true })).toBeVisible();
+        await expect(page.getByText(STAGE_TASKS.pr.title, { exact: true })).toBeAttached();
         await page.waitForTimeout(600);
         await page.screenshot({
           path: join(OUT ?? '.', `beads-stage-${vp.name}-${theme}.png`),

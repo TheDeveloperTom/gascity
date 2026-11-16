@@ -121,7 +121,8 @@ js_test(
     name = "playwright_test",
     size = "large",
     chdir = package_name(),
-    data = glob(["e2e/**"]) + [
+    # e2e/support/ru.ts reads the Russian dictionaries (the UI is Russian).
+    data = glob(["e2e/**"]) + glob(["src/i18n/ru*.ts"], exclude = ["src/i18n/*.test.ts"]) + [
         "package.json",
         "playwright.config.ts",
         # e2e/fixtures/stageBoard.ts imports the B3 idle-board fixture.
