@@ -106,14 +106,23 @@ describe('«Нужно от меня» shelves', () => {
   it('a question row opens its card, with holds, wait, breakdown and read-only choices', () => {
     show();
     const item = itemOf(QUESTION_ID);
-    const link = within(item).getByRole('link');
+    const link = within(item).getAllByRole('link')[0]!;
     expect(link.getAttribute('href')).toBe(`/beads?bead=${QUESTION_ID}`);
     expect(within(link).getByText('Когда окно для переноса ящика на основной аккаунт?')).toBeTruthy();
     expect(within(link).getByText(/Gmail, доступ и собеседования/)).toBeTruthy();
-    expect(within(link).getByText('держит 22 задачи, ждёт 3 дня')).toBeTruthy();
+    // graph sprint: the meta line sits under the card link; «держит 22 задачи»
+    // is its own link to the graph of that chain.
+    expect(within(item).getByTestId('need-meta').textContent).toBe('держит 22 задачи, ждёт 3 дня');
     expect(within(item).getByText('M04 10 · M03 4')).toBeTruthy();
     // Chips are read-only on the list: the decision happens inside the card.
     expect(within(item).getByText('Сегодня в 18:00').closest('button')).toBeNull();
+  });
+
+  it('«держит N задач» opens the graph of that chain (?view=graph&focus=<id>)', () => {
+    show();
+    const item = itemOf(QUESTION_ID);
+    const holds = within(item).getByRole('link', { name: 'держит 22 задачи' });
+    expect(holds.getAttribute('href')).toBe(`/beads?view=graph&focus=${QUESTION_ID}`);
   });
 
   it('a Mayor question row has exactly one action: «Ответить в Discord», filled brand-2', () => {
