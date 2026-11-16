@@ -385,7 +385,9 @@ export function buildBoardModel(
   for (const stage of STAGES) allCards[stage.id] = own.columns[stage.id].map(toCard);
 
   // Peer cards: each (peer, rig) is its own small board, so ids never meet
-  // ours or another rig's; there are no route beads in a snapshot.
+  // ours or another rig's. PEER-STAGE: the peer's runs (its open runs of
+  // shared cards) place them with the same rules as ours; a peer that sends
+  // none gets the status placement, with no run read as stopped.
   // BOARD-LIVE L14: a peer project is (city, rig), `peer:<login>:<rig>`, so
   // his `devwork` never merges with ours.
   // The card keeps the rig as its tag (it already shows whose card it is);
@@ -401,7 +403,7 @@ export function buildBoardModel(
     for (const [rig, beads] of byRig) {
       const peerTasks = beads.filter((bead) => beadRole(bead) === 'task');
       const peerById = new Map(peerTasks.map((b) => [b.id, b]));
-      const board = stageCardsOf(peerTasks, [], false);
+      const board = stageCardsOf(peerTasks, peer.runs?.beads ?? [], peer.runs?.complete ?? false);
       const info: PeerCardInfo = {
         login: peer.login,
         label: peer.label,

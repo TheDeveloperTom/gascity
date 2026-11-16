@@ -45,7 +45,7 @@ import { t } from '../../i18n';
 import { ageText, lastProgressMs, STUCK_AFTER_MS } from '../../lib/boardFacts';
 import type { BoardCard } from '../../lib/boardModel';
 import { OWNER_QUESTION_LABEL } from '../../lib/ownerQuestions';
-import { routeRunHref } from '../../lib/stageBoard';
+import { routeRunHref, stepNoteOf } from '../../lib/stageBoard';
 import { blockerIds, milestoneOf } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
@@ -230,10 +230,7 @@ function OwnKanbanCard({
   }
 
   const pr = stage.pr;
-  const stepLabel =
-    active && stage.stepLabel !== null && stage.stepLabel.length > 0 && stage.stepLabel !== 'Queued'
-      ? stage.stepLabel
-      : null;
+  const stepLabel = stepNoteOf(stage);
   const stepAge =
     progress === null || nowMs - progress < 60_000 ? t('now') : ageText(nowMs - progress);
   const routeAttention = stage.marks.find((mark) => mark.tone === 'attention') ?? null;

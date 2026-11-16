@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
 import type { BoardCard } from '../../lib/boardModel';
+import { stepNoteOf } from '../../lib/stageBoard';
 import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
 import { CardAvatar } from './CardAvatar';
@@ -67,6 +68,10 @@ export function PeerKanbanCard({
   if (peer === null) return null;
   const pr = card.stage.pr;
   const clock = asOfClock(peer.asOf);
+  // PEER-STAGE: the step his board shows («ревью», «ждёт вливания»), from his
+  // runs, by the same rule as our cards. No age: his clock is not ours, and
+  // «на HH:MM» already says how fresh the data is. No run link: the run is his.
+  const note = stepNoteOf(card.stage);
 
   return (
     <article
@@ -159,6 +164,12 @@ export function PeerKanbanCard({
         </div>
         <CardAvatar letter={peer.avatar} label={t('Assignee: {who}', { who: peer.name })} tone="peer" />
       </div>
+
+      {note !== null && (
+        <div data-step-panel="" className="mt-1 flex min-w-0 flex-col gap-1 rounded-sm bg-vk-bg-panel p-2">
+          <span className="block truncate text-sm text-vk-text-normal">{note}</span>
+        </div>
+      )}
     </article>
   );
 }

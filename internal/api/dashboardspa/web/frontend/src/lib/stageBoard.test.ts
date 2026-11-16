@@ -10,7 +10,9 @@ import {
   routeRunHref,
   routeTaskId,
   stopCardsByTask,
+  stepNoteOf,
   type StageId,
+  type TaskStage,
 } from './stageBoard';
 
 // Fixtures follow the city formula formulas/devwork-development.toml (step ids
@@ -591,3 +593,29 @@ describe('step link', () => {
 function blocked(b: SupervisorBead): SupervisorBead {
   return { ...b, status: 'open', is_blocked: true };
 }
+
+describe('stepNoteOf (PEER-STAGE: one step note for our cards and the peer\'s)', () => {
+  const stage = (s: StageId, stepLabel: string | null): TaskStage => ({
+    stage: s,
+    root: null,
+    step: null,
+    stepLabel,
+    pr: null,
+    marks: [],
+  });
+
+  it('names the step of an active card', () => {
+    expect(stepNoteOf(stage('working', 'пишет код'))).toBe('пишет код');
+    expect(stepNoteOf(stage('review', 'ревью'))).toBe('ревью');
+    expect(stepNoteOf(stage('pr', 'ждёт вливания'))).toBe('ждёт вливания');
+  });
+
+  it('says nothing for a waiting or merged card, a queued run or an empty label', () => {
+    expect(stepNoteOf(stage('waiting', 'Queued'))).toBeNull();
+    expect(stepNoteOf(stage('waiting', 'готовит рабочую копию'))).toBeNull();
+    expect(stepNoteOf(stage('merged', 'Finalize workflow'))).toBeNull();
+    expect(stepNoteOf(stage('working', 'Queued'))).toBeNull();
+    expect(stepNoteOf(stage('working', ''))).toBeNull();
+    expect(stepNoteOf(stage('working', null))).toBeNull();
+  });
+});

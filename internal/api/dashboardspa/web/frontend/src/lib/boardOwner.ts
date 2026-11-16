@@ -1,7 +1,7 @@
 // The ONE seam for «Мои / Ричарда» (vk lane 4, owner; vk-final part 3 plugs
 // in the peer boards). Other lanes import it.
 
-import type { PeerBoardsResult, PeerCard, PeerLive } from '../supervisor/peerBoardReads';
+import type { PeerBoardsResult, PeerCard, PeerLive, PeerRuns } from '../supervisor/peerBoardReads';
 
 export type CardOwner = 'me' | `peer:${string}`;
 export type OwnerFilter = 'all' | CardOwner;
@@ -36,6 +36,11 @@ export interface PeerBoardSource extends BoardSource {
   live: PeerLive | null;
   /** When our client last received the board (our clock). */
   fetchedAt: string | null;
+  /**
+   * PEER-STAGE: the peer's open runs of its shared cards, placed with the same
+   * stage rules as ours; null for a city that sends none (status placement).
+   */
+  runs: PeerRuns | null;
 }
 
 const MINE: BoardSource = { owner: 'me', label: 'Mine', available: true };
@@ -67,6 +72,7 @@ export function peerSourcesOf(result: PeerBoardsResult, nowMs: number): PeerBoar
       cards: peer.cards,
       live: peer.live,
       fetchedAt: peer.fetchedAt,
+      runs: peer.runs,
     };
   });
 }

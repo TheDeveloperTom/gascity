@@ -582,3 +582,62 @@ function allProjects(entry: string): string {
   if (/[?&]project=/.test(entry)) return entry;
   return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
 }
+
+// PEER-STAGE (16.11): his card lands in the column it has on his board, from
+// the runs his city ships, with the same step note our cards show.
+describe('BeadsPage: his card in his column (PEER-STAGE)', () => {
+  const ROOT = {
+    id: 'gcg-329729',
+    status: 'in_progress',
+    is_blocked: false,
+    issue_type: 'task',
+    title: 'devwork-development',
+    created_at: '2026-11-16T15:00:00Z',
+    metadata: { 'gc.kind': 'workflow', 'gc.var.issue': 'dw-ab12' },
+  };
+  const REVIEW = {
+    id: 'gcg-329770',
+    status: 'in_progress',
+    is_blocked: false,
+    issue_type: 'task',
+    title: 'Task review until approved',
+    created_at: '2026-11-16T15:00:01Z',
+    metadata: { 'gc.root_bead_id': 'gcg-329729', 'dashboard.stage': 'review', 'dashboard.label': 'ревью' },
+  };
+  function bodyWith(runs: unknown) {
+    const body = peerBody({ snapshotAt: minutesAgo(1), ...(runs === undefined ? {} : { runs }) });
+    // his card carries no PR of its own: only the run places it
+    delete (body.peers[0]!.cards[0] as Record<string, unknown>).metadata;
+    return body;
+  }
+  const column = (id: string) => document.querySelector(`[data-column="${id}"]`) as HTMLElement;
+
+  it('his card at the review step sits in «Ревью» with «ревью», and no age', async () => {
+    peerResponse = () => json(bodyWith({ schema: 'devwork.live-runs/1', complete: true, beads: [ROOT, REVIEW] }));
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    const card = peerCard()!;
+    expect(card.getAttribute('data-stage')).toBe('review');
+    expect(within(column('review')).getByText('Изменение схемы users')).toBeTruthy();
+    expect(within(column('working')).queryByText('Изменение схемы users')).toBeNull();
+    expect(within(card).getByText('ревью')).toBeTruthy();
+    // clock skew: no age measured against his clock, no «сейчас»
+    expect(within(card).queryByText('сейчас')).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('without runs (his city not upgraded) it stays where status puts it, with no note', async () => {
+    peerResponse = () => json(bodyWith(undefined));
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    expect(peerCard()!.getAttribute('data-stage')).toBe('working');
+    expect(within(peerCard()!).queryByText('ревью')).toBeNull();
+  });
+
+  it('his card never counts in «Нужно от меня», wherever it is placed', async () => {
+    peerResponse = () => json(bodyWith({ schema: 'devwork.live-runs/1', complete: true, beads: [ROOT, REVIEW] }));
+    renderPage();
+    await screen.findByText('Изменение схемы users');
+    await waitFor(() => expect(needsCount).toBe(0));
+  });
+});

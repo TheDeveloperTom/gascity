@@ -1,0 +1,28 @@
+{
+  "about": "PEER-STAGE contract (16.11): the live runs a home city ships to its peer so the peer places each card with the same lib/stageBoard.ts rules. A byte-identical copy lives in the city repo at assets/scripts/boardsync/live_runs.contract.json; each repo pins its own code to its copy.",
+  "schema": "devwork.live-runs/1",
+  "root_task_keys": ["gc.source_anchor_id", "gc.source_bead_id", "gc.drain_member_id", "gc.var.issue"],
+  "bead_fields": ["id", "status", "is_blocked", "issue_type", "title", "created_at"],
+  "metadata_keys": [
+    "gc.kind",
+    "gc.root_bead_id",
+    "gc.source_anchor_id",
+    "gc.source_bead_id",
+    "gc.drain_member_id",
+    "gc.var.issue",
+    "gc.outcome",
+    "gc.cancel_requested",
+    "dashboard.stage",
+    "dashboard.label",
+    "devwork.pr_number",
+    "devwork.pr_url"
+  ],
+  "root_task_cases": [
+    {"metadata": {"gc.kind": "workflow", "gc.var.issue": "dw-v"}, "task": "dw-v"},
+    {"metadata": {"gc.kind": "workflow", "gc.drain_member_id": "dw-d", "gc.var.issue": "dw-v"}, "task": "dw-d"},
+    {"metadata": {"gc.kind": "workflow", "gc.source_bead_id": "dw-s", "gc.drain_member_id": "dw-d"}, "task": "dw-s"},
+    {"metadata": {"gc.kind": "workflow", "gc.source_anchor_id": "dw-a", "gc.source_bead_id": "dw-s"}, "task": "dw-a"},
+    {"metadata": {"gc.kind": "workflow", "gc.source_anchor_id": "  ", "gc.var.issue": "dw-v"}, "task": "dw-v"},
+    {"metadata": {"gc.kind": "workflow"}, "task": null}
+  ]
+}

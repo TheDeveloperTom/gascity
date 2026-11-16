@@ -28,12 +28,20 @@ const RESULT: PeerBoardsResult = {
       fetchedAt: null,
       live: null,
       people: [],
+      runs: null,
       cards: [{ rig: 'crm-api', bead: { id: 'dw-1', title: 't', status: 'open', issue_type: 'task', created_at: '2026-11-15T10:00:00Z' } }],
     },
   ],
 };
 
 describe('board sources (owner seam)', () => {
+  it('PEER-STAGE: a peer source carries its runs (null when the city sends none)', () => {
+    expect(peerSourcesOf(RESULT, Date.parse('2026-11-15T14:06:00Z'))[0]?.runs).toBeNull();
+    const runs = { complete: true, beads: [{ id: 'gcg-1', title: 'r', status: 'open', issue_type: 'task', created_at: '' }] };
+    const withRuns = { ...RESULT, peers: [{ ...RESULT.peers[0]!, runs }] };
+    expect(peerSourcesOf(withRuns, Date.parse('2026-11-15T14:06:00Z'))[0]?.runs).toBe(runs);
+  });
+
   it('defaults to one source owned by me', () => {
     const sources = boardSourcesOf([]);
     expect(sources).toHaveLength(1);

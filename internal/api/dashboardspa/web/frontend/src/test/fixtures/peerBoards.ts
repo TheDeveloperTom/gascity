@@ -246,6 +246,8 @@ export function peerBody(
     /** BOARD-LIVE C4 `live` block of the peer (absent = an old peer). */
     live?: unknown;
     people?: unknown[];
+    /** PEER-STAGE `runs` block of the peer (absent = a sender without runs). */
+    runs?: unknown;
     fetchedAt?: string;
     /** Top-level additions (own_login, owner_questions …). */
     top?: Record<string, unknown>;
@@ -272,6 +274,7 @@ export function peerBody(
         fetched_at: overrides.fetchedAt ?? at,
         ...(overrides.live === undefined ? {} : { live: overrides.live }),
         ...(overrides.people === undefined ? {} : { people: overrides.people }),
+        ...(overrides.runs === undefined ? {} : { runs: overrides.runs }),
         fetch_error: null,
         fetch_failed_at: null,
         dropped_cards: 0,

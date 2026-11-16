@@ -58,8 +58,9 @@ const IGNORED_MEMBER_KINDS: ReadonlySet<string> = new Set(['spec']);
 /** Root → task link, first non-empty wins: the city's anchor (stamped by
  *  prepare-worktree, attach and repair; read first by the city's own
  *  resolver, devwork-strand.sh), engine sling/dispatch, the engine drain
- *  member, the sling `issue` var (review M9). */
-const ROOT_TASK_KEYS = [
+ *  member, the sling `issue` var (review M9). PEER-STAGE: the home city picks
+ *  which runs it shares by this same order (lib/peerRuns.contract.json). */
+export const ROOT_TASK_KEYS = [
   'gc.source_anchor_id',
   'gc.source_bead_id',
   'gc.drain_member_id',
@@ -401,6 +402,17 @@ export function deriveTaskStage(
   }
 
   return { stage, root: route?.root ?? null, step, stepLabel, pr, marks };
+}
+
+/**
+ * The card's step note («пишет код», «ревью», «ждёт вливания»): the step
+ * line of an active card (Working, Review, PR), never a queued run's
+ * `Queued`. Our cards and the peer's (PEER-STAGE) show the same note.
+ */
+export function stepNoteOf(stage: TaskStage): string | null {
+  const active = stage.stage === 'working' || stage.stage === 'review' || stage.stage === 'pr';
+  const label = stage.stepLabel;
+  return active && label !== null && label.length > 0 && label !== 'Queued' ? label : null;
 }
 
 function emptyStageColumns(): Record<StageId, StageCard[]> {

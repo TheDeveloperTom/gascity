@@ -65,7 +65,68 @@ const PeerSchema = z.looseObject({
   // and the peer's people rows (PeopleEntry without b64, plus avatar_url).
   live: z.unknown().nullish(),
   people: z.array(z.unknown()).nullish(),
+  // PEER-STAGE: the peer's open runs of its shared cards (checked on its own;
+  // malformed = null, the board is kept).
+  runs: z.unknown().nullish(),
 });
+
+// ---- PEER-STAGE: the peer's runs ------------------------------------------
+
+/** The runs block a home city ships (city repo boardsync/live_runs.py). */
+export const PEER_RUNS_SCHEMA = 'devwork.live-runs/1';
+
+/**
+ * A peer's open runs of its shared cards: the same beads our own board reads
+ * from the engine, slimmed to lib/peerRuns.contract.json. The board places
+ * the peer's cards with them through the one set of stage rules.
+ */
+export interface PeerRuns {
+  /** The home read held every run bead (only then is «no run» a stopped run). */
+  complete: boolean;
+  beads: readonly SupervisorBead[];
+}
+
+const RunsSchema = z.looseObject({
+  schema: z.literal(PEER_RUNS_SCHEMA),
+  complete: z.boolean(),
+  beads: z.array(z.unknown()),
+});
+
+const RunBeadSchema = z.looseObject({
+  id: z.string().regex(ID_RE),
+  status: z.string(),
+  is_blocked: z.boolean().nullish(),
+  issue_type: optString,
+  title: optString,
+  created_at: optString,
+  metadata: z.record(z.string(), z.string()).nullish(),
+});
+
+function toRuns(raw: unknown): PeerRuns | null {
+  const parsed = RunsSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  let complete = parsed.data.complete;
+  const beads: SupervisorBead[] = [];
+  for (const entry of parsed.data.beads) {
+    const bead = RunBeadSchema.safeParse(entry);
+    if (!bead.success) {
+      complete = false;
+      continue;
+    }
+    const b = bead.data;
+    const out: SupervisorBead = {
+      id: b.id,
+      status: b.status,
+      title: b.title ?? '',
+      issue_type: b.issue_type ?? 'task',
+      created_at: b.created_at ?? '',
+    };
+    if (b.is_blocked != null) out.is_blocked = b.is_blocked;
+    if (b.metadata != null) out.metadata = b.metadata;
+    beads.push(out);
+  }
+  return { complete, beads };
+}
 
 // ---- BOARD-LIVE: the live block (C4) and people (C5) ----------------------
 
@@ -603,6 +664,8 @@ export interface PeerBoard {
   live: PeerLive | null;
   /** The peer's person and Mayor (BOARD-LIVE L5). */
   people: readonly PeerPerson[];
+  /** PEER-STAGE: the peer's open runs; null when it sends none (today's placement). */
+  runs: PeerRuns | null;
 }
 
 export interface PeerBoardsResult {
@@ -697,6 +760,7 @@ export function parsePeerBoards(body: unknown): PeerBoardsResult {
         fetchedAt: p.fetched_at ?? null,
         live: toLive(p.live),
         people: toPeople(p.people),
+        runs: toRuns(p.runs),
       };
   });
   return {
