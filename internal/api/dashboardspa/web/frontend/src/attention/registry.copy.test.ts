@@ -89,7 +89,7 @@ describe('health rows in Russian', () => {
       createAttentionContributors({
         health: {
           supervisor: { status: 'unavailable', error: 'down' },
-          trend: { available: false, reason: 'store_health_absent' },
+          trend: { available: false, samples: [], reason: 'store_health_absent' },
         },
       }),
     );
