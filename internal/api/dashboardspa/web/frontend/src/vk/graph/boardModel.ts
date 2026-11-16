@@ -6,6 +6,8 @@
 // this file adds lanes, collapse, cross-store gate resolution, outside
 // stubs, cycle and partial-data banners, filters and lane-local rows.
 
+import { isBoardNoise } from '../../lib/boardNoise';
+import { beadRole } from '../../lib/boardRoles';
 import { milestoneOf } from '../../lib/waitReasons';
 import { beadIdOf, buildGraph, type GraphBead, type GraphColumn, type GraphEdge, type GraphNode } from './model';
 
@@ -45,6 +47,8 @@ const ROUTE_KEYS = ['gc.kind', 'gc.root_bead_id', 'gc.cross_store_blocker', 'gc.
 const APPROVED_PLAN = new Set(['admitted', 'approved', 'accepted']);
 /** The old intake hold for stages without an approved executable package. */
 const HOLD_PLAN = /hold:plan|нет подготовленного и принятого исполнимого пакета/u;
+/** «M04 — ответ владельца на ВВ-6»: an owner-answer placeholder, not epic work (as in model.ts). */
+const ANSWER_PLACEHOLDER = /(^|[\s:—–-])ответ владельца/iu;
 
 function meta(bead: GraphBead, key: string): string {
   return bead.metadata?.[key]?.trim() ?? '';
@@ -59,6 +63,12 @@ function blockerIds(bead: GraphBead): string[] {
   const out = [...(bead.needs ?? [])];
   for (const dep of bead.dependencies ?? []) if (!NON_BLOCKING.has(dep.type)) out.push(dep.depends_on_id);
   return [...new Set(out.filter((id) => id.length > 0 && id !== bead.id))];
+}
+
+/** The store prefix of a bead id («dw» of dw-3511…), '' when it has none. */
+function prefixOf(id: string): string {
+  const i = id.indexOf('-');
+  return i > 0 ? id.slice(0, i) : '';
 }
 
 function holdsPlan(b: GraphBead): boolean {
@@ -146,8 +156,18 @@ function walk(start: string, next: Map<string, string[]>): Set<string> {
 }
 
 export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGraphOptions): BoardGraph {
+  // The board's rows also carry its service beads (runtime ops, mail,
+  // sessions) and alarm cards; they are never tickets. Gates stay (decision
+  // gates are owner questions; route gates are dropped by buildGraph), and
+  // epics stay for lane titles. A link to a dropped bead is not a blocker.
+  const dropped = new Set<string>();
   const byId = new Map<string, GraphBead>();
-  for (const b of beads) if (typeof b?.id === 'string' && !byId.has(b.id)) byId.set(b.id, b);
+  for (const b of beads) {
+    if (typeof b?.id !== 'string' || byId.has(b.id) || dropped.has(b.id)) continue;
+    const keep = isEpic(b) || isGate(b) || (beadRole(b) !== 'service' && !isBoardNoise(b));
+    if (keep) byId.set(b.id, b);
+    else dropped.add(b.id);
+  }
   const all = [...byId.values()];
   const open = (b: GraphBead | undefined) => b !== undefined && b.status !== 'closed';
 
@@ -156,10 +176,14 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
   const epicTitle = new Map<string, string>();
   const epicsOfLane = new Map<string, GraphBead[]>();
   const laneKeyOf = (b: GraphBead): string => {
+    const parent = b.parent ? byId.get(b.parent) : undefined;
+    const parentEpic = parent !== undefined && isEpic(parent) ? parent : undefined;
+    // A cross-cutting epic with no milestone («Один тип») keeps its children
+    // in its own lane, whatever stage label they carry.
+    if (parentEpic !== undefined && milestoneOf(parentEpic) === null) return parentEpic.id;
     const m = milestoneOf(b);
     if (m !== null) return m;
-    const parent = b.parent ? byId.get(b.parent) : undefined;
-    if (parent !== undefined && isEpic(parent)) return milestoneOf(parent) ?? parent.id;
+    if (parentEpic !== undefined) return milestoneOf(parentEpic) ?? parentEpic.id;
     return isEpic(b) ? b.id : NO_EPIC_LANE;
   };
   for (const e of all.filter(isEpic)) {
@@ -187,6 +211,7 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     waitsOnEpics.set(lane, (waitsOnEpics.get(lane) ?? new Set()).add(target));
   };
   const stubs = new Map<string, string>(); // stub id -> lane key
+  const ownPrefixes = new Set([...byId.keys(), ...dropped].filter((id) => id.includes('-')).map(prefixOf));
   const input: GraphBead[] = [];
   for (const b of all) {
     const ids = blockerIds(b).map(realBlocker);
@@ -203,12 +228,19 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     }
     const needs: string[] = [];
     for (const id of ids) {
+      if (dropped.has(id)) continue;
       const t = byId.get(id);
       if (t !== undefined && isEpic(t)) {
         if (open(t)) markEpicWait(lane, t);
         continue;
       }
-      if (t === undefined && !stubs.has(id)) stubs.set(id, lane);
+      if (t === undefined) {
+        // The open read leaves closed tickets out, so an absent id of this
+        // board's own store is almost always a done blocker: no wait. Another
+        // store's id, or any id under partial data, is a real unknown.
+        if (opts.partial !== true && ownPrefixes.has(prefixOf(id))) continue;
+        if (!stubs.has(id)) stubs.set(id, lane);
+      }
       needs.push(id);
     }
     input.push({ ...b, needs, dependencies: (b.dependencies ?? []).filter((d) => NON_BLOCKING.has(d.type)) });
@@ -277,8 +309,9 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     if (key !== ASK_LANE) laneNodes.set(key, [...(laneNodes.get(key) ?? []), n]);
   }
   const progress = new Map<string, { done: number; total: number; plan: boolean }>();
+  const questionBeads = new Set(model.nodes.filter((n) => n.kind === 'question' && n.id === beadIdOf(n.id)).map((n) => n.id));
   for (const b of all) {
-    if (!isWork(b)) continue;
+    if (!isWork(b) || questionBeads.has(b.id) || ANSWER_PLACEHOLDER.test(b.title)) continue;
     const key = laneKeyOf(b);
     const p = progress.get(key) ?? { done: 0, total: 0, plan: false };
     p.total++;

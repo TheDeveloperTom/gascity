@@ -62,6 +62,22 @@ describe('buildBoardGraph', () => {
     expect(ids).toEqual(['l1', 'loose', 'm11a', 'm13', 'm6a', 'm7a', 'm8a', 'o1', 'o2', 's3', 's4', 't6', 't7'].sort());
   });
 
+  it('leaves out service beads the board keeps aside (runtime ops, mail, sessions, alarms)', () => {
+    const beads = [
+      ...board(),
+      bead('gcg-5', 'runtime gcg-5', { issue_type: 'op', labels: ['gc:rt'] }),
+      bead('gcg-m', 'Проверка Мака', { issue_type: 'message' }),
+      bead('gcg-s', 'session', { issue_type: 'session', labels: ['gc:session'] }),
+      bead('al', 'стоит: M04 #3', { labels: ms('M04'), parent: 'e04' }),
+      bead('s7', 'M04 #7', { labels: ms('M04'), parent: 'e04', needs: ['gcg-5'] }),
+    ];
+    const graph = buildBoardGraph(beads, { nowMs: NOW });
+    const ids = graph.nodes.map((n) => n.id);
+    for (const id of ['gcg-5', 'gcg-m', 'gcg-s', 'al']) expect(ids).not.toContain(id);
+    expect(ids).toContain('s7');
+    expect(graph.lanes.find((l) => l.key === 'M04')?.total).toBe(3);
+  });
+
   it('orders lanes by the plan: M00→M14, then epics without a milestone, «Без эпика» last', () => {
     expect(g().lanes.map((l) => l.key)).toEqual(['M03', 'M04', 'M06', 'M07', 'M08', 'M11', 'M13', 'one', 'none']);
     const one = g().lanes.find((l) => l.key === 'one');
@@ -94,6 +110,18 @@ describe('buildBoardGraph', () => {
     expect(laneOf.o2).toBe('one');
     expect(laneOf.loose).toBe('none');
     expect(g().lanes.find((l) => l.key === 'M04')?.nodeIds.sort()).toEqual(['s3', 's4']);
+  });
+
+  it('keeps «Один тип» children in its lane even when they carry a milestone (live dw-mqfcx.2 is M03)', () => {
+    const beads = [...board(), bead('o3', 'Убрать роль junior', { labels: ms('M03'), parent: 'one' })];
+    expect(buildBoardGraph(beads, { nowMs: NOW }).laneOf.o3).toBe('one');
+  });
+
+  it('does not count owner-answer placeholders in the epic progress', () => {
+    const beads = [...board(), bead('qa', 'M04 — ответ владельца на ВВ-6', { labels: ms('M04'), parent: 'e04' })];
+    const graph = buildBoardGraph(beads, { nowMs: NOW });
+    expect(graph.laneOf.qa).toBe('ask');
+    expect(graph.lanes.find((l) => l.key === 'M04')?.total).toBe(2);
   });
 
   it('keeps cross-epic links (M03→M11, M06→M07/M08)', () => {
@@ -149,6 +177,19 @@ describe('buildBoardGraph', () => {
     expect(stub?.reason).toMatch(/снаружи/u);
     expect(graph.laneOf['rich-42']).toBe('M04');
     expect(graph.edges).toContainEqual({ from: 'rich-42', to: 's5' });
+  });
+
+  it('drops a link to an absent ticket of this board’s own store (the open read omits closed ones)', () => {
+    const beads = [
+      ...board(),
+      bead('dw-1', 'M04 #10', { labels: ms('M04'), parent: 'e04', needs: ['dw-gone'] }),
+    ];
+    const graph = buildBoardGraph(beads, { nowMs: NOW });
+    expect(graph.nodes.some((n) => n.id === 'dw-gone')).toBe(false);
+    expect(graph.nodes.find((n) => n.id === 'dw-1')?.column).toBe(1);
+    // Partial data: absence proves nothing, so it stays an outside stub.
+    const partial = buildBoardGraph(beads, { nowMs: NOW, partial: true });
+    expect(partial.nodes.find((n) => n.id === 'dw-gone')?.outside).toBe(true);
   });
 
   it('draws the real blocker behind a cross-store gate', () => {
