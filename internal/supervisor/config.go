@@ -77,6 +77,14 @@ type Section struct {
 	// but leaves the read-auth keys as they were.
 	ReadAuthVerifyKey string `toml:"read_auth_verify_key,omitempty"`
 	ReadAuthRequired  bool   `toml:"read_auth_required,omitempty"`
+	// DashboardDir (fork patch, default off) names an absolute folder the
+	// dashboard SPA is served from, per request, instead of the embedded
+	// bundle: <dir>/current names a version folder under <dir>/versions/. Any
+	// missing, unsafe or incomplete state falls back to the embedded bundle; no
+	// value is ever a boot error. Read at boot only: `gc supervisor reload`
+	// does not re-read it, so a change needs a supervisor restart. Switching
+	// <dir>/current needs no restart.
+	DashboardDir string `toml:"dashboard_dir,omitempty"`
 }
 
 // PublicationConfig holds machine-wide publication policy for workspace

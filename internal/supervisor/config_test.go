@@ -445,3 +445,32 @@ func TestLoadConfigSeedsAPortOutsideTheEphemeralRange(t *testing.T) {
 		seen[port] = true
 	}
 }
+
+// Fork patch (dashboard_dir): the [supervisor] dashboard_dir key names the
+// folder the dashboard SPA is served from; absent means embedded only.
+func TestLoadConfigDashboardDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "supervisor.toml")
+	if err := os.WriteFile(path, []byte("[supervisor]\ndashboard_dir = \"/x y/dashboard-ui\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Supervisor.DashboardDir; got != "/x y/dashboard-ui" {
+		t.Errorf("Supervisor.DashboardDir = %q, want %q", got, "/x y/dashboard-ui")
+	}
+
+	path2 := filepath.Join(dir, "none.toml")
+	if err := os.WriteFile(path2, []byte("[supervisor]\nport = 9090\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = LoadConfig(path2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Supervisor.DashboardDir; got != "" {
+		t.Errorf("Supervisor.DashboardDir with no key = %q, want empty", got)
+	}
+}
