@@ -39,12 +39,22 @@ type Config struct {
 
 // Section holds the [supervisor] table fields.
 type Section struct {
-	Port           int      `toml:"port,omitempty"`
-	Bind           string   `toml:"bind,omitempty"`
-	PatrolInterval string   `toml:"patrol_interval,omitempty"`
-	AllowMutations bool     `toml:"allow_mutations,omitempty"`
+	Port           int    `toml:"port,omitempty"`
+	Bind           string `toml:"bind,omitempty"`
+	PatrolInterval string `toml:"patrol_interval,omitempty"`
+	AllowMutations bool   `toml:"allow_mutations,omitempty"`
+	// AllowedOrigins lists extra CORS origins beyond localhost. It only sets
+	// Access-Control-Allow-Origin; it never refuses a request, and the
+	// same-origin dashboard (including over Tailscale Serve) does not need it.
+	// Leave it unset unless a cross-origin client must read responses.
 	AllowedOrigins []string `toml:"allowed_origins,omitempty"`
-	AllowedHosts   []string `toml:"allowed_hosts,omitempty"`
+	// AllowedHosts lists extra HTTP Host names accepted beyond loopback (the
+	// 421 host_not_allowed gate), e.g. the Mac's tailnet name behind
+	// `tailscale serve`. It is read at boot only: `gc supervisor reload` does
+	// not re-read it, so a change needs a supervisor restart. It grants no
+	// CORS, and the engine has no Origin gate: typed mutations need only
+	// X-GC-Request once the Host passes.
+	AllowedHosts []string `toml:"allowed_hosts,omitempty"`
 	// WriteAuthVerifyKey / WriteAuthRequired require a signed write grant on
 	// every mutating request to an already-registered city (the per-city routes
 	// under /v0/city/{cityName}); city registry creation (POST /v0/city) stays
