@@ -242,3 +242,34 @@ func loadIndex(dir, sha string, vroot *os.Root, owner func(fs.FileInfo) bool) ([
 	indexCache.Unlock()
 	return e.index, e.csp, true
 }
+
+// openServed opens a file of the version folder for serving (C11): the path
+// must be a valid relative path, every directory on the way must be a real
+// directory (not a symlink) that passes the owner check, and the file itself
+// must be a regular file that passes it. Anything else counts as missing.
+func openServed(vroot *os.Root, path string, owner func(fs.FileInfo) bool) (*os.File, fs.FileInfo, bool) {
+	if path == "" || !fs.ValidPath(path) {
+		return nil, nil, false
+	}
+	parts := strings.Split(path, "/")
+	for i := 1; i < len(parts); i++ {
+		fi, err := vroot.Lstat(strings.Join(parts[:i], "/"))
+		if err != nil || !fi.Mode().IsDir() || !owner(fi) {
+			return nil, nil, false
+		}
+	}
+	fi, err := vroot.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || !owner(fi) {
+		return nil, nil, false
+	}
+	f, err := vroot.Open(path)
+	if err != nil {
+		return nil, nil, false
+	}
+	ofi, err := f.Stat()
+	if err != nil || !os.SameFile(fi, ofi) {
+		_ = f.Close()
+		return nil, nil, false
+	}
+	return f, ofi, true
+}

@@ -11,9 +11,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // reservedPrefixes are request paths the SPA handler must never answer with
@@ -34,8 +38,28 @@ var reservedPrefixes = []string{
 // with long-lived caching, serves index.html (no-store) for the app shell and
 // for any unknown client-side route, 404s the reserved non-SPA prefixes, and
 // applies a strict same-origin Content-Security-Policy whose script-src is
-// pinned to the sha256 of each inline <script> found in index.html.
+// pinned to the sha256 of each inline <script> found in index.html. It is
+// NewStaticHandlerWithDir("").
 func NewStaticHandler() (http.Handler, error) {
+	return NewStaticHandlerWithDir("")
+}
+
+// UIHeader names the response header that tells which interface answered:
+// "dir <sha40>", "embedded", or "embedded; fallback=<reason>".
+const UIHeader = "X-GC-Dashboard-UI"
+
+// NewStaticHandlerWithDir is NewStaticHandler with an optional dashboard_dir
+// (fork patch). For every non-reserved request it resolves the source from
+// dir (see dir.go) and serves the version folder named by <dir>/current, or
+// the embedded bundle when dir is empty or any check fails. The only error is
+// an unreadable embedded bundle: no state of dir is ever an error.
+//
+// Paths: "" and index.html get the source index (no-store); assets/<f> come
+// from the source, then the embedded bundle (immutable), and a miss is a 404,
+// never the index; other files come from the source only (no-cache), with a
+// missing sw.js or manifest.webmanifest a 404; any other path gets the source
+// index. Every response carries UIHeader and the source index's CSP.
+func NewStaticHandlerWithDir(dir string) (http.Handler, error) {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		return nil, fmt.Errorf("dashboardspa: sub fs: %w", err)
@@ -46,6 +70,10 @@ func NewStaticHandler() (http.Handler, error) {
 	}
 	csp := buildCSP(indexBytes)
 	fileServer := http.FileServer(http.FS(sub))
+	if dir != "" && !filepath.IsAbs(dir) {
+		log.Printf("dashboard: dashboard_dir %q is not an absolute path; serving embedded (fallback: %s)", dir, reasonRootMissing)
+	}
+	var srcLog sourceLog
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -55,34 +83,110 @@ func NewStaticHandler() (http.Handler, error) {
 				return
 			}
 		}
-		setSecurityHeaders(w, csp)
+		src, reason := resolveSource(dir, defaultOwner)
+		defer src.Close()
+		label, index, pageCSP := "embedded", indexBytes, csp
+		switch {
+		case src != nil:
+			label, index, pageCSP = "dir "+src.name, src.index, src.csp
+		case reason != "":
+			label = "embedded; fallback=" + reason
+		}
+		if dir != "" {
+			srcLog.note(src, reason)
+		}
+		setSecurityHeaders(w, pageCSP)
+		w.Header().Set(UIHeader, label)
 
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" || path == "index.html" {
-			writeIndex(w, indexBytes)
+			writeIndex(w, index)
 			return
 		}
-		if st, statErr := fs.Stat(sub, path); statErr == nil && !st.IsDir() {
+		if strings.HasPrefix(path, "assets/") {
 			// Vite emits content-hashed assets under assets/; they are safe to
-			// cache forever. Everything else (favicons, manifest) revalidates.
-			if strings.HasPrefix(path, "assets/") {
-				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			} else {
-				w.Header().Set("Cache-Control", "no-cache")
+			// cache forever. Source first, then embedded (an old tab's chunk
+			// after a switch); a miss is a 404 so no cache ever stores HTML
+			// under an asset URL.
+			const immutable = "public, max-age=31536000, immutable"
+			if src != nil && serveDirFile(w, r, src.root, path, immutable) {
+				return
 			}
-			// The PWA manifest (owner 16.11): Go's mime table has no
-			// .webmanifest entry, and nosniff would leave it untyped.
-			if strings.HasSuffix(path, ".webmanifest") {
-				w.Header().Set("Content-Type", "application/manifest+json")
+			if st, statErr := fs.Stat(sub, path); statErr == nil && !st.IsDir() {
+				w.Header().Set("Cache-Control", immutable)
+				fileServer.ServeHTTP(w, r)
+				return
 			}
+			http.NotFound(w, r)
+			return
+		}
+		if src != nil {
+			if serveDirFile(w, r, src.root, path, "no-cache") {
+				return
+			}
+		} else if st, statErr := fs.Stat(sub, path); statErr == nil && !st.IsDir() {
+			// Everything else (favicons, manifest, sw.js) revalidates.
+			w.Header().Set("Cache-Control", "no-cache")
+			setManifestType(w, path)
 			fileServer.ServeHTTP(w, r)
+			return
+		}
+		if path == "sw.js" || path == "manifest.webmanifest" {
+			// Never hand HTML back as the service worker or the manifest.
+			http.NotFound(w, r)
 			return
 		}
 		// Unknown path under the SPA: hand back the shell so the client-side
 		// router can render it (or its own not-found view).
-		writeIndex(w, indexBytes)
+		writeIndex(w, index)
 	})
 	return mux, nil
+}
+
+// serveDirFile serves path from a version folder if it passes openServed.
+func serveDirFile(w http.ResponseWriter, r *http.Request, vroot *os.Root, path, cacheControl string) bool {
+	f, fi, ok := openServed(vroot, path, defaultOwner)
+	if !ok {
+		return false
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	w.Header().Set("Cache-Control", cacheControl)
+	setManifestType(w, path)
+	http.ServeContent(w, r, fi.Name(), fi.ModTime(), f)
+	return true
+}
+
+// setManifestType types the PWA manifest (owner 16.11): Go's mime table has
+// no .webmanifest entry, and nosniff would leave it untyped.
+func setManifestType(w http.ResponseWriter, path string) {
+	if strings.HasSuffix(path, ".webmanifest") {
+		w.Header().Set("Content-Type", "application/manifest+json")
+	}
+}
+
+// sourceLog logs a change of the resolved source once.
+type sourceLog struct {
+	mu   sync.Mutex
+	last string
+}
+
+func (l *sourceLog) note(src *uiSource, reason string) {
+	var line string
+	switch {
+	case src != nil:
+		line = "dashboard: serving dir " + src.name[:9]
+	case reason != "":
+		line = "dashboard: embedded (fallback: " + reason + ")"
+	default:
+		line = "dashboard: embedded"
+	}
+	l.mu.Lock()
+	changed := line != l.last
+	l.last = line
+	l.mu.Unlock()
+	if changed {
+		log.Print(line)
+	}
 }
 
 func writeIndex(w http.ResponseWriter, index []byte) {
