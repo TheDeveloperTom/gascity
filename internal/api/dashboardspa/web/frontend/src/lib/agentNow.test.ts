@@ -71,16 +71,42 @@ describe('describeAgentNow', () => {
     expect(now?.text).toBe('пишет файл docs/plan.md');
   });
 
-  it('text after tools', () => {
-    const long = `${'a'.repeat(200)} конец мысли`;
+  it('text after tools: the last complete sentence, never a cut-off start', () => {
+    // 16.11 owner: «mayor · воротах кормилец относит к ожидающим владельца…»
+    // came from keeping the last 120 characters.
+    const text =
+      'Проверил доску и журнал ворот за ночь. Карточку, застрявшую на воротах, кормилец относит к ожидающим владельца, а не к упавшим.';
     const now = describeAgentNow([
       assistant([
         { type: 'tool_use', name: 'Bash', input: { kind: 'command', command: 'ls' } },
-        { type: 'text', text: long },
+        { type: 'text', text },
       ]),
     ]);
-    expect(now?.text).toBe(long.slice(-120));
-    expect(now?.text).toHaveLength(120);
+    expect(now?.text).toBe(
+      'Карточку, застрявшую на воротах, кормилец относит к ожидающим владельца, а не к упавшим.',
+    );
+  });
+
+  it('a long last sentence is cut at a word boundary with an ellipsis', () => {
+    const sentence = `Начало мысли ${'слово '.repeat(40)}конец.`;
+    const now = describeAgentNow([assistant([{ type: 'text', text: `Коротко. ${sentence}` }])]);
+    expect(now?.text.startsWith('Начало мысли слово')).toBe(true);
+    expect(now?.text.endsWith('…')).toBe(true);
+    expect(now?.text.length).toBeLessThanOrEqual(121);
+    expect(now?.text).not.toMatch(/\s…$/);
+    expect(now?.text.slice(0, -1)).toMatch(/слово$/);
+  });
+
+  it('uses the last non-empty line, without a markdown marker', () => {
+    const now = describeAgentNow([
+      assistant([{ type: 'text', text: 'Итог прогона:\n\n- все 40 тестов зелёные\n' }]),
+    ]);
+    expect(now?.text).toBe('все 40 тестов зелёные');
+  });
+
+  it('one unbroken long token is cut with an ellipsis too', () => {
+    const now = describeAgentNow([assistant([{ type: 'text', text: 'x'.repeat(300) }])]);
+    expect(now?.text).toBe(`${'x'.repeat(120)}…`);
   });
 
   it('thinking only', () => {

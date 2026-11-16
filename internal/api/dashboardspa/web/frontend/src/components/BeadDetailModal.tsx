@@ -5,14 +5,13 @@ import { useBeadDetail } from '../hooks/useBeadDetail';
 import { useBoardData } from '../hooks/useBoardData';
 import { useEntityLinks } from '../hooks/useEntityLinks';
 import { t } from '../i18n';
-import { MARKDOWN_CLASS, renderMiniMarkdown } from '../lib/miniMarkdown';
-import { structureDescription } from '../lib/structureDescription';
 import { ownerQuestionOf } from '../lib/ownerQuestions';
 import { milestoneOf } from '../lib/waitReasons';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import type { SupervisorSession } from '../supervisor/sessionReads';
 import { DiscussButton } from '../vk/DiscussButton';
 import { AgentWork } from '../vk/panel/AgentWork';
+import { TaskDescription } from '../vk/panel/TaskDescription';
 import { blockerTags, Relationships } from '../vk/panel/Relationships';
 import { BackCrumb, GraphChain, ShowOnGraphButton } from '../vk/panel/GraphChain';
 import {
@@ -121,6 +120,7 @@ export function BeadDetailModal({
   const milestone = bead ? milestoneOf(bead) : null;
 
   const pr = useMemo(() => (bead ? taskPr(bead, items) : null), [bead, items]);
+  const boardIds = useMemo(() => new Set(items.map((b) => b.id)), [items]);
   const label = bead ? taskShortLabel(bead) : (beadId ?? '');
   // vk-1to1 canvas: «M04 #3 / PR #580» (short label, never the raw id).
   const crumb = (
@@ -195,12 +195,11 @@ export function BeadDetailModal({
         title={bead?.title ?? beadId ?? t('Task')}
         description={
           bead?.description && bead.description.length > 0 ? (
-            <div
-              data-testid="task-description"
-              className={`text-base text-vk-text-normal ${MARKDOWN_CLASS}`}
-            >
-              {renderMiniMarkdown(structureDescription(bead.description), { headingFrom: 3 })}
-            </div>
+            <TaskDescription
+              text={bead.description}
+              knownIds={boardIds}
+              {...(onOpenBead !== undefined ? { onOpenBead } : {})}
+            />
           ) : undefined
         }
         top={
