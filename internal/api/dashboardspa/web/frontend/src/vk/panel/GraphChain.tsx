@@ -85,6 +85,8 @@ function Section({
   cameFrom: string | null;
 }) {
   const id = useId();
+  // Owner 16.11: an empty section is not drawn (a question card showed bare headings).
+  if (rows.length === 0) return null;
   return (
     <section aria-labelledby={id} className="flex flex-col gap-0.5">
       <div className="flex items-baseline justify-between gap-2 py-1">

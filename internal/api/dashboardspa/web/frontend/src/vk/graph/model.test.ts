@@ -187,6 +187,19 @@ describe('chainOf and whatIfBanner', () => {
     expect(whatIfBanner(m, ID.qv6)).toBe('Если ответишь: сразу пойдут 0, всего откроется 1');
   });
 
+  it('a question that holds nothing gets no banner (never «сразу пойдут 0, всего откроется 0»)', () => {
+    const lone = {
+      nodes: [
+        { id: 'q', kind: 'question' as const, label: 'вопрос · X', title: 'X', state: 'waits_owner' as const, reason: '', holds: 0, column: 0, row: 0, outside: false, assignee: null },
+      ],
+      edges: [],
+      columns: [],
+      headline: '',
+      subline: '',
+    };
+    expect(whatIfBanner(lone, 'q')).toBeNull();
+  });
+
   it('a task banner says what it waits for and what it opens', () => {
     expect(whatIfBanner(m, ID.s3)).toBe('M04 #3.3 ждёт 2: M04 #3 в работе, M03 #6.2 ждёт тебя · откроет 7 сразу, 9 всего');
     expect(whatIfBanner(m, ID.acc)).toMatch(/^M04 приёмка ждёт 9: .* · откроет 0 сразу, 0 всего$/);

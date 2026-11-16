@@ -495,13 +495,15 @@ const STATE_WORD: Record<GraphNodeState, string> = {
   done: 'готово',
 };
 
-export function whatIfBanner(model: GraphModel, id: string): string {
+/** The hover/selection banner; null when there is nothing to say (a question that holds nothing). */
+export function whatIfBanner(model: GraphModel, id: string): string | null {
   const node = model.nodes.find((n) => n.id === id);
-  if (node === undefined) return '';
+  if (node === undefined) return null;
   const chain = chainOf(model, id);
   const now = chain.downNow.size;
   const total = chain.down.size;
   if (node.kind === 'question') {
+    if (total === 0) return null;
     return `Если ответишь: сразу ${now === 1 ? 'пойдёт' : 'пойдут'} ${now}, всего откроется ${total}`;
   }
   const byId = new Map(model.nodes.map((n) => [n.id, n]));
