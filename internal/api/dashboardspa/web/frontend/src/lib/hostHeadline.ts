@@ -5,37 +5,46 @@ import { getLocale, t, tn } from '../i18n';
 // is crossed. Each clause carries its own tone; the sentence takes the worst.
 //
 // Thresholds, and why:
-// - CPU: the tone reads the 1-minute load against the cores. Under 0.8× the
-//   cores there is a free core to spare; 0.8–1.2× the Mac is busy and new
-//   work starts to wait; 1.2× and over, threads queue for a core for a
-//   sustained minute. Busy % stands in when load is unreadable.
-//   What is SHOWN never passes 100 % (coordinator 16.11: «356 %» reads as a
-//   bug): the CPU is busy % (0–100), the queue is a multiple of the cores
-//   («в 3,6 раза больше ядер»).
-// - Memory: the kernel's own pressure level when macOS reports it (the same
-//   signal as Activity Monitor's pressure graph): warn is amber, critical is
-//   red. Elsewhere, the available share: under 10 % amber, under 5 % red.
-// - Disk: free gigabytes on the data volume, not a percent, since a 460 GB
-//   disk at 95 % still has room: under 20 GB amber (builds and Dolt stores
-//   need headroom), under 5 GB red (writes start failing soon).
-
+// - CPU: busy % (the share of all cores doing work), averaged over the last
+//   30 s so a spike does not flip the page. 80 % sustained is amber: little
+//   headroom left; 95 % sustained is red: the Mac is at its limit. The load
+//   average is NOT the verdict (review I-2): on macOS it also counts threads
+//   waiting on I/O and in uninterruptible sleep, so it sits above the core
+//   count while the CPU is mostly idle. It is shown as a neutral «очередь»
+//   line, and named in the headline only when the CPU is busy as well.
+//   No CPU figure ever passes 100 % (coordinator 16.11).
 export type HostTone = 'ok' | 'warn' | 'critical';
 
 const GiB = 2 ** 30;
 
 export const HOST_THRESHOLDS = {
-  cpuWarnPct: 80,
-  cpuCriticalPct: 120,
+  cpuWarnBusyPct: 80,
+  cpuCriticalBusyPct: 95,
+  cpuSustainMs: 30_000,
   memWarnAvailableRatio: 0.1,
   memCriticalAvailableRatio: 0.05,
   diskWarnFreeBytes: 20 * GiB,
   diskCriticalFreeBytes: 5 * GiB,
 } as const;
 
-export function cpuTone(pct: number): HostTone {
-  if (pct >= HOST_THRESHOLDS.cpuCriticalPct) return 'critical';
-  if (pct >= HOST_THRESHOLDS.cpuWarnPct) return 'warn';
+/** The CPU tone from (sustained) busy %. */
+export function cpuTone(busyPct: number): HostTone {
+  if (busyPct >= HOST_THRESHOLDS.cpuCriticalBusyPct) return 'critical';
+  if (busyPct >= HOST_THRESHOLDS.cpuWarnBusyPct) return 'warn';
   return 'ok';
+}
+
+/** Mean busy % over the last cpuSustainMs; null with no sample in it. */
+export function sustainedBusy(
+  samples: ReadonlyArray<{ at: number; busyPct: number | null }>,
+  now: number,
+): number | null {
+  const from = now - HOST_THRESHOLDS.cpuSustainMs;
+  const values = samples
+    .filter((s) => s.at >= from && s.at <= now && s.busyPct !== null)
+    .map((s) => s.busyPct as number);
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
 export function memoryTone(mem: LiveMemory): HostTone {
@@ -117,11 +126,9 @@ export function busyPctOf(live: LiveHealth): number | null {
   return live.cpu.busy_pct.status === 'available' ? live.cpu.busy_pct.value : null;
 }
 
-/** The CPU tone: the queue against the cores, else busy %. */
-export function cpuToneOf(live: LiveHealth): HostTone | null {
-  const ratio = loadRatioOf(live);
-  if (ratio !== null) return cpuTone(ratio * 100);
-  const busy = busyPctOf(live);
+/** The CPU tone: sustained busy % when known, else the current reading. */
+export function cpuToneOf(live: LiveHealth, sustained?: number | null): HostTone | null {
+  const busy = sustained ?? busyPctOf(live);
   return busy === null ? null : cpuTone(busy);
 }
 
@@ -151,20 +158,21 @@ export function cpuQueueLine(live: LiveHealth): string | null {
   return t('work queue: {load} for {cores} cores', { load, cores });
 }
 
-export function buildHeadline(live: LiveHealth): Headline {
+export function buildHeadline(live: LiveHealth, sustained?: number | null): Headline {
   const clauses: HeadlineClause[] = [];
 
-  const tone = cpuToneOf(live);
   const busyValue = busyPctOf(live);
-  const ratio = loadRatioOf(live);
-  if (tone !== null) {
-    const busy = busyValue === null ? null : formatPct(Math.round(busyValue));
-    const times = ratio === null ? null : formatTimes(ratio);
+  const tone = busyValue === null ? null : cpuToneOf(live, sustained);
+  if (tone !== null && busyValue !== null) {
+    const busy = formatPct(Math.round(busyValue));
+    const ratio = loadRatioOf(live);
+    // A queue is named only when the CPU is busy too (review I-2).
+    const times = tone !== 'ok' && ratio !== null && ratio >= 1 ? formatTimes(ratio) : null;
     let text: string;
-    if (tone === 'critical' && times !== null) {
+    if (tone === 'critical') {
       text =
-        busy === null
-          ? t('The Mac is overloaded: work waits in a queue ({times} the cores)', { times })
+        times === null
+          ? t('The Mac is overloaded: the CPU is {busy} busy', { busy })
           : t(
               'The Mac is overloaded: the CPU is {busy} busy, work waits in a queue ({times} the cores)',
               {
@@ -172,14 +180,19 @@ export function buildHeadline(live: LiveHealth): Headline {
                 times,
               },
             );
-    } else if (tone !== 'ok') {
+    } else if (tone === 'warn') {
       text =
-        busy === null
-          ? t('The Mac is busy: work is close to queueing')
-          : t('The Mac is busy: the CPU is {busy} busy, work is close to queueing', { busy });
+        times === null
+          ? t('The Mac is busy: the CPU is {busy} busy', { busy })
+          : t(
+              'The Mac is busy: the CPU is {busy} busy, work waits in a queue ({times} the cores)',
+              {
+                busy,
+                times,
+              },
+            );
     } else {
-      text =
-        busy === null ? t('the CPU has cores to spare') : t('The CPU is {busy} busy', { busy });
+      text = t('The CPU is {busy} busy', { busy });
     }
     clauses.push({ key: 'cpu', tone, text });
   }

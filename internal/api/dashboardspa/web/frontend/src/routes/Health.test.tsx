@@ -42,6 +42,7 @@ beforeEach(() => {
   live = liveFixture({
     processes: {
       status: 'available',
+      coverage: 'all_processes',
       total: 640,
       items: [
         { name: 'claude', count: 6, cpu_pct: 140, rss_bytes: 1_800_000_000 },
@@ -152,12 +153,35 @@ describe('HealthPage', () => {
     expect(within(region).getAllByText('Хранилища (dolt, bd)').length).toBeGreaterThan(0);
   });
 
+  // Review I-1: busy 100 % on 10 cores, the named processes explain 16 %.
+  it('shows the CPU the process list cannot explain as its own row', async () => {
+    live = { ...live, cpu: { ...live.cpu, busy_pct: { status: 'available', value: 100 } } };
+    renderPage();
+    const region = await screen.findByRole('region', { name: 'Кто ест Мак' });
+    const row = (await within(region).findByText('Система и прочее (не видно по процессам)')).closest('li');
+    expect(row?.textContent).toContain('84\u00a0%');
+    expect(row?.textContent).toContain('ядро macOS и процессы, мелькнувшие между замерами');
+  });
+
+  it('says when only the owner’s own processes are readable', async () => {
+    live = {
+      ...live,
+      cpu: { ...live.cpu, busy_pct: { status: 'available', value: 100 } },
+      processes: { ...live.processes, coverage: 'own_processes' },
+    };
+    renderPage();
+    expect(
+      await screen.findByText(/процессы системы и других пользователей без прав администратора не видны/),
+    ).toBeTruthy();
+  });
+
   it('says plainly when the process list is only visible on this Mac', async () => {
     live = {
       ...live,
       processes: {
         status: 'unavailable',
         reason: 'not_loopback',
+        coverage: 'none',
         total: 0,
         items: [],
         rest: { count: 0, cpu_pct: 0, rss_bytes: 0 },

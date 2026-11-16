@@ -21,6 +21,8 @@ type fakeLiveSources struct {
 	sleeps    []time.Duration
 	now       time.Time
 	procErr   error
+	procErrAt int // fail only the call with this index (1-based); 0 = never
+	coverage  string
 }
 
 func (f *fakeLiveSources) sources() liveSources {
@@ -45,13 +47,17 @@ func (f *fakeLiveSources) sources() liveSources {
 		disk: func(context.Context) (liveDisk, error) {
 			return liveDisk{TotalBytes: 460 << 30, FreeBytes: 9 << 30}, nil
 		},
-		processes: func(context.Context) ([]processSample, error) {
-			if f.procErr != nil {
-				return nil, f.procErr
-			}
-			v := f.procs[min(f.procCalls, len(f.procs)-1)]
+		processes: func(context.Context) (processList, error) {
 			f.procCalls++
-			return v, nil
+			if f.procErr != nil && (f.procErrAt == 0 || f.procErrAt == f.procCalls) {
+				return processList{}, f.procErr
+			}
+			v := f.procs[min(f.procCalls-1, len(f.procs)-1)]
+			coverage := f.coverage
+			if coverage == "" {
+				coverage = processCoverageAll
+			}
+			return processList{Samples: v, Coverage: coverage}, nil
 		},
 	}
 }
@@ -59,6 +65,7 @@ func (f *fakeLiveSources) sources() liveSources {
 func liveRequest(remote string) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/api/health/live", nil)
 	r.RemoteAddr = remote
+	r.Host = "127.0.0.1:8372"
 	return r
 }
 
@@ -218,9 +225,18 @@ func TestLiveEndpointRefusesTheProcessListToANonLoopbackCaller(t *testing.T) {
 
 	forwarded := liveRequest("127.0.0.1:5000")
 	forwarded.Header.Set("X-Forwarded-For", "203.0.113.4")
+	tailnetHost := liveRequest("127.0.0.1:5000")
+	tailnetHost.Host = "mac.tail1234.ts.net"
+	tailscaleUser := liveRequest("127.0.0.1:5000")
+	tailscaleUser.Header.Set("Tailscale-User-Login", "someone@example.com")
+	forwardedHost := liveRequest("127.0.0.1:5000")
+	forwardedHost.Header.Set("X-Forwarded-Host", "mac.example.net")
 	cases := map[string]*http.Request{
-		"remote address":                  liveRequest("192.0.2.10:5000"),
-		"forwarded through a local proxy": forwarded,
+		"remote address":                       liveRequest("192.0.2.10:5000"),
+		"forwarded through a local proxy":      forwarded,
+		"loopback peer, non-loopback Host":     tailnetHost,
+		"tailscale identity header":            tailscaleUser,
+		"forwarded host through a local proxy": forwardedHost,
 	}
 	for name, req := range cases {
 		rec := httptest.NewRecorder()
@@ -310,5 +326,88 @@ func TestLiveEndpointRefusesMutations(t *testing.T) {
 	p.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/health/live", nil))
 	if rec.Code == http.StatusOK {
 		t.Fatalf("POST /api/health/live answered 200")
+	}
+}
+
+func TestLiveSamplerCarriesTheProcessCoverageToTheWire(t *testing.T) {
+	f := &fakeLiveSources{now: time.Unix(1000, 0), cpuTotals: [][2]float64{{0, 0}, {1, 10}}, procs: [][]processSample{{{PID: 1, Name: "claude"}}}, coverage: processCoverageOwn}
+	snap := newLiveSampler(f.sources()).snapshot(context.Background(), true)
+	if snap.Processes.Coverage != processCoverageOwn {
+		t.Fatalf("coverage = %q, want %q", snap.Processes.Coverage, processCoverageOwn)
+	}
+	f2 := &fakeLiveSources{now: time.Unix(1000, 0), cpuTotals: [][2]float64{{0, 0}, {1, 10}}, procs: [][]processSample{{{PID: 1, Name: "claude"}}}}
+	if got := newLiveSampler(f2.sources()).snapshot(context.Background(), true).Processes.Coverage; got != processCoverageAll {
+		t.Fatalf("coverage = %q, want %q", got, processCoverageAll)
+	}
+}
+
+// Review M-3: a failed list must not leave an old baseline behind, or the
+// next good sample divides two intervals of CPU by one.
+func TestLiveSamplerDropsTheProcessBaselineAfterAFailedList(t *testing.T) {
+	f := &fakeLiveSources{
+		now:       time.Unix(1000, 0),
+		cpuTotals: [][2]float64{{0, 0}, {1, 10}, {2, 20}, {3, 30}},
+		procs: [][]processSample{
+			{{PID: 1, Name: "claude", CPUSeconds: 0}},
+			{{PID: 1, Name: "claude", CPUSeconds: 0}},
+			{{PID: 1, Name: "claude", CPUSeconds: 0}},
+			{{PID: 1, Name: "claude", CPUSeconds: 4}},
+		},
+		procErr:   errors.New("boom"),
+		procErrAt: 3,
+	}
+	s := newLiveSampler(f.sources())
+	s.snapshot(context.Background(), true) // baseline (call 1) + sample (call 2)
+	f.now = f.now.Add(2 * time.Second)
+	if got := s.snapshot(context.Background(), true); got.Processes.Status != "unavailable" { // call 3 fails
+		t.Fatalf("third list should fail, got %#v", got.Processes)
+	}
+	f.now = f.now.Add(2 * time.Second)
+	got := s.snapshot(context.Background(), true) // call 4: no baseline left
+	if len(got.Processes.Items) != 1 || got.Processes.Items[0].CPUPct != 0 {
+		t.Fatalf("after a failed list claude = %#v, want 0 %% (no stale baseline)", got.Processes.Items)
+	}
+}
+
+func TestParsePSOutputReadsEveryProcessWithoutArguments(t *testing.T) {
+	out := strings.Join([]string{
+		"    1 969:23.58   4416 launchd         ",
+		"  378 821:59.75  85744 WindowServer    ",
+		" 6159 1:02:03  1853888 Brave Browser He",
+		"  777 2-01:00:00   100 backupd         ",
+		"    0 0:01.00      0 kernel_task     ",
+		"garbage line",
+		"",
+	}, "\n")
+	got := parsePSOutput(out)
+	if len(got) != 4 {
+		t.Fatalf("parsed %d processes, want 4 (pid 0 and garbage skipped): %#v", len(got), got)
+	}
+	want := []processSample{
+		{PID: 1, Name: "launchd", CPUSeconds: 969*60 + 23.58, RSSBytes: 4416 * 1024},
+		{PID: 378, Name: "WindowServer", CPUSeconds: 821*60 + 59.75, RSSBytes: 85744 * 1024},
+		{PID: 6159, Name: "Brave Browser He", CPUSeconds: 3723, RSSBytes: 1853888 * 1024},
+		{PID: 777, Name: "backupd", CPUSeconds: 2*86400 + 3600, RSSBytes: 100 * 1024},
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.PID != w.PID || g.Name != w.Name || g.RSSBytes != w.RSSBytes || g.CPUSeconds < w.CPUSeconds-0.001 || g.CPUSeconds > w.CPUSeconds+0.001 {
+			t.Fatalf("process %d = %#v, want %#v", i, g, w)
+		}
+	}
+}
+
+// Float subtraction (busy = total − idle − iowait) can step a hair below the
+// previous reading when the busy counters did not move; that is 0 % busy,
+// not an invalid sample.
+func TestLiveSamplerTreatsAFloatRoundingDipAsZeroBusy(t *testing.T) {
+	f := &fakeLiveSources{
+		now:       time.Unix(1000, 0),
+		cpuTotals: [][2]float64{{2052594.880000001, 4044247.62}, {2052594.88, 4044247.82}},
+		procs:     [][]processSample{{}},
+	}
+	snap := newLiveSampler(f.sources()).snapshot(context.Background(), true)
+	if snap.CPU.BusyPct.Status != healthMetricAvailable || *snap.CPU.BusyPct.Value != 0 {
+		t.Fatalf("busy_pct = %#v, want available 0", snap.CPU.BusyPct)
 	}
 }

@@ -12,14 +12,12 @@ export const RU_HEALTH: Readonly<Record<string, string | RuPlural>> = {
 
   // Headline
   'The CPU is {busy} busy': 'Процессор занят на {busy}',
-  'the CPU has cores to spare': 'у процессора есть свободные ядра',
-  'The Mac is busy: the CPU is {busy} busy, work is close to queueing':
-    'Мак загружен: процессор занят на {busy}, задачи почти встают в очередь',
-  'The Mac is busy: work is close to queueing': 'Мак загружен: задачи почти встают в очередь',
   'The Mac is overloaded: the CPU is {busy} busy, work waits in a queue ({times} the cores)':
     'Мак перегружен: процессор занят на {busy}, задачи ждут в очереди ({times} ядер)',
-  'The Mac is overloaded: work waits in a queue ({times} the cores)':
-    'Мак перегружен: задачи ждут в очереди ({times} ядер)',
+  'The Mac is busy: the CPU is {busy} busy': 'Мак загружен: процессор занят на {busy}',
+  'The Mac is busy: the CPU is {busy} busy, work waits in a queue ({times} the cores)':
+    'Мак загружен: процессор занят на {busy}, задачи ждут в очереди ({times} ядер)',
+  'The Mac is overloaded: the CPU is {busy} busy': 'Мак перегружен: процессор занят на {busy}',
   '{x}×': { one: 'в {x} раз больше', few: 'в {x} раза больше', many: 'в {x} раз больше' },
   'work queue: {times} the cores ({load} for {cores})':
     'очередь задач: {times}, чем ядер ({load} на {cores})',
@@ -79,6 +77,11 @@ export const RU_HEALTH: Readonly<Record<string, string | RuPlural>> = {
   Browsers: 'Браузеры',
   'Everything else': 'Всё остальное',
   'Heaviest right now': 'Тяжелее всех сейчас',
+  'System and the rest (not visible per process)': 'Система и прочее (не видно по процессам)',
+  'the macOS kernel and processes that came and went between samples':
+    'ядро macOS и процессы, мелькнувшие между замерами',
+  'system and other users’ processes are not visible without administrator rights':
+    'процессы системы и других пользователей без прав администратора не видны',
 
   // The city, below
   Supervisor: 'Супервизор',

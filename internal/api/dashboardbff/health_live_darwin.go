@@ -5,6 +5,8 @@ package dashboardbff
 import (
 	"context"
 	"os"
+	"os/exec"
+	"time"
 
 	"github.com/shirou/gopsutil/v4/process"
 	"golang.org/x/sys/unix"
@@ -42,11 +44,38 @@ func memoryPressureLevel() string {
 	}
 }
 
-// listProcesses reads every process's kernel command name (p_comm, at most
-// 16 bytes, from one kern.proc.all sysctl) plus its CPU time and resident
-// memory (proc_pidinfo task info). It never reads argv, the environment or
-// the executable path. A process the user may not inspect reports zeros.
-func listProcesses(ctx context.Context) ([]processSample, error) {
+// psListTimeout bounds one /bin/ps run (about 10 ms on an idle Mac).
+const psListTimeout = 2 * time.Second
+
+// listProcesses reads every process (review I-1). /bin/ps is setuid root on
+// macOS, so it sees other users' processes (WindowServer, mds_stores,
+// backupd), which libproc refuses to a non-root caller. It runs with a fixed
+// absolute path, fixed arguments and an empty environment, and asks only for
+// ucomm (the kernel command name): never argv, the environment or paths.
+// When ps fails, the libproc lister reads the caller's own processes only and
+// the coverage says so.
+func listProcesses(ctx context.Context) (processList, error) {
+	psCtx, cancel := context.WithTimeout(ctx, psListTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(psCtx, "/bin/ps", "-axo", "pid=,time=,rss=,ucomm=")
+	cmd.Env = []string{}
+	if out, err := cmd.Output(); err == nil {
+		if samples := parsePSOutput(string(out)); len(samples) > 0 {
+			return processList{Samples: samples, Coverage: processCoverageAll}, nil
+		}
+	}
+	samples, err := listOwnProcesses(ctx)
+	if err != nil {
+		return processList{}, err
+	}
+	return processList{Samples: samples, Coverage: processCoverageOwn}, nil
+}
+
+// listOwnProcesses reads every process's kernel command name (p_comm, at
+// most 16 bytes, from one kern.proc.all sysctl) plus its CPU time and
+// resident memory (proc_pidinfo task info). Another user's process reads as
+// zeros: libproc refuses it, and gopsutil hides the refusal.
+func listOwnProcesses(ctx context.Context) ([]processSample, error) {
 	kprocs, err := unix.SysctlKinfoProcSlice("kern.proc.all")
 	if err != nil {
 		return nil, err

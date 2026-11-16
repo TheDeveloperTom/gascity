@@ -102,10 +102,27 @@ type processRest struct {
 type liveProcesses struct {
 	Status string `json:"status"`
 	// Reason is set when Status is "unavailable": not_loopback or sample_failed.
-	Reason string         `json:"reason,omitempty"`
-	Total  int            `json:"total"`
-	Items  []processUsage `json:"items"`
-	Rest   processRest    `json:"rest"`
+	Reason string `json:"reason,omitempty"`
+	// Coverage says which processes the list could read: every process
+	// (all_processes) or only the caller's own (own_processes), in which case
+	// system processes are missing and the page says so.
+	Coverage string         `json:"coverage"`
+	Total    int            `json:"total"`
+	Items    []processUsage `json:"items"`
+	Rest     processRest    `json:"rest"`
+}
+
+// Process coverage values (liveProcesses.Coverage).
+const (
+	processCoverageAll = "all_processes"
+	processCoverageOwn = "own_processes"
+	processCoverageNA  = "none"
+)
+
+// processList is one read of the process table plus what it could see.
+type processList struct {
+	Samples  []processSample
+	Coverage string
 }
 
 // processSample is one process as the OS lister reads it. PID stays in
@@ -126,7 +143,7 @@ type liveSources struct {
 	load      func() (hostLoadAverages, error)
 	memory    func(context.Context) (liveMemory, error)
 	disk      func(context.Context) (liveDisk, error)
-	processes func(context.Context) ([]processSample, error)
+	processes func(context.Context) (processList, error)
 }
 
 type cpuReading struct{ busy, total float64 }
@@ -183,7 +200,7 @@ func (s *liveSampler) snapshot(ctx context.Context, withProcesses bool) liveHeal
 	}
 	out := s.cached
 	if !withProcesses {
-		out.Processes = liveProcesses{Status: "unavailable", Reason: "not_loopback", Items: []processUsage{}}
+		out.Processes = liveProcesses{Status: "unavailable", Reason: "not_loopback", Coverage: processCoverageNA, Items: []processUsage{}}
 	}
 	return out
 }
@@ -206,6 +223,11 @@ func (s *liveSampler) sample(ctx context.Context) liveHealth {
 	default:
 		dTotal := total - s.prevCPU.total
 		dBusy := busy - s.prevCPU.busy
+		// busy = total − idle − iowait in floats: an unchanged busy counter
+		// can read a hair lower. Within a millisecond that is 0, not a fault.
+		if dBusy < 0 && dBusy > -1e-3 {
+			dBusy = 0
+		}
 		if dTotal <= 0 || dBusy < 0 {
 			out.CPU.BusyPct = unavailableHealthMetric[float64](healthMetricInvalidSample)
 		} else {
@@ -241,10 +263,13 @@ func (s *liveSampler) sample(ctx context.Context) liveHealth {
 	procs, err := s.src.processes(ctx)
 	if err != nil {
 		log.Printf("dashboard live-health process list unavailable: %v", err)
-		out.Processes = liveProcesses{Status: "unavailable", Reason: "sample_failed", Items: []processUsage{}}
+		out.Processes = liveProcesses{Status: "unavailable", Reason: "sample_failed", Coverage: processCoverageNA, Items: []processUsage{}}
+		// Review M-3: no stale baseline survives a failed list.
+		s.prevProc = nil
 	} else {
-		out.Processes = aggregateProcesses(procs, s.prevProc, elapsed)
-		s.prevProc = processCPUIndex(procs)
+		out.Processes = aggregateProcesses(procs.Samples, s.prevProc, elapsed)
+		out.Processes.Coverage = procs.Coverage
+		s.prevProc = processCPUIndex(procs.Samples)
 	}
 	s.prevAt = at
 	s.hasPrev = true
@@ -257,7 +282,7 @@ func (s *liveSampler) takeBaseline(ctx context.Context) {
 		s.prevCPU = cpuReading{busy: busy, total: total}
 	}
 	if procs, err := s.src.processes(ctx); err == nil {
-		s.prevProc = processCPUIndex(procs)
+		s.prevProc = processCPUIndex(procs.Samples)
 	} else {
 		s.prevProc = nil
 	}
@@ -361,19 +386,30 @@ func roundTo(v float64, places int) float64 {
 	return math.Round(v*p) / p
 }
 
-// isLoopbackCaller is true for a direct loopback peer only: a forwarding
-// header means a local proxy relays someone else.
+// isLoopbackCaller is true for a direct loopback peer that also addressed the
+// supervisor by a loopback Host: a forwarding or proxy-identity header, or a
+// non-loopback Host (a tailnet name reaching the port through a TCP forward),
+// means someone else is being relayed (review M-1).
 func isLoopbackCaller(r *http.Request) bool {
-	for _, h := range []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip"} {
+	for _, h := range []string{"X-Forwarded-For", "X-Forwarded-Host", "Forwarded", "X-Real-Ip", "Tailscale-User-Login"} {
 		if r.Header.Get(h) != "" {
 			return false
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return isLoopbackAddr(r.RemoteAddr) && isLoopbackAddr(r.Host)
+}
+
+// isLoopbackAddr reads "host[:port]" and is true for 127.0.0.0/8, ::1 and localhost.
+func isLoopbackAddr(hostport string) bool {
+	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
-		host = r.RemoteAddr
+		host = hostport
 	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
 

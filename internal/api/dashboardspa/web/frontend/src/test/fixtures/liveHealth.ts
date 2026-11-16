@@ -23,6 +23,7 @@ export function liveFixture(over: Partial<LiveHealth> = {}): LiveHealth {
     disk: { status: 'available', value: { total_bytes: 460 * 2 ** 30, free_bytes: 40 * 2 ** 30 } },
     processes: {
       status: 'available',
+      coverage: 'all_processes',
       total: 3,
       items: [],
       rest: { count: 0, cpu_pct: 0, rss_bytes: 0 },

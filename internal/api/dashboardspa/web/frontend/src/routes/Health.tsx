@@ -33,6 +33,7 @@ import {
   formatPct,
   HOST_THRESHOLDS,
   memoryTone,
+  sustainedBusy,
   type HostTone,
 } from '../lib/hostHeadline';
 import { LIVE_POLL_MS, windowSamples, type LiveSample } from '../lib/hostLive';
@@ -91,11 +92,13 @@ export function HealthPage() {
     Math.max(3 * 60_000, Math.ceil(span / 60_000) * 60_000),
   );
   const shown = windowSamples(history, edge, windowMs);
+  const sustained = sustainedBusy(history, edge);
 
   return (
     <section className="space-y-8 pb-10">
       <Verdict
         live={latest}
+        sustained={sustained}
         error={error}
         windowMin={windowMin}
         onWindow={setWindowMin}
@@ -113,7 +116,13 @@ export function HealthPage() {
       />
 
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <CpuPanel live={latest} samples={shown} now={edge} windowMs={windowMs} />
+        <CpuPanel
+          live={latest}
+          samples={shown}
+          now={edge}
+          windowMs={windowMs}
+          sustained={sustained}
+        />
         <MemoryPanel live={latest} samples={shown} now={edge} windowMs={windowMs} />
         <DiskPanel live={latest} samples={shown} now={edge} windowMs={windowMs} />
       </div>
@@ -158,18 +167,21 @@ const TONE_TEXT: Readonly<Record<HostTone, string>> = {
 
 function Verdict({
   live,
+  sustained,
   error,
   windowMin,
   onWindow,
   advisory,
 }: {
   live: LiveHealth | null;
+  /** Busy % averaged over the last 30 s (lib/hostHeadline sustainedBusy). */
+  sustained: number | null;
   error: string | null;
   windowMin: WindowMinutes;
   onWindow: (m: WindowMinutes) => void;
   advisory: string | null;
 }) {
-  const headline = live === null ? null : buildHeadline(live);
+  const headline = live === null ? null : buildHeadline(live, sustained);
   const tone = headline?.tone ?? 'ok';
   return (
     <header data-host-tone={headline === null ? undefined : tone} className="space-y-4">
@@ -295,7 +307,13 @@ function points(samples: LiveSample[], pick: (s: LiveSample) => number | null) {
 
 // Coordinator 16.11: the CPU figure and axis never pass 100 %. The figure is
 // busy % across all cores; the run queue is a plain line under it.
-function CpuPanel({ live, samples, now, windowMs }: PanelProps) {
+function CpuPanel({
+  live,
+  samples,
+  now,
+  windowMs,
+  sustained,
+}: PanelProps & { sustained: number | null }) {
   const busy = live === null ? null : busyPctOf(live);
   const queue = live === null ? null : cpuQueueLine(live);
   const series: ChartSeries[] = [
@@ -311,7 +329,7 @@ function CpuPanel({ live, samples, now, windowMs }: PanelProps) {
     <Panel
       title={t('CPU')}
       value={busy === null ? '—' : pct(busy)}
-      tone={live === null ? null : cpuToneOf(live)}
+      tone={live === null ? null : cpuToneOf(live, sustained)}
       detail={
         live === null ? null : (
           <>

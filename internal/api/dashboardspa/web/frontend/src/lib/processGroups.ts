@@ -82,3 +82,16 @@ export function groupProcesses(
   }
   return PROCESS_GROUP_ORDER.map((id) => groups.get(id) as ProcessGroup);
 }
+
+/** Busy % the named processes do not explain (review I-1): the kernel,
+ *  processes born and gone between samples, and — when only the owner's
+ *  processes are readable — the system. Never negative; null when busy % is
+ *  unknown. */
+export function unattributedCpu(
+  busyPct: number | null,
+  groups: readonly ProcessGroup[],
+): number | null {
+  if (busyPct === null) return null;
+  const explained = groups.reduce((sum, g) => sum + g.cpuPctOfMac, 0);
+  return Math.max(0, busyPct - explained);
+}

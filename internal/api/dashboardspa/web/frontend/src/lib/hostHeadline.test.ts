@@ -8,6 +8,7 @@ import {
   diskTone,
   HOST_THRESHOLDS,
   memoryTone,
+  sustainedBusy,
 } from './hostHeadline';
 import { liveFixture } from '../test/fixtures/liveHealth';
 
@@ -16,13 +17,24 @@ const GiB = 2 ** 30;
 afterEach(() => setLocale('en'));
 
 describe('host thresholds', () => {
-  it('reads CPU load against the cores: calm below 80 %, amber to 120 %, red above', () => {
-    expect(HOST_THRESHOLDS.cpuWarnPct).toBe(80);
-    expect(HOST_THRESHOLDS.cpuCriticalPct).toBe(120);
+  // Review I-2: on macOS the load average counts I/O and uninterruptible
+  // waits, so the CPU verdict reads busy %, sustained over 30 s.
+  it('judges the CPU by sustained busy %: calm below 80 %, amber to 95 %, red from 95 %', () => {
+    expect(HOST_THRESHOLDS.cpuWarnBusyPct).toBe(80);
+    expect(HOST_THRESHOLDS.cpuCriticalBusyPct).toBe(95);
+    expect(HOST_THRESHOLDS.cpuSustainMs).toBe(30_000);
     expect(cpuTone(79)).toBe('ok');
     expect(cpuTone(80)).toBe('warn');
-    expect(cpuTone(119)).toBe('warn');
-    expect(cpuTone(120)).toBe('critical');
+    expect(cpuTone(94)).toBe('warn');
+    expect(cpuTone(95)).toBe('critical');
+  });
+
+  it('averages busy % over the last 30 s, skipping gaps', () => {
+    const now = 1_000_000;
+    const at = (secAgo: number, busyPct: number | null) => ({ at: now - secAgo * 1000, busyPct });
+    expect(sustainedBusy([at(40, 99), at(20, 20), at(10, null), at(0, 40)], now)).toBe(30);
+    expect(sustainedBusy([], now)).toBeNull();
+    expect(sustainedBusy([at(45, 90)], now)).toBeNull();
   });
 
   it('trusts the kernel memory pressure when it reports one', () => {
@@ -78,44 +90,67 @@ describe('buildHeadline', () => {
   it('says what is happening in one calm sentence, CPU as busy %', () => {
     const h = buildHeadline(liveFixture());
     expect(h.tone).toBe('ok');
-    expect(h.sentence).toBe('The CPU is 31% busy; memory is fine; 40 GB free on disk.');
+    expect(h.sentence).toBe('The CPU is 31% busy; memory is fine; 40\u00a0GB free on disk.');
   });
 
   it('takes the worst clause as the tone', () => {
-    const h = buildHeadline(withLoad(3.8, 31, 9.3));
+    const h = buildHeadline(withLoad(3.8, 31, 9.3), 31);
     expect(h.tone).toBe('warn');
     expect(h.clauses.find((c) => c.key === 'disk')?.tone).toBe('warn');
-    expect(h.sentence).toBe('The CPU is 31% busy; memory is fine; disk space is low — 9.3 GB.');
+    expect(h.sentence).toBe(
+      'The CPU is 31% busy; memory is fine; disk space is low — 9.3\u00a0GB.',
+    );
   });
 
-  it('turns amber when the queue nears the cores, still without a figure over 100 %', () => {
-    const h = buildHeadline(withLoad(9, 85));
+  // Review I-2, measured: load 11–13 on 10 cores while the CPU was 16–23 % busy.
+  it('stays calm with a high load average and an idle CPU, and says nothing of a queue', () => {
+    const h = buildHeadline(withLoad(12.9, 20), 20);
+    expect(h.tone).toBe('ok');
+    expect(h.sentence).toBe('The CPU is 20% busy; memory is fine; 40\u00a0GB free on disk.');
+    expect(h.sentence).not.toMatch(/queue/);
+  });
+
+  it('stays calm through a short spike', () => {
+    expect(buildHeadline(withLoad(3, 100), 40).clauses[0]?.tone).toBe('ok');
+  });
+
+  it('turns amber when the CPU stays busy, naming a queue only when there is one', () => {
+    const h = buildHeadline(withLoad(9, 85), 85);
     expect(h.tone).toBe('warn');
+    expect(h.sentence.startsWith('The Mac is busy: the CPU is 85% busy;')).toBe(true);
+    const q = buildHeadline(withLoad(13, 85), 85);
     expect(
-      h.sentence.startsWith('The Mac is busy: the CPU is 85% busy, work is close to queueing'),
+      q.sentence.startsWith(
+        'The Mac is busy: the CPU is 85% busy, work waits in a queue (1.3× the cores);',
+      ),
     ).toBe(true);
   });
 
-  it('turns red when the queue passes the cores and says it as a multiple', () => {
-    const h = buildHeadline(withLoad(36, 100));
+  it('turns red when the CPU stays at its limit, with the queue as a multiple', () => {
+    const h = buildHeadline(withLoad(36, 100), 97);
     expect(h.tone).toBe('critical');
     expect(
       h.sentence.startsWith(
         'The Mac is overloaded: the CPU is 100% busy, work waits in a queue (3.6× the cores)',
       ),
     ).toBe(true);
+    expect(
+      buildHeadline(withLoad(5, 100), 98).sentence.startsWith(
+        'The Mac is overloaded: the CPU is 100% busy;',
+      ),
+    ).toBe(true);
   });
 
   it('never prints a CPU figure above 100 %, however deep the queue', () => {
     for (const load of [12, 36, 229]) {
-      expect(buildHeadline(withLoad(load, 100)).sentence).not.toMatch(OVER_100);
+      expect(buildHeadline(withLoad(load, 100), 100).sentence).not.toMatch(OVER_100);
     }
   });
 
-  it('judges the CPU by busy % when load is unavailable', () => {
-    const live = liveFixture();
-    live.cpu.load = { status: 'unavailable', reason: 'sample_failed' };
-    expect(buildHeadline(live).sentence.startsWith('The CPU is 31% busy')).toBe(true);
+  it('leaves the CPU out when busy % is unreadable: load alone cannot judge it', () => {
+    const live = withLoad(30, 0);
+    live.cpu.busy_pct = { status: 'unavailable', reason: 'sample_failed' };
+    expect(buildHeadline(live).clauses.map((c) => c.key)).toEqual(['memory', 'disk']);
   });
 
   it('skips a clause it cannot read instead of inventing it', () => {
@@ -128,11 +163,16 @@ describe('buildHeadline', () => {
   it('reads Russian the way the coordinator wrote it', () => {
     setLocale('ru');
     resetMissing();
-    expect(buildHeadline(withLoad(36, 100, 9.9)).sentence).toBe(
-      'Мак перегружен: процессор занят на 100 %, задачи ждут в очереди (в 3,6 раза больше ядер); памяти хватает; на диске мало места — 9,9 ГБ.',
+    expect(buildHeadline(withLoad(36, 100, 9.9), 100).sentence).toBe(
+      'Мак перегружен: процессор занят на 100\u00a0%, задачи ждут в очереди (в 3,6 раза больше ядер); памяти хватает; на диске мало места — 9,9\u00a0ГБ.',
     );
+    expect(
+      buildHeadline(withLoad(13, 85), 85).sentence.startsWith(
+        'Мак загружен: процессор занят на 85\u00a0%, задачи ждут в очереди (в 1,3 раза больше ядер);',
+      ),
+    ).toBe(true);
     expect(buildHeadline(liveFixture()).sentence).toBe(
-      'Процессор занят на 31 %; памяти хватает; на диске свободно 40 ГБ.',
+      'Процессор занят на 31\u00a0%; памяти хватает; на диске свободно 40\u00a0ГБ.',
     );
     expect(collectMissing()).toEqual([]);
   });

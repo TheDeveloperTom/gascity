@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProcessUsage } from 'gas-city-dashboard-shared';
-import { groupOf, groupProcesses } from './processGroups';
+import { groupOf, groupProcesses, unattributedCpu } from './processGroups';
 
 const p = (name: string, cpu_pct: number, rss_bytes: number, count = 1): ProcessUsage => ({
   name,
@@ -74,5 +74,27 @@ describe('groupProcesses', () => {
     expect(groupProcesses([], { count: 0, cpu_pct: 0, rss_bytes: 0 }, 10).map((g) => g.id)).toEqual(
       ['agents', 'stores', 'supervisor', 'builds', 'browsers', 'other'],
     );
+  });
+});
+
+// Review I-1: the groups explained ~25 % of a 100 %-busy Mac. What the
+// process list cannot attribute is shown, never hidden.
+describe('unattributedCpu', () => {
+  const groups = groupProcesses(
+    [p('claude', 140, 1), p('node', 110, 1)],
+    { count: 0, cpu_pct: 0, rss_bytes: 0 },
+    10,
+  );
+
+  it('is busy % minus what the groups explain', () => {
+    expect(unattributedCpu(100, groups)).toBeCloseTo(75);
+  });
+
+  it('is never negative', () => {
+    expect(unattributedCpu(10, groups)).toBe(0);
+  });
+
+  it('is null when busy % is unknown', () => {
+    expect(unattributedCpu(null, groups)).toBeNull();
   });
 });
