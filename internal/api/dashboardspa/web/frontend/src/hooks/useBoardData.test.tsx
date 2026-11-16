@@ -4,7 +4,7 @@ import { invalidate } from '../api/cache';
 import { listSupervisorBeads } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
-import { readRigStore, sharedRead, useBoardData } from './useBoardData';
+import { readRigStore, sharedRead, useBoardData, type BoardRead } from './useBoardData';
 
 vi.mock('../supervisor/beadReads', () => ({ listSupervisorBeads: vi.fn() }));
 vi.mock('../supervisor/rigReads', () => ({ listSupervisorRigs: vi.fn() }));
@@ -47,7 +47,14 @@ function Consumer({ name }: { name: string }) {
   );
 }
 
+const probe: { read: BoardRead | undefined } = { read: undefined };
+function Probe() {
+  probe.read = useBoardData();
+  return null;
+}
+
 beforeEach(() => {
+  probe.read = undefined;
   invalidate('');
   beads.mockReset();
   rigs.mockReset();
@@ -176,6 +183,48 @@ describe('useBoardData', () => {
     releaseStore();
     await expect(joined).resolves.toMatchObject({ items: [] });
     expect(storeCalls()).toBe(1);
+  });
+
+  // REVIEW Round 2 MEDIUM: a failed rig-store leg was cached as an empty
+  // store and the stores read as «in», so a question asked only there left
+  // the shelf, the badge and the graph without a word. It is now named as
+  // failed, the stores are not «in», and the next refresh reads it again.
+  it('a failed rig-store leg is reported, never read as an empty store', async () => {
+    rigs.mockResolvedValue({ items: [{ name: 'devwork', prefix: 'dw' }, { name: 'east' }] } as never);
+    const devworkRow = { id: 'dw-q', title: 'q', status: 'open', issue_type: 'task', created_at: '2026-11-15T08:00:00Z' };
+    let eastUp = false;
+    beads.mockImplementation(async (options) => {
+      if (options?.rigFilter === 'east' && !eastUp) throw new Error('east store down');
+      if (options?.rigFilter !== undefined)
+        return { items: options.rigFilter === 'devwork' ? [devworkRow] : [], total: 1, upstream_fetched: 1, fetch_limit: 1000 } as never;
+      return { items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresFailed).toEqual(['east']));
+    expect(probe.read?.rigStoresIn).toBe(false);
+    expect(probe.read?.data?.rigStoreItems?.map((b) => b.id)).toEqual(['dw-q']);
+    eastUp = true;
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+    expect(probe.read?.rigStoresFailed).toEqual([]);
+  });
+
+  // REVIEW Round 2 LOW: a failed rig-list read left the stores waiting on a
+  // promise that never resolved, so the graphs stayed partial for ever. It is
+  // now «stores unknown», and the next refresh reads the rig list again.
+  it('a failed rig list reads as stores unknown and is retried on the next refresh', async () => {
+    let rigsUp = false;
+    rigs.mockImplementation(async () => {
+      if (!rigsUp) throw new Error('rigs down');
+      return { items: [{ name: 'devwork', prefix: 'dw' }] } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresFailed).toEqual(['*']));
+    expect(probe.read?.rigStoresIn).toBe(false);
+    rigsUp = true;
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+    expect(probe.read?.rigStoresFailed).toEqual([]);
   });
 
   // vk integration: TopNav, BottomTabs, the drawer and ⌘K each read the board.

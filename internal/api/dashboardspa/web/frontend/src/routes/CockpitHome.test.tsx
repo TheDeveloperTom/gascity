@@ -32,8 +32,9 @@ vi.mock('../runs/runSummarySubscription', () => ({
 // instruments, so the board read stays out (CockpitHome.owner covers needs).
 vi.mock('../lib/needsFromMe', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
-  useNeedsModel: () => ({ state: 'ready', needs: [], stalls: [], quiet: [], count: 0 }),
+  useNeedsModel: () => ({ state: 'ready', needs: [], stalls: [], quiet: [], count: 0, unread: needsUnread.rigs }),
 }));
+const needsUnread = vi.hoisted(() => ({ rigs: [] as string[] }));
 
 const router = (children: React.ReactNode) => <MemoryRouter>{children}</MemoryRouter>;
 
@@ -539,6 +540,29 @@ describe('<CockpitHomePage>', () => {
 
   // Review I-4: store maintenance is a city problem in the attention model
   // (attention/registry.lamps.test.ts); Home lists it from the city slice.
+
+  // REVIEW Round 2: a rig store that could not be read is named in the
+  // «Could not read» line, so a question asked only there is never silently
+  // missing from «Нужно от меня».
+  it('names the project stores the board could not read', async () => {
+    needsUnread.rigs = ['east'];
+    try {
+      render(router(<CockpitHomePage />));
+      expect(await screen.findByText('Could not read: Project tasks (east)')).toBeTruthy();
+    } finally {
+      needsUnread.rigs = [];
+    }
+  });
+
+  it('names the project list when the board could not read it', async () => {
+    needsUnread.rigs = ['*'];
+    try {
+      render(router(<CockpitHomePage />));
+      expect(await screen.findByText('Could not read: Project list')).toBeTruthy();
+    } finally {
+      needsUnread.rigs = [];
+    }
+  });
 
   it('marks partial status lamps unknown and reports failed store maintenance', async () => {
     const current = await mocks.cityStatus();

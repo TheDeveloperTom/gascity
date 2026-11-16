@@ -93,7 +93,11 @@ vi.mock('../vk/graph/GraphView', () => ({
 // keep the ALL-README contract (buildBoardGraph(beads, {nowMs, partial,
 // collapsed, filter}); BoardGraphView {graph, selectedId, onSelect, onAnswer,
 // onToggleLane, onOpenEpic}).
-const net = vi.hoisted(() => ({ unscoped: 'ok' as 'ok' | 'hang' | 'restarting', release: [] as Array<() => void> }));
+const net = vi.hoisted(() => ({
+  unscoped: 'ok' as 'ok' | 'hang' | 'restarting',
+  rigStore: 'ok' as 'ok' | 'fail',
+  release: [] as Array<() => void>,
+}));
 const boardCalls = vi.hoisted(
   () => [] as Array<{ ids: string[]; partial?: boolean; collapsed?: Record<string, boolean>; filter?: string }>,
 );
@@ -197,6 +201,7 @@ beforeEach(() => {
   graphCalls.length = 0;
   boardCalls.length = 0;
   net.unscoped = 'ok';
+  net.rigStore = 'ok';
   setActiveCity('test-city');
   window.localStorage.clear();
   invalidate('beads:board:');
@@ -220,7 +225,10 @@ beforeEach(() => {
           );
         }
         // The rig's own work store holds a task the unscoped window lacks.
-        if (url.searchParams.get('rig') === 'devwork') return json({ items: [...items, R], total: items.length + 1 });
+        if (url.searchParams.get('rig') === 'devwork') {
+          if (net.rigStore === 'fail') return new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } });
+          return json({ items: [...items, R], total: items.length + 1 });
+        }
         if (net.unscoped === 'hang') {
           return new Promise<Response>((resolve) => net.release.push(() => resolve(json({ items, total: items.length }))));
         }
@@ -582,6 +590,17 @@ describe('BeadsPage progressive loading and the restarting city', () => {
           !u.searchParams.has('status'),
       );
     expect(rigWindows).toHaveLength(1);
+  });
+
+  // REVIEW Round 2: a rig store that could not be read is named on the page
+  // and keeps the graph partial; it never reads as a store with no tasks.
+  it('a failed rig-store read is named and keeps the graph partial', async () => {
+    resetSupervisorApiForTests();
+    net.rigStore = 'fail';
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    expect(await screen.findByText('Could not read the tasks of: devwork')).toBeTruthy();
+    expect(boardCalls.at(-1)?.partial).toBe(true);
   });
 
   it('a restarting city shows one calm line, not red not_found alerts', async () => {

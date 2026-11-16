@@ -75,6 +75,11 @@ export interface NeedsModel {
   count: number;
   /** The badge's question part: equals the graph's «От тебя» header. */
   questionCount: number;
+  /**
+   * Rig stores the board could not read (`['*']`: the rig list itself), so
+   * a question asked only there may be missing (REVIEW Round 2).
+   */
+  unread?: readonly string[];
 }
 
 /** The attention registry's id suffix for an owner question (mayorDecisionAttention). */
@@ -311,10 +316,13 @@ function ownerAsks(
 export function useNeedsModel(): NeedsModel {
   const read = useBoardData();
   const ownerItems = useAttentionModel().owner.items;
-  const { data, rigs, sessions, loading, owner } = read;
+  const { data, rigs, sessions, loading, owner, rigStoresFailed } = read;
   return useMemo(
-    () => needsFromBoard(data, rigs, sessions, Date.now(), loading, ownerItems, owner),
-    [data, rigs, sessions, loading, ownerItems, owner],
+    () => ({
+      ...needsFromBoard(data, rigs, sessions, Date.now(), loading, ownerItems, owner),
+      unread: rigStoresFailed ?? [],
+    }),
+    [data, rigs, sessions, loading, ownerItems, owner, rigStoresFailed],
   );
 }
 

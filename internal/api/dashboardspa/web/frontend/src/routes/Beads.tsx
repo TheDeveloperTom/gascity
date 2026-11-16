@@ -694,7 +694,14 @@ export function BeadsPage() {
   // drawer is 560 px at the right), so the board makes room instead of hiding.
   const drawerOpen = selectedId !== null && (selectedPeer !== null || ownSelectedId !== null);
 
-  const pageErrors = splitCityRestarting([error, sessions.error, rigs.error]);
+  // REVIEW Round 2: a rig store that could not be read is named, never shown
+  // as a store with no tasks (a failed rig list already reads as rigs.error).
+  const unreadStores = (board.rigStoresFailed ?? []).filter((rig) => rig !== '*');
+  const storesError =
+    unreadStores.length === 0
+      ? null
+      : t('Could not read the tasks of: {names}', { names: unreadStores.join(', ') });
+  const pageErrors = splitCityRestarting([error, sessions.error, rigs.error, storesError]);
   const isTruncated =
     typeof upstreamTotal === 'number' &&
     typeof upstreamFetched === 'number' &&
