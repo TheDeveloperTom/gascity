@@ -26,10 +26,10 @@ function byMilestone(a: string, b: string): number {
   return milestoneNumber(a) - milestoneNumber(b) || a.localeCompare(b);
 }
 
-/** The epic title without a leading «M04 ·» (the key is shown beside it). */
+/** The epic title without a leading «M04 ·» / «M00.» / «M05 /» (the key is shown beside it). */
 function epicName(key: string, title: string): string | null {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const name = title.replace(new RegExp(`^\\s*${escaped}\\s*[·:—–-]?\\s*`), '').trim();
+  const name = title.replace(new RegExp(`^\\s*${escaped}\\s*[·:—–./-]?\\s*`), '').trim();
   return name.length > 0 && name !== key ? name : null;
 }
 

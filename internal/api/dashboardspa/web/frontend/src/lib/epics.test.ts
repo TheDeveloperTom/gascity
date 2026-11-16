@@ -39,6 +39,18 @@ describe('epicSummaries', () => {
     expect(m04).toEqual({ key: 'M04', name: 'Понимание вакансии', done: 1, total: 3, approx: false });
   });
 
+  // H1 16.11 (live «Эпик» menu): «M00 · . Закрыть границы…», «M05 · / 0c+. …» —
+  // the live epics are titled «M00. …» and «M05 / 0c+. …».
+  it.each([
+    ['M00. Закрыть границы проекта', 'Закрыть границы проекта'],
+    ['M05 / 0c+. Закончить каталог', '0c+. Закончить каталог'],
+    ['M01: строгий прогон тестов', 'строгий прогон тестов'],
+  ])('drops the key and its separator from «%s»', (title, name) => {
+    const epic = bead('dw-epic', { issue_type: 'epic', title, labels: [`milestone:${title.slice(0, 3)}`] });
+    const [summary] = epicSummaries([epic, ...tasks(title.slice(0, 3), 1, 0)]);
+    expect(summary?.name).toBe(name);
+  });
+
   it('sorts by milestone number and marks approx when closed is capped', () => {
     const out = epicSummaries([...tasks('M10', 1, 0), ...tasks('M03', 2, 1)], { closedCapped: true });
     expect(out.map((e) => e.key)).toEqual(['M03', 'M10']);
