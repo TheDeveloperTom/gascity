@@ -131,6 +131,27 @@ const STALLED = bead(STALLED_ID, {
   updated_at: '2026-11-14T20:46:00Z',
 });
 
+export const HELD_STALL_ID = 'dw-held';
+
+// polish2 16.11: an unassigned card that waits on the question (so nobody CAN
+// take it) and that a current-milestone card waits on: a stall the question
+// already explains.
+export function needsBoardWithHeldStall(): BoardData {
+  const base = needsBoard();
+  const held = bead(HELD_STALL_ID, {
+    title: 'Удалить mp_assignment после переноса ящика',
+    is_blocked: true,
+    dependencies: [blocks(HELD_STALL_ID, QUESTION_ID)],
+  });
+  const waiter = bead('dw-held-w', {
+    title: 'dw-held-w',
+    is_blocked: true,
+    labels: ['milestone:M04'],
+    dependencies: [blocks('dw-held-w', HELD_STALL_ID)],
+  });
+  return { ...base, items: [...base.items, held, waiter] };
+}
+
 export function needsBoard(): BoardData {
   return {
     items: [SECOND_QUESTION, UNLINKED, BLOCKER, WORKING, STALLED, ...waiters()],

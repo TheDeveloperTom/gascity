@@ -179,4 +179,22 @@ describe('i18n', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
     expect(readInitialLocale()).toBe('en');
   });
+
+  it('the polish2 dictionary never overrides a key of another dictionary', async () => {
+    const others = await Promise.all([
+      import('./ru').then((m) => m.RU),
+      import('./ru.home').then((m) => m.RU_HOME),
+      import('./ru.board').then((m) => m.RU_BOARD),
+      import('./ru.debug').then((m) => m.RU_DEBUG),
+      import('./ru.vk2').then((m) => m.RU_VK2),
+      import('./ru.vk4').then((m) => m.RU_VK4),
+      import('./ru.vk5').then((m) => m.RU_VK5),
+      import('./ru.vk6').then((m) => m.RU_VK6),
+      import('./ru.vkfinal').then((m) => m.RU_VKFINAL),
+      import('./ru.h1').then((m) => m.RU_H1),
+    ]);
+    const { RU_POLISH2 } = await import('./ru.polish2');
+    const taken = new Set(others.flatMap((d) => Object.keys(d)));
+    expect(Object.keys(RU_POLISH2).filter((k) => taken.has(k))).toEqual([]);
+  });
 });

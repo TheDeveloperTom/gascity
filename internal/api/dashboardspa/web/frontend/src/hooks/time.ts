@@ -15,6 +15,7 @@
  *   'Nh'   — rounded diff in [1h, 24h)
  *   'Nd'   — rounded diff ≥ 24h
  */
+import { t } from '../i18n';
 /**
  * Resolve a string|number|Date into epoch milliseconds. Callers must
  * pre-filter null/undefined/'' — this helper assumes a real value.
@@ -30,11 +31,12 @@ export function formatRelative(ts: string | number | Date | undefined | null, no
   if (!Number.isFinite(ms)) return '·';
 
   const diffSec = Math.max(0, Math.round((now - ms) / 1_000));
-  if (diffSec < 5) return 'now';
-  if (diffSec < 60) return `${diffSec}s`;
-  if (diffSec < 3_600) return `${Math.round(diffSec / 60)}m`;
-  if (diffSec < 86_400) return `${Math.round(diffSec / 3_600)}h`;
-  return `${Math.round(diffSec / 86_400)}d`;
+  // polish2 16.11: the units go through t() («5 мин» in Russian, «5m» in English).
+  if (diffSec < 5) return t('now');
+  if (diffSec < 60) return t('{n}s', { n: diffSec });
+  if (diffSec < 3_600) return t('{n}m', { n: Math.round(diffSec / 60) });
+  if (diffSec < 86_400) return t('{n}h', { n: Math.round(diffSec / 3_600) });
+  return t('{n}d', { n: Math.round(diffSec / 86_400) });
 }
 
 /**

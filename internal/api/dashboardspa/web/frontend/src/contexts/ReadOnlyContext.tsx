@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { StatusBadge } from '../components/StatusBadge';
+import { t } from '../i18n';
 
 // Server-enforced read-only posture surfaced to the SPA
 // (gascity-dashboard-uzhr). Read-only is set when the supervisor binds a
@@ -64,5 +65,5 @@ export const READ_ONLY_CONTROL_TITLE = 'Read-only mode: mutations are disabled';
  *  control (DESIGN.md §States have words: a glyph + word, not color alone).
  *  Render behind a `readOnly &&` guard. */
 export function ReadOnlyBadge() {
-  return <StatusBadge tone="warn" label="Read-only" title={READ_ONLY_CONTROL_TITLE} />;
+  return <StatusBadge tone="warn" label={t('Read-only')} title={READ_ONLY_CONTROL_TITLE} />;
 }

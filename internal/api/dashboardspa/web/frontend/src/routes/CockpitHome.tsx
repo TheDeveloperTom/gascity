@@ -113,10 +113,10 @@ export function CockpitHomePage() {
     usage === undefined
       ? undefined
       : [
-          !usage.available ? 'usage recording is not local' : undefined,
-          usage.available && !usage.recording ? 'usage recording is off' : undefined,
+          !usage.available ? t('usage recording is not local') : undefined,
+          usage.available && !usage.recording ? t('usage recording is off') : undefined,
           usage.partial
-            ? usage.partial_reasons?.join(' · ') || 'usage estimate is partial'
+            ? usage.partial_reasons?.join(' · ') || t('usage estimate is partial')
             : undefined,
           usage.today.unpriced > 0 ||
           usage.recent.unpriced > 0 ||
@@ -138,7 +138,7 @@ export function CockpitHomePage() {
       : usage.recent.invocations > 0
         ? { totals: usage.recent, seconds: usage.recent_window_secs }
         : last24h !== undefined && last24h.invocations > 0
-          ? { totals: last24h, seconds: SECONDS_PER_DAY, basis: '24 h average' }
+          ? { totals: last24h, seconds: SECONDS_PER_DAY, basis: t('24 h average') }
           : null;
   const recentTokens = rateWindow ? tokensPerMinute(rateWindow.totals, rateWindow.seconds) : null;
   const recentBurn = rateWindow ? burnPerHour(rateWindow.totals, rateWindow.seconds) : null;
@@ -216,17 +216,17 @@ export function CockpitHomePage() {
   const statusNote = readingNote(
     statusReading,
     'city status',
-    status?.partial ? 'city status is partial' : undefined,
+    status?.partial ? t('city status is partial') : undefined,
   );
   const runsNote = readingNote(
     runsReading,
     'run states',
-    canonicalRuns?.partial ? 'run projection is partial' : undefined,
+    canonicalRuns?.partial ? t('run projection is partial') : undefined,
   );
   const sessionsNote = readingNote(
     sessionsReading,
     'sessions',
-    sessions?.partial ? 'session list is partial' : undefined,
+    sessions?.partial ? t('session list is partial') : undefined,
   );
   const activeSessionsNote = activeSessionsFromStatus === undefined ? sessionsNote : statusNote;
   // One honest line inside the usage section naming every reading that has no
@@ -284,19 +284,19 @@ export function CockpitHomePage() {
               aria-pressed={paused}
               onClick={() => setPaused((current) => !current)}
             >
-              {paused ? 'Resume updates' : 'Pause updates'}
+              {paused ? t('Resume updates') : t('Pause updates')}
             </Button>
             {unavailableReadings.length > 0 && (
               <p role="status" className="flex items-center gap-2 text-label text-warn">
                 <StatusShape tone="warn" />
-                <span>Some readings are unavailable: {unavailableReadings.join(', ')}.</span>
+                <span>{t('Some readings are unavailable: {list}.', { list: unavailableReadings.map((name) => t(name)).join(', ') })}</span>
               </p>
             )}
           </div>
 
           <section aria-labelledby="run-state-title" className="mb-10">
             <h3 id="run-state-title" className="mb-3 text-label font-medium text-fg-muted">
-              Runs by state
+              {t('Runs by state')}
             </h3>
             <PipelineBar segments={segments} available={canonicalRuns !== undefined} />
             {runsNote && <InstrumentNote>{runsNote}</InstrumentNote>}
@@ -305,7 +305,7 @@ export function CockpitHomePage() {
           <section aria-labelledby="right-now-title" className="mb-10">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <h2 id="right-now-title" className="text-title font-semibold text-fg">
-                Right now
+                {t('Right now')}
               </h2>
             </div>
             <div
@@ -313,18 +313,18 @@ export function CockpitHomePage() {
               data-testid="dial-grid"
             >
               <Odometer
-                label="model calls today"
+                label={t('model calls today')}
                 value={usageAvailable ? usage.today.invocations : null}
                 note={
                   usageAvailable
-                    ? [`${formatUsd(usage.today.cost_usd_estimate)} estimated today`, usageNote]
+                    ? [t('{cost} estimated today', { cost: formatUsd(usage.today.cost_usd_estimate) }), usageNote]
                         .filter((note): note is string => note !== undefined)
                         .join(' · ')
                     : usageNote
                 }
               />
               <Gauge
-                label="active sessions"
+                label={t('active sessions')}
                 value={activeSessions}
                 max={Math.max(10, (activeSessions ?? 0) * 1.25)}
                 formatted={formatCount(activeSessions)}
@@ -332,7 +332,7 @@ export function CockpitHomePage() {
                 note={activeSessionsNote}
               />
               <Gauge
-                label="tokens / min"
+                label={t('tokens / min')}
                 value={recentTokens}
                 max={Math.max(1_000, (recentTokens ?? 0) * 1.25)}
                 formatted={recentTokens === null ? '—' : formatCompact(recentTokens)}
@@ -340,7 +340,7 @@ export function CockpitHomePage() {
                 note={rateNote}
               />
               <Gauge
-                label="burn · $ / hr"
+                label={t('burn · $ / hr')}
                 value={recentBurn}
                 max={Math.max(10, (recentBurn ?? 0) * 1.25)}
                 formatted={recentBurn === null ? '—' : formatUsd(recentBurn)}
@@ -353,19 +353,19 @@ export function CockpitHomePage() {
           <section aria-labelledby="usage-title">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <h2 id="usage-title" className="text-title font-semibold text-fg">
-                Usage
+                {t('Usage')}
               </h2>
             </div>
             <section className="mb-8" aria-labelledby="last24h-title">
               <h3 id="last24h-title" className="mb-2 text-label font-medium text-fg-muted">
-                Last 24 hours
+                {t('Last 24 hours')}
               </h3>
               <div
                 className="grid items-start gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fit,minmax(8rem,1fr))]"
                 data-testid="last24h-grid"
               >
                 <StatTile
-                  label="tokens in"
+                  label={t('tokens in')}
                   value={
                     usageAvailable && last24h !== undefined
                       ? formatCompact(last24h.input_tokens)
@@ -373,7 +373,7 @@ export function CockpitHomePage() {
                   }
                 />
                 <StatTile
-                  label="tokens out"
+                  label={t('tokens out')}
                   value={
                     usageAvailable && last24h !== undefined
                       ? formatCompact(last24h.output_tokens)
@@ -381,7 +381,7 @@ export function CockpitHomePage() {
                   }
                 />
                 <StatTile
-                  label="model calls"
+                  label={t('model calls')}
                   value={
                     usageAvailable && last24h !== undefined
                       ? formatCount(last24h.invocations)
@@ -389,7 +389,7 @@ export function CockpitHomePage() {
                   }
                 />
                 <StatTile
-                  label="est. cost"
+                  label={t('est. cost')}
                   value={
                     usageAvailable && last24h !== undefined
                       ? formatUsd(last24h.cost_usd_estimate)
@@ -406,7 +406,7 @@ export function CockpitHomePage() {
                 available={usageAvailable}
                 note={
                   usageNote === undefined && activitySamples.length === 0
-                    ? 'waiting for the first usage sample'
+                    ? t('waiting for the first usage sample')
                     : undefined
                 }
               />
@@ -414,12 +414,12 @@ export function CockpitHomePage() {
 
             <section aria-labelledby="context-title">
               <h3 id="context-title" className="mb-2 text-label font-medium text-fg-muted">
-                Context window used
+                {t('Context window used')}
               </h3>
               <ContextMeters meters={contextMeters} />
               {(sessionsNote || contextMeters.length === 0) && (
                 <InstrumentNote>
-                  {sessionsNote ?? 'no live session context reported'}
+                  {sessionsNote ?? t('no live session context reported')}
                 </InstrumentNote>
               )}
             </section>
@@ -522,11 +522,11 @@ function readingNote<T>(
   domainNote?: string,
 ): string | undefined {
   if (state.data === undefined) {
-    if (state.loading) return `loading ${label}…`;
-    return `${label} unavailable`;
+    if (state.loading) return t('loading {what}…', { what: t(label) });
+    return t('{what} unavailable', { what: t(label) });
   }
   if (state.stale) {
-    return `${label} is stale · refresh failed`;
+    return t('{what} is stale · refresh failed', { what: t(label) });
   }
   if (domainNote) return domainNote;
   return undefined;

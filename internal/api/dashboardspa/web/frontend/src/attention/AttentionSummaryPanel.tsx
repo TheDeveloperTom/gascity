@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useAttentionModel } from './context';
 import { attentionDomainHref, attentionDomainLabel } from './labels';
 import type { AttentionItem, AttentionSeverity } from './compose';
+import { t } from '../i18n';
 
 export function AttentionSummaryPanel() {
   const attention = useAttentionModel();
@@ -11,7 +12,7 @@ export function AttentionSummaryPanel() {
   return (
     <section aria-labelledby="attention-summary-title" className="space-y-3">
       <h2 id="attention-summary-title" className="text-headline font-semibold text-fg">
-        Attention
+        {t('Attention')}
       </h2>
       <ul className="space-y-2">
         {attention.topItems.map((item) => (

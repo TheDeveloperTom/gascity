@@ -15,7 +15,8 @@ function measureOf(pathname: string): string {
   const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   const path = trimmed === '' ? '/' : trimmed;
   if (path === '/beads') return 'max-w-[120rem]';
-  if (path === '/') return 'mx-auto max-w-[64rem]';
+  // polish2 16.11 (owner, 2000 px): two columns from xl, capped at 1600 px.
+  if (path === '/') return 'mx-auto max-w-[100rem]';
   return 'max-w-dashboard';
 }
 

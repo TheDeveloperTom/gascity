@@ -79,7 +79,7 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
         <div className="flex items-baseline gap-3 min-w-0">
           {view && view.asOf && (
             <span className="text-label text-fg-faint tnum shrink-0">
-              as of {formatRelative(view.asOf, now)}
+              {t('as of {time} ago', { time: formatRelative(view.asOf, now) })}
             </span>
           )}
           <SummaryLine loading={loading} counts={counts} showMark={showMark} />
@@ -98,7 +98,7 @@ export function RelatedEntities({ view, loading, error, now, onOpenBead }: Relat
         <>
           {view.partial && (
             <p className="text-label text-warn mb-4" role="status">
-              Partial: some sources did not load. Links may be incomplete.
+              {t('Partial: some sources did not load. Links may be incomplete.')}
             </p>
           )}
           <button

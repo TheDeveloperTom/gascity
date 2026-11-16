@@ -67,11 +67,9 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
         <section>
           <h3 className={SUBHEAD}>{t('Formula template')}</h3>
           <p className="text-body text-fg-muted max-w-prose">
-            This bead is a recipe, not actionable work. Every{' '}
-            {bead.ref ? <code className="text-fg-muted">{bead.ref}</code> : 'wisp'} instance is
-            instantiated from this template. The <span className="text-fg-muted">in_progress</span>{' '}
-            status is the gc-system convention for {'"'}available for instantiation{'"'} — do not
-            act on it, nudge it, or close it.
+            {t('This task is a recipe, not work to do: every {name} instance is made from it. Its «in progress» status means «available for instantiation» — do not act on it, nudge it or close it.', {
+              name: bead.ref ?? 'wisp',
+            })}
           </p>
         </section>
       )}
@@ -80,8 +78,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
         <section>
           <h3 className={SUBHEAD}>{t('Formula instance')}</h3>
           <p className="text-body text-fg-muted max-w-prose">
-            One run of the{' '}
-            {bead.title ? <code className="text-fg-muted">{bead.title}</code> : 'formula'} recipe.
+            {t('One run of the {name} recipe.', { name: bead.title || 'formula' })}
           </p>
         </section>
       )}

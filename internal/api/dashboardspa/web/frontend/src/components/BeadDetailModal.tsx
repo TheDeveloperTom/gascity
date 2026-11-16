@@ -146,10 +146,9 @@ export function BeadDetailModal({
       >
         {notFound ? (
           <div className="space-y-2">
-            <p className="text-vk-text-low">This decision was resolved or removed.</p>
+            <p className="text-vk-text-low">{t('This decision was resolved or removed.')}</p>
             <p className="text-sm text-vk-text-low">
-              The bead it pointed to is no longer in the supervisor — it was likely closed or pruned
-              since this link was surfaced.
+              {t('The task it pointed to is no longer in the supervisor — it was likely closed or pruned since this link was surfaced.')}
             </p>
           </div>
         ) : error ? (
@@ -202,7 +201,7 @@ export function BeadDetailModal({
                 />
                 {liveRunnable && (
                   <Button size="sm" tone="quiet" onClick={() => setRunOpen(true)}>
-                    View live run
+                    {t('View live run')}
                   </Button>
                 )}
               </div>

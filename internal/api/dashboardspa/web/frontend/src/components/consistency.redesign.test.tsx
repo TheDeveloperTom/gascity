@@ -56,7 +56,7 @@ describe('one style per action', () => {
 
   it('Compose is the filled primary action, like New bead', () => {
     const mail = readFileSync(join(process.cwd(), 'src/routes/Mail.tsx'), 'utf8');
-    expect(mail).toMatch(/<Button[^>]*tone="accent"[^]*?Compose\s*<\/Button>/);
+    expect(mail).toMatch(/<Button[^>]*tone="accent"[^]*?\{t\('Compose'\)\}\s*<\/Button>/);
   });
 
   // Minor 10: an 8 % amber wash reads khaki on the cool ground. The banner

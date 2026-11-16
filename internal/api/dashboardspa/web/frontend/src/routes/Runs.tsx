@@ -12,6 +12,7 @@ import { RunMap, RUNS_HISTORICAL_SECTION_ID } from '../components/run/RunMap';
 import { useNow } from '../contexts/NowContext';
 import { formatRelative } from '../hooks/time';
 import { useRunSummary } from '../runs/runSummarySubscription';
+import { t } from '../i18n';
 
 // /runs route (gascity-dashboard-0t6, made live in gascity-dashboard-bqn). The
 // fetch, SSE refresh, and degraded-load retry now live in the shared
@@ -24,8 +25,7 @@ import { useRunSummary } from '../runs/runSummarySubscription';
 // shared subscription's SSE path drives actual data updates.
 
 // C10: the stage order is a legend under the synopsis, not a sentence in it.
-const RUN_STAGE_LEGEND =
-  'Stages, in order: intake, implementation, review, approval, finalization.';
+const RUN_STAGE_LEGEND = 'Stages, in order: intake, implementation, review, approval, finalization.';
 const HISTORY_QUERY_PARAM = 'history';
 const HISTORY_QUERY_VALUE = '1';
 
@@ -74,7 +74,7 @@ export function RunsPage() {
   const synopsis = (
     <>
       {runSynopsis(data)}
-      <span className="mt-1 block text-label text-fg-muted">{RUN_STAGE_LEGEND}</span>
+      <span className="mt-1 block text-label text-fg-muted">{t(RUN_STAGE_LEGEND)}</span>
     </>
   );
   const freshnessTone =
@@ -88,12 +88,12 @@ export function RunsPage() {
     ? runs.status === 'fresh'
       ? null
       : runs.status === 'fixture'
-        ? 'fixture data'
+        ? t('fixture data')
         : runs.status === 'error'
-          ? 'live data unavailable'
+          ? t('live data unavailable')
           : runs.fetchedAt
-            ? `stale ${formatRelative(runs.fetchedAt, now)} ago`
-            : 'stale'
+            ? t('stale {time} ago', { time: formatRelative(runs.fetchedAt, now) })
+            : t('stale')
     : null;
 
   return (
@@ -115,12 +115,12 @@ export function RunsPage() {
                 {lanesPartial ? (
                   <PartialDataNotice
                     glyph="◐"
-                    label="runs partial"
-                    title="one or more rigs' recent runs were unavailable; the lane set may be incomplete"
+                    label={t('runs partial')}
+                    title={t("one or more rigs' recent runs were unavailable; the lane set may be incomplete")}
                   />
                 ) : (
                   <span aria-hidden="true" className="invisible text-label text-warn">
-                    runs partial
+                    {t('runs partial')}
                   </span>
                 )}
               </span>
@@ -169,7 +169,7 @@ export function RunsPage() {
       <PageAlerts messages={[error]} />
 
       {data === undefined || runs === null ? (
-        <p className="text-body text-fg-muted">Loading formula runs.</p>
+        <p className="text-body text-fg-muted">{t('Loading formula runs.')}</p>
       ) : (
         <RunMap
           source={runs}
@@ -183,11 +183,11 @@ export function RunsPage() {
 }
 
 function runSynopsis(data: SourceState<RunSummary> | undefined): string {
-  if (data === undefined) return 'Loading formula run lanes.';
+  if (data === undefined) return t('Loading formula run lanes.');
 
   if (data.status !== 'error') {
-    return `${data.data.totalActive} active runs across the supervisor's bead store.`;
+    return t("{n} active runs across the supervisor's bead store.", { n: data.data.totalActive });
   }
 
-  return `Run counts unavailable: ${data.error}.`;
+  return t('Run counts unavailable: {error}.', { error: data.error });
 }

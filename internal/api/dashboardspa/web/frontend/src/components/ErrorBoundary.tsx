@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { errorMessage } from 'gas-city-dashboard-shared';
 import { reportClientError } from '../lib/clientErrorReporting';
+import { t } from '../i18n';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -33,9 +34,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             className="mx-auto max-w-[40rem] space-y-2 rounded-lg border border-rule bg-surface-raised p-6"
             role="alert"
           >
-            <h1 className="text-headline font-semibold text-fg">Dashboard view failed.</h1>
+            <h1 className="text-headline font-semibold text-fg">{t('Dashboard view failed.')}</h1>
             <p className="text-body text-fg-muted">
-              The error was reported to the local dashboard log. Refresh to retry this view.
+              {t('The error was reported to the local dashboard log. Refresh to retry this view.')}
             </p>
           </section>
         </main>

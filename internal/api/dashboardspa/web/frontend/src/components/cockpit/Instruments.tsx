@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { StatusShape } from '../icons';
+import { t } from '../../i18n';
 import { pipelineWidths, type PipelineSegment, type RunRingModel } from './model';
 
 // Home instruments (DESIGN-PLAN §6.2, R7). Quiet on purpose: the signal board
@@ -147,10 +148,10 @@ export function ActivityTrace({
     <figure className="m-0" aria-label={`${readingLabel}${note ? `; ${note}` : ''}`}>
       <div className="mb-2 flex items-baseline justify-between gap-4">
         <figcaption className="text-label font-medium text-fg-muted">
-          Recent model activity
+          {t('Recent model activity')}
         </figcaption>
         <span className="text-label text-fg-faint tnum">
-          {samples.length > 1 ? `${samples.length} samples` : 'collecting samples'}
+          {samples.length > 1 ? t('{n} samples', { n: samples.length }) : t('collecting samples')}
         </span>
       </div>
       {/* No band until there is a line to draw; "collecting samples" says why. */}
@@ -217,7 +218,7 @@ export function PipelineBar({
               className={`h-2 w-2 rounded-sm ${available ? segmentTone(segment.key, index) : 'border border-dashed border-rule'}`}
             />
             <span className="text-label text-fg-muted group-hover:text-primary group-hover:underline">
-              {segment.label}
+              {t(segment.label)}
             </span>
             <span className="text-label font-semibold text-fg tnum">
               {available ? segment.count : '—'}

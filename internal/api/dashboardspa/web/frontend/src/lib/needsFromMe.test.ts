@@ -6,9 +6,11 @@ import {
   OWNER_ITEMS,
   QUESTION_ID,
   SECOND_QUESTION_ID,
+  HELD_STALL_ID,
   STALLED_ID,
   UNLINKED_ID,
   needsBoard,
+  needsBoardWithHeldStall,
 } from '../vk/needs/needsFixture';
 import { needsFromBoard, useNeedsFromMeCount } from './needsFromMe';
 
@@ -55,6 +57,18 @@ describe('needsFromBoard', () => {
     ]);
     expect(question?.waitedMs).toBe((3 * 24 + 8) * 3_600_000);
     expect(question?.choices).toEqual(['Сегодня в 18:00', 'Завтра в 10:00']);
+  });
+
+  // polish2 16.11 (owner): a stall held behind an owner question is noise in
+  // «Стоит»; it folds under that question instead.
+  it('a stall held behind an owner question folds under it, out of «Стоит»', () => {
+    const m = needsFromBoard(needsBoardWithHeldStall(), [], [], NOW_MS, false, OWNER_ITEMS);
+    expect(m.stalls.map((s) => s.id)).not.toContain(HELD_STALL_ID);
+    const question = m.needs.find((n) => n.id === QUESTION_ID);
+    expect(question?.heldStalls?.map((s) => s.id)).toEqual([HELD_STALL_ID]);
+    expect(m.needs.find((n) => n.id === SECOND_QUESTION_ID)?.heldStalls ?? []).toEqual([]);
+    // the badge count does not change because of the fold
+    expect(m.count).toBe(model().count);
   });
 
   it('keeps owner asks while the board is unread', () => {

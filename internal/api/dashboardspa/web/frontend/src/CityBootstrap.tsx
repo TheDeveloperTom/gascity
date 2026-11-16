@@ -9,6 +9,7 @@ import { supervisorApi } from './supervisor/client';
 import { bareRedirectTarget } from './lib/cityRedirect';
 import { hardNavigate } from './lib/navigation';
 import { ExternalLink } from './vk/ExternalLink';
+import { t } from './i18n';
 
 // gascity-dashboard-ucc — city bootstrap.
 //
@@ -164,7 +165,7 @@ export function CityBootstrap() {
   // Loading (the parsed-city verify, or the bare-`/` first-city resolve).
   return (
     <BootstrapShell>
-      <div className="text-body text-fg-muted">Resolving city…</div>
+      <div className="text-body text-fg-muted">{t('Resolving city…')}</div>
     </BootstrapShell>
   );
 }
@@ -190,11 +191,11 @@ function UnknownCityScreen({
     <BootstrapShell>
       <section role="alert" className="space-y-4">
         <h1 className="text-headline font-semibold text-fg">
-          City &ldquo;{cityName}&rdquo; is not registered on this supervisor.
+          {t('City «{city}» is not registered on this supervisor.', { city: cityName })}
         </h1>
         {cities.length > 0 ? (
           <div className="space-y-2">
-            <p className="text-body text-fg-muted">Available cities:</p>
+            <p className="text-body text-fg-muted">{t('Available cities:')}</p>
             <ul className="space-y-1">
               {cities.map((c) => (
                 <li key={c.name}>
@@ -205,7 +206,7 @@ function UnknownCityScreen({
                     {c.name}
                   </a>
                   {c.running ? null : (
-                    <span className="ml-2 text-label text-fg-muted">· stopped</span>
+                    <span className="ml-2 text-label text-fg-muted">· {t('stopped')}</span>
                   )}
                 </li>
               ))}
@@ -224,7 +225,7 @@ function NoCitiesScreen() {
     <BootstrapShell>
       <section className="space-y-4">
         <h1 className="text-headline font-semibold text-fg">
-          No cities are registered on this supervisor.
+          {t('No cities are registered on this supervisor.')}
         </h1>
         <NoCitiesBody />
       </section>
