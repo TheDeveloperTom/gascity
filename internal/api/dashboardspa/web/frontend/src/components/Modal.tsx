@@ -1,4 +1,3 @@
-
 import { useEffect, type ReactNode } from 'react';
 import { t } from '../i18n';
 

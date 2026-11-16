@@ -109,7 +109,9 @@ function HeldStalls({ need, stalls }: { need: Need; stalls: readonly StallItem[]
         className="focus-mark flex min-h-11 w-full flex-wrap items-center gap-x-2 text-left text-label text-vk-text-low xl:text-sm"
       >
         <HoldsLine need={need} />
-        <span>{tn(stalls.length, { one: '· {n} of them is stuck', other: '· {n} of them are stuck' })}</span>
+        <span>
+          {tn(stalls.length, { one: '· {n} of them is stuck', other: '· {n} of them are stuck' })}
+        </span>
         <Caret aria-hidden="true" className="h-4 w-4 shrink-0" />
       </button>
       {open && (
@@ -117,7 +119,9 @@ function HeldStalls({ need, stalls }: { need: Need; stalls: readonly StallItem[]
           {stalls.map((stall) => (
             <li key={stall.id} className="min-w-0">
               {stall.href === null ? (
-                <span className="block py-2 text-sm text-vk-text-normal [overflow-wrap:anywhere]">{stall.title}</span>
+                <span className="block py-2 text-sm text-vk-text-normal [overflow-wrap:anywhere]">
+                  {stall.title}
+                </span>
               ) : (
                 <Link
                   to={stall.href}
@@ -125,7 +129,9 @@ function HeldStalls({ need, stalls }: { need: Need; stalls: readonly StallItem[]
                 >
                   <span className="[overflow-wrap:anywhere]">{stall.title}</span>
                   {stall.summary !== null && (
-                    <span className="text-[13px] text-vk-text-low [overflow-wrap:anywhere]">{stall.summary}</span>
+                    <span className="text-[13px] text-vk-text-low [overflow-wrap:anywhere]">
+                      {stall.summary}
+                    </span>
                   )}
                 </Link>
               )}
@@ -163,46 +169,45 @@ export function NeedItem({ need }: { need: Need }) {
       className="group flex min-w-0 flex-col rounded-md border border-vk-border bg-vk-bg-primary text-vk-text-normal transition-colors hover:border-vk-text-low/40"
     >
       <div className="flex min-w-0 flex-col hover:bg-vk-bg-panel sm:flex-row sm:items-center">
-      <CardLink need={need} labelledBy={titleId}>
-        <div className="min-w-0 flex-1">
-          {meta.length > 0 && <p className="text-[13px] leading-5 text-vk-text-low xl:text-sm">{meta}</p>}
-          <p
-            id={titleId}
-            className="text-[15px] font-medium leading-6 text-vk-text-high [overflow-wrap:anywhere] xl:text-[17px] xl:leading-7"
-          >
-            {need.title}
-          </p>
-          {need.summary !== null && (
-            <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-vk-text-normal [overflow-wrap:anywhere] xl:text-[15px] xl:leading-6">
-              {need.summary}
+        <CardLink need={need} labelledBy={titleId}>
+          <div className="min-w-0 flex-1">
+            {meta.length > 0 && (
+              <p className="text-[13px] leading-5 text-vk-text-low xl:text-sm">{meta}</p>
+            )}
+            <p
+              id={titleId}
+              className="text-[15px] font-medium leading-6 text-vk-text-high [overflow-wrap:anywhere] xl:text-[17px] xl:leading-7"
+            >
+              {need.title}
             </p>
-          )}
-          {need.holds > 0 && held.length === 0 && (
-            <p className="mt-2 flex flex-wrap gap-x-2 text-label text-vk-text-low xl:text-sm">
-              <HoldsLine need={need} />
-            </p>
-          )}
-          {need.choices.length > 0 && (
-            <ul aria-label={t('Options from the Mayor')} className="mt-2 flex flex-wrap gap-1.5">
-              {need.choices.map((choice) => (
-                <li
-                  key={choice}
-                  className="rounded border border-vk-border px-2 py-0.5 text-label text-vk-text-normal [overflow-wrap:anywhere]"
-                >
-                  {choice}
-                </li>
-              ))}
-            </ul>
-          )}
+            {need.summary !== null && (
+              <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-vk-text-normal [overflow-wrap:anywhere] xl:text-[15px] xl:leading-6">
+                {need.summary}
+              </p>
+            )}
+            {need.holds > 0 && held.length === 0 && (
+              <p className="mt-2 flex flex-wrap gap-x-2 text-label text-vk-text-low xl:text-sm">
+                <HoldsLine need={need} />
+              </p>
+            )}
+            {need.choices.length > 0 && (
+              <ul aria-label={t('Options from the Mayor')} className="mt-2 flex flex-wrap gap-1.5">
+                {need.choices.map((choice) => (
+                  <li
+                    key={choice}
+                    className="rounded border border-vk-border px-2 py-0.5 text-label text-vk-text-normal [overflow-wrap:anywhere]"
+                  >
+                    {choice}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardLink>
+        <div className="-mt-2 flex shrink-0 justify-end px-1 pb-0.5 sm:mt-0 sm:pb-0 sm:pr-2">
+          {/* quiet until the row is hovered or focused: the row is the action */}
+          <DiscussButton ctx={ctx} className="enabled:text-vk-brand-secondary" />
         </div>
-      </CardLink>
-      <div className="-mt-2 flex shrink-0 justify-end px-1 pb-0.5 sm:mt-0 sm:pb-0 sm:pr-2">
-        {/* quiet until the row is hovered or focused: the row is the action */}
-        <DiscussButton
-          ctx={ctx}
-          className="enabled:text-vk-brand-secondary"
-        />
-      </div>
       </div>
       {held.length > 0 && <HeldStalls need={need} stalls={held} />}
     </li>

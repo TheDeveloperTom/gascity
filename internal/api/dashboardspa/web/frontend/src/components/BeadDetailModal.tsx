@@ -24,7 +24,7 @@ import {
 } from '../vk/panel/TaskDrawer';
 import { BeadLiveRunModal } from './beads/BeadLiveRunModal';
 import { isSessionStreamable } from './LiveSessionPeek';
-import { RelatedEntities } from './RelatedEntities';
+import { otherLinkCount, RelatedEntities } from './RelatedEntities';
 
 // Click-to-read task panel for a single bead (vk lane 2): a right-side VK
 // drawer from `md`, a full-screen card below. The export name and props are
@@ -108,14 +108,7 @@ export function BeadDetailModal({
   const idTag = (id: string) => (
     <code className="font-vk-mono text-sm text-vk-text-low [overflow-wrap:anywhere]">{id}</code>
   );
-  const chips = bead ? (
-    <>
-      {question !== null && answer === null && <Chip tone="brand">{t('needs you')}</Chip>}
-      {idTag(bead.id)}
-    </>
-  ) : beadId ? (
-    idTag(beadId)
-  ) : null;
+  const chips = bead ? <>{idTag(bead.id)}</> : beadId ? idTag(beadId) : null;
 
   const actions =
     bead && discussCtx ? (
@@ -132,7 +125,15 @@ export function BeadDetailModal({
         onClose={onClose}
         chips={chips}
         title={bead?.title ?? beadId ?? t('Task')}
-        meta={bead ? <TaskMeta bead={bead} milestone={milestone} /> : undefined}
+        meta={
+          bead ? (
+            <TaskMeta
+              bead={bead}
+              milestone={milestone}
+              needsYou={question !== null && answer === null}
+            />
+          ) : undefined
+        }
         top={
           question !== null && answer === null && discussCtx ? (
             <QuestionCard q={question} onAnswered={setAnswer} />
@@ -145,7 +146,9 @@ export function BeadDetailModal({
           <div className="space-y-2">
             <p className="text-vk-text-low">{t('This decision was resolved or removed.')}</p>
             <p className="text-sm text-vk-text-low">
-              {t('The task it pointed to is no longer in the supervisor — it was likely closed or pruned since this link was surfaced.')}
+              {t(
+                'The task it pointed to is no longer in the supervisor — it was likely closed or pruned since this link was surfaced.',
+              )}
             </p>
           </div>
         ) : error ? (
@@ -163,12 +166,13 @@ export function BeadDetailModal({
                 data-testid="task-description"
                 className={`text-[15px] text-vk-text-normal ${MARKDOWN_CLASS}`}
               >
-                {renderMiniMarkdown(bead.description)}
+                {renderMiniMarkdown(bead.description, { headingFrom: 3 })}
               </div>
             )}
             <Relationships
               bead={bead}
               items={items}
+              hasOtherLinks={otherLinkCount(links.view) > 0 || links.error !== null}
               {...(onOpenBead !== undefined ? { onOpenBead } : {})}
             >
               <RelatedEntities
@@ -225,7 +229,16 @@ function createdText(iso: string | undefined): string | null {
  * polish2 16.11 (owner, item 8): the card's facts in ONE line under the title
  * (status, stage, executor, created, labels). It replaces «Подробности».
  */
-function TaskMeta({ bead, milestone }: { bead: SupervisorBead; milestone: string | null }) {
+function TaskMeta({
+  bead,
+  milestone,
+  needsYou,
+}: {
+  bead: SupervisorBead;
+  milestone: string | null;
+  needsYou: boolean;
+}) {
+  const recipe = bead.metadata?.['gc.kind'] === 'run';
   const created = createdText(bead.created_at);
   const labels = (bead.labels ?? []).filter((l) => !SHOWN_ELSEWHERE.test(l));
   const assignee = bead.assignee && bead.assignee.length > 0 ? bead.assignee : t('nobody');
@@ -234,8 +247,14 @@ function TaskMeta({ bead, milestone }: { bead: SupervisorBead; milestone: string
       data-testid="task-meta"
       className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-vk-text-low"
     >
+      {needsYou && <Chip tone="brand">{t('needs you')}</Chip>}
       <Chip>{statusLabel(bead.status)}</Chip>
       {milestone !== null && <Chip>{milestone}</Chip>}
+      {recipe && (
+        <span className="font-medium text-warn">
+          {t('A formula recipe, not work: do not close it')}
+        </span>
+      )}
       <span className="[overflow-wrap:anywhere]">{t('Executor: {who}', { who: assignee })}</span>
       {created !== null && <span className="tnum">{created}</span>}
       {labels.map((label) => (

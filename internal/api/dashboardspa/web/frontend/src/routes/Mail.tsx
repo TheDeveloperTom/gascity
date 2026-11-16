@@ -524,7 +524,9 @@ export function MailPage() {
             emptyMessage={
               filters.search.length > 0 || filters.activeChipIds.size > 0
                 ? t('No messages match the current search or filter.')
-                : t(box === 'inbox' ? 'Inbox empty for {who}.' : 'Sent empty for {who}.', { who: aliasLabel })
+                : t(box === 'inbox' ? 'Inbox empty for {who}.' : 'Sent empty for {who}.', {
+                    who: aliasLabel,
+                  })
             }
             perProjectEmpty={t('No messages in this project.')}
             initialSort={{ key: 'created_at', dir: 'desc' }}

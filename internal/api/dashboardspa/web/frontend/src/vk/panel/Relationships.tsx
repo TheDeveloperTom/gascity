@@ -101,6 +101,8 @@ export interface RelationshipsProps {
   onOpenBead?: (beadId: string) => void;
   /** Other linked things (sessions, PRs, runs), shown in this same section. */
   children?: ReactNode;
+  /** True when `children` shows something (review M-3: else «Связей нет.»). */
+  hasOtherLinks?: boolean;
 }
 
 /** The card's parent (`parent`, else a parent-child dependency). */
@@ -113,7 +115,7 @@ function parentOf(bead: SupervisorBead): string | null {
 // polish2 16.11 (owner, item 8): «Связи» is the ONE relations section of the
 // card: what it waits on, what waits on it, what it is part of, and (children)
 // the other linked things. The old «Зависимости» and «Связанное» are gone.
-export function Relationships({ bead, items, onOpenBead, children }: RelationshipsProps) {
+export function Relationships({ bead, items, onOpenBead, children, hasOtherLinks = false }: RelationshipsProps) {
   const [all, setAll] = useState(false);
   const { rows, extra, holds } = useMemo(() => {
     const byId = new Map(items.map((b) => [b.id, b]));
@@ -155,7 +157,7 @@ export function Relationships({ bead, items, onOpenBead, children }: Relationshi
           <span className="text-sm text-vk-text-low">{t('holds {n}', { n: holds })}</span>
         )}
       </div>
-      {rows.length === 0 && children == null ? (
+      {rows.length === 0 && !hasOtherLinks ? (
         <p className="py-1 text-sm text-vk-text-low">{t('No links.')}</p>
       ) : (
         rows.map((row) => (

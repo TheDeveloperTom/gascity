@@ -196,7 +196,7 @@ function ChoiceButton({
       className={cn(
         'flex min-h-[52px] w-full flex-col items-start gap-0.5 rounded-sm px-3 py-2 text-left text-base font-medium [overflow-wrap:anywhere] focus-mark disabled:cursor-default',
         primary
-          ? 'bg-vk-brand-secondary text-vk-on-brand hover:bg-vk-brand-secondary/90'
+          ? 'bg-vk-brand text-vk-on-brand hover:bg-vk-brand/90' // review I-1: --plate-ring is a ring, not a fill (1.9:1 dark)
           : 'border border-vk-border bg-vk-bg-primary text-vk-text-high hover:bg-vk-bg-secondary',
         disabled && !chosen && 'opacity-60',
       )}

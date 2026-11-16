@@ -25,7 +25,8 @@ import { t } from '../i18n';
 // shared subscription's SSE path drives actual data updates.
 
 // C10: the stage order is a legend under the synopsis, not a sentence in it.
-const RUN_STAGE_LEGEND = 'Stages, in order: intake, implementation, review, approval, finalization.';
+const RUN_STAGE_LEGEND =
+  'Stages, in order: intake, implementation, review, approval, finalization.';
 const HISTORY_QUERY_PARAM = 'history';
 const HISTORY_QUERY_VALUE = '1';
 
@@ -116,7 +117,9 @@ export function RunsPage() {
                   <PartialDataNotice
                     glyph="◐"
                     label={t('runs partial')}
-                    title={t("one or more rigs' recent runs were unavailable; the lane set may be incomplete")}
+                    title={t(
+                      "one or more rigs' recent runs were unavailable; the lane set may be incomplete",
+                    )}
                   />
                 ) : (
                   <span aria-hidden="true" className="invisible text-label text-warn">

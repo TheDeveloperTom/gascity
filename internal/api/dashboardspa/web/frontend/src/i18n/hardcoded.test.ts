@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 // aria-label, title, alt, label, caption) written as a bare English literal,
 // i.e. not passed through t().
 //
-// LEFT lists the files that still have such text, with the most they may
-// have. A count may only go DOWN; a new file with English fails. Each entry
-// says why it is left.
+// LEFT lists the files that still have such text, with their EXACT count
+// (review M-6): a fix must lower the number here, so it can never creep back
+// up; a new file with English fails. Each entry says why it is left.
 
 const SOURCES = import.meta.glob(['../**/*.tsx', '!../**/*.test.tsx', '!../test/**'], {
   query: '?raw',
@@ -24,7 +24,10 @@ const LEFT: Readonly<Record<string, { max: number; why: string }>> = {
   'components/icons.tsx': { max: 4, why: 'icon-name object keys, not text' },
   'vk/CommandBar.tsx': { max: 2, why: 'the «esc» key cap' },
   'vk/board/KanbanCard.tsx': { max: 1, why: 'a template literal, not text' },
-  'CityBootstrap.tsx': { max: 7, why: 'first-run `gc init` instructions; no city exists for the owner to see them' },
+  'CityBootstrap.tsx': {
+    max: 7,
+    why: 'first-run `gc init` instructions; no city exists for the owner to see them',
+  },
   // Operator debug pages behind «Ещё» (not the owner's two sections).
   'routes/Health.tsx': { max: 62, why: 'debug page «Здоровье»' },
   'routes/Activity.tsx': { max: 25, why: 'debug page «Активность»' },
@@ -64,7 +67,9 @@ export function englishLiterals(source: string): string[] {
     const text = (m[1] ?? '').trim();
     if (/[A-Za-z]{2,}/.test(text) && !/[=;()]|&&|\|\|/.test(text)) out.push(text);
   }
-  for (const m of code.matchAll(/\s(?:placeholder|aria-label|title|alt|label|caption)="([^"]*[A-Za-z]{2,}[^"]*)"/g)) {
+  for (const m of code.matchAll(
+    /\s(?:placeholder|aria-label|title|alt|label|caption)="([^"]*[A-Za-z]{2,}[^"]*)"/g,
+  )) {
     out.push(`@${m[1] ?? ''}`);
   }
   return out;
@@ -79,13 +84,14 @@ describe('no bare English UI text (polish2)', () => {
     expect(Object.keys(SOURCES).length).toBeGreaterThan(100);
   });
 
-  it('only the listed files keep English, and never more than listed', () => {
+  it('only the listed files keep English, exactly as many as listed', () => {
     const over: string[] = [];
     for (const [path, source] of Object.entries(SOURCES)) {
       const file = path.replace(/^\.\.\//, '');
       const found = englishLiterals(source);
       const max = LEFT[file]?.max ?? 0;
-      if (found.length > max) over.push(`${file}: ${found.length} > ${max}: ${found.slice(0, 3).join(' | ')}`);
+      if (found.length !== max)
+        over.push(`${file}: ${found.length}, listed ${max}: ${found.slice(0, 3).join(' | ')}`);
     }
     expect(over).toEqual([]);
   });

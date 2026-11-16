@@ -71,6 +71,39 @@ describe('needsFromBoard', () => {
     expect(m.count).toBe(model().count);
   });
 
+  // review I-2: only a «Никто не взял» blocker folds; an owner-marked stall
+  // never starts collapsed, so the badge equals what the page shows.
+  it('an owner-marked stall behind a question stays in «Стоит» and the badge equals the visible owner items', () => {
+    const board = needsBoardWithHeldStall();
+    board.items = board.items.map((b) =>
+      b.id === HELD_STALL_ID ? { ...b, labels: ['needs/operator'] } : b,
+    );
+    const m = needsFromBoard(board, [], [], NOW_MS, false, OWNER_ITEMS);
+    expect(m.stalls.map((s) => s.id)).toContain(HELD_STALL_ID);
+    expect(m.needs.flatMap((n) => n.heldStalls ?? []).map((s) => s.id)).not.toContain(
+      HELD_STALL_ID,
+    );
+    const visibleOwnerStalls = m.stalls.filter((s) => s.forOwner).length;
+    expect(m.count).toBe(m.needs.length + visibleOwnerStalls);
+  });
+
+  it('a stalled card at work behind a question is not folded (only «Никто не взял» folds)', () => {
+    const board = needsBoardWithHeldStall();
+    board.items = board.items.map((b) =>
+      b.id === HELD_STALL_ID
+        ? {
+            ...b,
+            status: 'in_progress',
+            assignee: 'devwork/polecat-9',
+            updated_at: '2026-11-14T20:46:00Z',
+          }
+        : b,
+    );
+    const m = needsFromBoard(board, [], [], NOW_MS, false, OWNER_ITEMS);
+    expect(m.stalls.map((s) => s.id)).toContain(HELD_STALL_ID);
+    expect(m.needs.flatMap((n) => n.heldStalls ?? [])).toEqual([]);
+  });
+
   it('keeps owner asks while the board is unread', () => {
     const m = needsFromBoard(undefined, [], [], NOW_MS, true, OWNER_ITEMS);
     expect(m.state).toBe('loading');

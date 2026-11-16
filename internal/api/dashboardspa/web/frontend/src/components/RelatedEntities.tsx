@@ -83,7 +83,15 @@ export function RelatedEntities({
   const groups = useMemo(() => buildGroups(view), [view]);
   if (embedded) {
     const others = groups.filter((group) => group.type !== 'bead');
-    if (error !== null || loading || others.length === 0) return null;
+    if (error !== null) {
+      // review M-3: a failed read is not «no links»
+      return (
+        <p className="py-1 text-sm text-vk-text-low">
+          {t('Could not read the linked sessions and PRs.')}
+        </p>
+      );
+    }
+    if (loading || others.length === 0) return null;
     return (
       <div data-testid="related-embedded" className="flex flex-col gap-3 pt-2">
         {others.map((group) => (
@@ -98,7 +106,25 @@ export function RelatedEntities({
       </div>
     );
   }
-  return <RelatedFull view={view} loading={loading} error={error} now={now} groups={groups} expanded={expanded} setExpanded={setExpanded} {...(onOpenBead !== undefined ? { onOpenBead } : {})} />;
+  return (
+    <RelatedFull
+      view={view}
+      loading={loading}
+      error={error}
+      now={now}
+      groups={groups}
+      expanded={expanded}
+      setExpanded={setExpanded}
+      {...(onOpenBead !== undefined ? { onOpenBead } : {})}
+    />
+  );
+}
+
+/** Linked things other than tasks (sessions, PRs, runs) in a view. */
+export function otherLinkCount(view: EntityLinkView | null): number {
+  return buildGroups(view)
+    .filter((group) => group.type !== 'bead')
+    .reduce((n, group) => n + group.rows.length, 0);
 }
 
 function RelatedFull({

@@ -166,6 +166,8 @@ describe('i18n', () => {
     setLocale('ru');
     expect(t('status.open')).toBe('Открыта');
     expect(t('kind.never_seen_kind')).toBe('Never seen kind');
+    // review M-5: only label-map prefixes; a server reason keeps its text
+    expect(t('dolt.unreachable')).toBe('dolt.unreachable');
   });
 
   // polish2 16.11 (owner, Brave at 2000 px rendered in English with the toggle

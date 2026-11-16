@@ -103,11 +103,16 @@ function substitute(template: string, vars: Vars | undefined): string {
 // A label-map key (`status.open`, `resolution.duplicate`) is not English
 // text: with no entry in the current locale it shows its last segment as a
 // readable label («Open», «In progress»), never the raw key (polish2 16.11).
-const DOTTED_KEY = /^[a-z][a-z0-9]*(?:\.[a-z0-9_-]+)+$/;
+// review M-5: only the label-map prefixes; a server code like
+// `dolt.unreachable` passed through t() keeps its full text.
+const DOTTED_KEY = /^(?:status|kind|type|resolution)\.[a-z0-9_-]+$/;
 
 function readable(key: string): string {
   if (!DOTTED_KEY.test(key)) return key;
-  const last = key.slice(key.lastIndexOf('.') + 1).replace(/[_-]+/g, ' ').trim();
+  const last = key
+    .slice(key.lastIndexOf('.') + 1)
+    .replace(/[_-]+/g, ' ')
+    .trim();
   return last.length === 0 ? key : last.charAt(0).toUpperCase() + last.slice(1);
 }
 

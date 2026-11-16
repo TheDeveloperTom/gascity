@@ -300,4 +300,38 @@ describe('the drawer is one screen (item 8)', () => {
     expect(within(rel).getByText('часть')).toBeTruthy();
     expect(within(rel).getByText('M03 #2 / Task 6: допуск по собственному ящику')).toBeTruthy();
   });
+
+  // review M-2: «Подробности» used to warn on formula templates; the meta line does now.
+  it('a formula template says in the meta line that it is a recipe, not work', () => {
+    const recipe = { ...DISPATCH_CARD, id: 'gc-recipe', metadata: { 'gc.kind': 'run' } };
+    show(recipe, [recipe]);
+    expect(screen.getByTestId('task-meta').textContent).toContain('Рецепт прогона, а не работа: не закрывай её');
+    cleanup();
+    show(DISPATCH_CARD, items);
+    expect(screen.getByTestId('task-meta').textContent).not.toContain('Рецепт');
+  });
+
+  // review M-3: no links at all reads «Связей нет.»
+  it('a card with no links says «Связей нет.»', () => {
+    const { parent: _parent, ...noParent } = DISPATCH_CARD;
+    const lone = { ...noParent, id: 'gc-lone', dependencies: [] };
+    show(lone, [lone]);
+    expect(within(screen.getByTestId('task-relationships')).getByText('Связей нет.')).toBeTruthy();
+  });
+
+  // review M-4: the drawer title is an h2, so description headings start at h3.
+  it('description headings sit below the drawer title (no h1/h2 inside)', () => {
+    const md = { ...DISPATCH_CARD, id: 'gc-md', description: '# Большой\n\n## Средний\n\nтекст' };
+    show(md, [md]);
+    const body = screen.getByTestId('task-description');
+    expect(body.querySelector('h1, h2')).toBeNull();
+    expect(within(body).getByRole('heading', { level: 3, name: 'Большой' })).toBeTruthy();
+    expect(within(body).getByRole('heading', { level: 4, name: 'Средний' })).toBeTruthy();
+  });
+
+  // review M-8: «нужен ты» sits in the meta line, not in the phone's back row.
+  it('«нужен ты» is in the meta line, not in the header row', () => {
+    show(question);
+    expect(within(screen.getByTestId('task-meta')).getByText('нужен ты')).toBeTruthy();
+  });
 });

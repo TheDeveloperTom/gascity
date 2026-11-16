@@ -173,7 +173,7 @@ export function needsFromBoard(
   // count. `mayorMentions: null`: Home reads no Mayor mail (V2).
   const stalls = stuckItems(model, { nowMs, sessions, mayorMentions: null })
     .filter((item) => item.cardId === null || !questionIds.has(item.cardId))
-    .map((item): StallItem & { mayorKnows: boolean } => {
+    .map((item): StallItem & { mayorKnows: boolean; unclaimedBlocker: boolean } => {
       const bead = item.cardId === null ? undefined : byId.get(item.cardId);
       return {
         kind: 'stall',
@@ -188,18 +188,28 @@ export function needsFromBoard(
         href: item.href,
         forOwner: bead !== undefined && markedForOwner(bead),
         mayorKnows: item.mayor === 'knows',
+        // stuckItems (c): «Никто не взял, а её ждёт …»
+        unclaimedBlocker: item.key.startsWith('blocker:'),
       };
     })
-    .filter((stall) => stall.forOwner || !stall.mayorKnows)
-    .map(({ mayorKnows: _known, ...stall }) => stall);
+    .filter((stall) => stall.forOwner || !stall.mayorKnows);
+  // review I-2: only an unclaimed blocker («Никто не взял») can fold; its
+  // cause is the question. Any other stall has its own cause.
+  const foldable = new Set(stalls.filter((s) => s.unclaimedBlocker && !s.forOwner).map((s) => s.id));
 
   // polish2 16.11 (owner): a stall that waits on an owner question is already
   // explained by it («держит 22 задачи»); it folds under the closest question
-  // (the one holding the fewest tasks) and leaves «Стоит».
+  // (the one holding the fewest tasks) and leaves «Стоит». Only «Никто не
+  // взял» blockers fold, and never one marked for the owner (review I-2): the
+  // badge counts owner-marked stalls, so they must stay visible.
   const heldSets = questions.map((q) => ({ q, held: new Set(transitiveWaiters(q.id, model.waitersOf)) }));
   const folded = new Map<string, StallItem[]>();
   const openStalls: StallItem[] = [];
-  for (const stall of stalls) {
+  for (const { mayorKnows: _known, unclaimedBlocker: _kind, ...stall } of stalls) {
+    if (!foldable.has(stall.id)) {
+      openStalls.push(stall);
+      continue;
+    }
     const owner = heldSets
       .filter(({ held }) => held.has(stall.id))
       .sort((a, b) => a.held.size - b.held.size)[0];
@@ -230,7 +240,8 @@ export function needsFromBoard(
     needs,
     stalls: openStalls,
     quiet,
-    count: needs.length + stalls.filter((s) => s.forOwner).length,
+    // owner-marked stalls never fold, so this is exactly what the page shows
+    count: needs.length + openStalls.filter((s) => s.forOwner).length,
   };
 }
 

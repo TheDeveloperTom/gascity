@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { formatApiError } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
@@ -119,11 +119,22 @@ export function BeadsPage() {
   }, [ownerFilter, peerSources]);
   // polish2 16.11 (owner): the open card IS the URL (`?bead=<id>`), so a link
   // can be shared and survives a reload. Opening or switching a card pushes a
-  // history entry (Back closes it, Forward reopens it); closing replaces the
-  // entry so it does not leave a dead step behind.
+  // history entry (Back closes it, Forward reopens it). Closing a card that
+  // this board opened steps back to the entry it came from (review M-1: a
+  // replace left a dead Back step); a card that arrived by link (a reload, a
+  // shared URL) closes by replacing. Re-selecting the open card is a no-op.
   const selectedId = selectedBeadParam;
+  const location = useLocation();
+  const navigate = useNavigate();
+  // How many card entries this board pushed since the last closed state.
+  const depth = (location.state as { beadDepth?: number } | null)?.beadDepth ?? 0;
   const setSelectedId = useCallback(
     (id: string | null) => {
+      if (id === selectedId) return;
+      if (id === null && depth > 0) {
+        void navigate(-depth);
+        return;
+      }
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -131,10 +142,10 @@ export function BeadsPage() {
           else next.set('bead', id);
           return next;
         },
-        { replace: id === null },
+        id === null ? { replace: true } : { state: { beadDepth: depth + 1 } },
       );
     },
-    [setSearchParams],
+    [setSearchParams, selectedId, depth, navigate],
   );
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);

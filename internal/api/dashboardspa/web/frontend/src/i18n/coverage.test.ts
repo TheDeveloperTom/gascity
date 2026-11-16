@@ -7,11 +7,14 @@ import { collectMissing, resetMissing, setLocale, t, tn } from './index';
 // t()/tn() as a literal, plus the values of the label maps passed to t() as
 // `t(MAP[x])`, and asserts the Russian lookup has every one.
 
-const SOURCES = import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../test/**', '!../**/generated/**'], {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>;
+const SOURCES = import.meta.glob(
+  ['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../test/**', '!../**/generated/**'],
+  {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  },
+) as Record<string, string>;
 
 // Readable JS string literal: '...', "..." or a `...` without ${}.
 const LIT = String.raw`'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|\`((?:[^\`\\$]|\\.)*)\``;
@@ -39,9 +42,16 @@ function scan(): Found {
     'g',
   );
   // `t(MAP[x])` directly, or `const key = MAP[x]; … t(key)` (statusLabel).
-  const callMap = /(?<![\w.])t\(\s*([A-Z][A-Z0-9_]*)\[|const \w+ = ([A-Z][A-Z0-9_]*)\[[^\]]+\];\s*\n\s*return \w+ === undefined \? \w+ : t\(/g;
+  const callMap =
+    /(?<![\w.])t\(\s*([A-Z][A-Z0-9_]*)\[|const \w+ = ([A-Z][A-Z0-9_]*)\[[^\]]+\];\s*\n\s*return \w+ === undefined \? \w+ : t\(/g;
+  const callConst = /(?<![\w.])t\(\s*([A-Z][A-Z0-9_]*)\s*[,)]/g;
   for (const [file, src] of Object.entries(SOURCES)) {
     if (file.includes('/i18n/')) continue;
+    for (let m = callConst.exec(src); m !== null; m = callConst.exec(src)) {
+      const decl = new RegExp(String.raw`const ${m[1]!}\b[^=]*=\s*(?:${LIT})`).exec(src);
+      const key = decl === null ? undefined : literalAt(decl, 1);
+      if (key !== undefined && !singles.has(key)) singles.set(key, `${file} (${m[1]!})`);
+    }
     for (let m = callT.exec(src); m !== null; m = callT.exec(src)) {
       const key = literalAt(m, 1);
       if (key !== undefined && !singles.has(key)) singles.set(key, file);
@@ -80,6 +90,10 @@ describe('i18n coverage (every key used in the UI has a Russian entry)', () => {
     expect(singles.size).toBeGreaterThan(300);
     expect(singles.has('Answer in Discord')).toBe(true);
     expect(singles.has('status.open')).toBe(true);
+    // review M-6: `t(CONST)` where `const CONST = '…'`
+    expect(
+      singles.has('Stages, in order: intake, implementation, review, approval, finalization.'),
+    ).toBe(true);
   });
 
   it('every t() key and every label-map value used with t() is translated', () => {

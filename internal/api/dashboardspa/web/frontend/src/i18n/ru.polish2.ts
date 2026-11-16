@@ -116,11 +116,13 @@ export const RU_POLISH2: Readonly<Record<string, string | RuPlural>> = {
 
   // Shell, bootstrap, errors.
   'config unavailable:': 'настройки недоступны:',
-  'some controls may be disabled until it loads.': 'часть кнопок может не работать, пока они не загрузятся.',
+  'some controls may be disabled until it loads.':
+    'часть кнопок может не работать, пока они не загрузятся.',
   'Page not found': 'Страница не найдена',
   'No dashboard route matches this path.': 'По этому адресу ничего нет.',
   'Resolving city…': 'Открываю город…',
-  'City «{city}» is not registered on this supervisor.': 'Город «{city}» не зарегистрирован в этом супервизоре.',
+  'City «{city}» is not registered on this supervisor.':
+    'Город «{city}» не зарегистрирован в этом супервизоре.',
   'Available cities:': 'Доступные города:',
   'No cities are registered on this supervisor.': 'В этом супервизоре нет ни одного города.',
   'Dashboard view failed.': 'Страница упала.',
@@ -134,20 +136,17 @@ export const RU_POLISH2: Readonly<Record<string, string | RuPlural>> = {
   'Worker status unavailable.': 'Состояние исполнителей недоступно.',
   'Checking worker status…': 'Проверяю исполнителей…',
   'No workers active right now.': 'Сейчас никто не работает.',
-  'This task is a recipe, not work to do: every {name} instance is made from it. Its «in progress» status means «available for instantiation» — do not act on it, nudge it or close it.':
-    'Это рецепт, а не работа: из него делается каждый экземпляр {name}. Статус «в работе» значит «можно запускать»; не трогай, не подталкивай и не закрывай её.',
-  'One run of the {name} recipe.': 'Один прогон рецепта {name}.',
 
   // Card drawer, one screen (item 8).
   'part of': 'часть',
   nobody: 'нет',
   'Executor: {who}': 'Исполнитель: {who}',
   'created {date}': 'создана {date}',
+  'A formula recipe, not work: do not close it': 'Рецепт прогона, а не работа: не закрывай её',
   Sessions: 'Сессии',
   'Pull requests': 'Пул-реквесты',
   Issues: 'Задачи GitHub',
   'Formula runs': 'Прогоны',
   'Order runs': 'Прогоны по расписанию',
-  Description: 'Описание',
-  Recipe: 'Рецепт',
+  'Could not read the linked sessions and PRs.': 'Не удалось прочитать связанные сессии и PR.',
 };

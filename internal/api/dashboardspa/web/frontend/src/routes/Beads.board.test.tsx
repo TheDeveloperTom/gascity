@@ -113,10 +113,11 @@ afterEach(() => {
 });
 
 // polish2: the router's current location and navigate(), read by URL tests.
-const probe: { search: string; navigate: NavigateFunction | null } = { search: '', navigate: null };
+const probe: { search: string; key: string; navigate: NavigateFunction | null } = { search: '', key: '', navigate: null };
 function LocationProbe() {
   const location = useLocation();
   probe.search = location.search;
+  probe.key = location.key;
   probe.navigate = useNavigate();
   return null;
 }
@@ -305,6 +306,44 @@ describe('BeadsPage selection in the URL', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(new URLSearchParams(probe.search).has('bead')).toBe(false));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  // review M-1: closing a card opened from the board goes back to the entry
+  // it came from, so the next Back is not a dead step.
+  it('closing a card opened from the board returns to the same history entry', async () => {
+    renderPage();
+    await screen.findByText('M04 — приёмка этапа');
+    const before = probe.key;
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('dialog');
+    expect(probe.key).not.toBe(before);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(probe.key).toBe(before);
+    expect(new URLSearchParams(probe.search).has('bead')).toBe(false);
+  });
+
+  it('after switching cards, closing still lands where the first card was opened from', async () => {
+    renderPage();
+    await screen.findByText('M04 — приёмка этапа');
+    const before = probe.key;
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('dialog');
+    fireEvent.click(titleButton('Приёмка города: часть B'));
+    await waitFor(() => expect(new URLSearchParams(probe.search).get('bead')).toBe('dp-dh6'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(probe.key).toBe(before);
+  });
+
+  it('re-selecting the open card adds no history entry', async () => {
+    renderPage();
+    await screen.findByText('M04 — приёмка этапа');
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('dialog');
+    const opened = probe.key;
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    expect(probe.key).toBe(opened);
   });
 
   it('opening a URL with ?bead= selects the card', async () => {
