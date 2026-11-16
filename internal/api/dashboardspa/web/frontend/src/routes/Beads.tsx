@@ -535,6 +535,67 @@ export function BeadsPage() {
         : null,
     [showGraph, graphRows, epic, focusParam, nowMs, graphPartial],
   );
+  // Owner 16.11: on the all-tickets graph a card's chain sat far off screen.
+  // A graph click selects the card (drawer, ?bead=) AND narrows the graph to
+  // its chain (?focus=, the same param the per-epic graph understands): the
+  // card, its ancestors and descendants, and the owner questions holding
+  // them, side by side. Another click refocuses; Esc or «← весь граф» returns
+  // to the full graph (drawer closed, scroll restored).
+  const focusScrollY = useRef<number | null>(null);
+  const focusChain = useCallback(
+    (nodeId: string) => {
+      const id = beadIdOf(nodeId);
+      if (focusParam === null) focusScrollY.current = window.scrollY;
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('view', 'graph');
+          next.set('focus', id);
+          next.set('bead', id);
+          return next;
+        },
+        { state: { beadDepth: selectedId === null || depth > 0 ? depth + 1 : 0 } },
+      );
+    },
+    [setSearchParams, focusParam, selectedId, depth],
+  );
+  const exitFocus = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('focus');
+        next.delete('bead');
+        return next;
+      },
+      { replace: true, state: null },
+    );
+    const y = focusScrollY.current;
+    focusScrollY.current = null;
+    if (y !== null) window.requestAnimationFrame(() => window.scrollTo(0, y));
+  }, [setSearchParams]);
+  const graphFocused = viewGraphParam && focusParam !== null;
+  useEffect(() => {
+    if (!graphFocused) return;
+    // Capture phase: Esc leaves the chain before the drawer's own Esc runs.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      e.preventDefault();
+      e.stopPropagation();
+      exitFocus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [graphFocused, exitFocus]);
+  const focusHeader = useMemo(() => {
+    if (!graphFocused || graphModel === null || focusParam === null) return null;
+    // Tasks only: an owner-question card («<id>::q») is not a task.
+    const tasks = graphModel.nodes.filter((n) => n.kind === 'task' && beadIdOf(n.id) === n.id);
+    const self = tasks.find((n) => beadIdOf(n.id) === focusParam);
+    return {
+      label: self?.label ?? focusParam,
+      n: tasks.length,
+    };
+  }, [graphFocused, graphModel, focusParam]);
   // Live data re-lays the all-tickets graph out at most every few seconds
   // (rule 16); collapse and filter are the page's own state.
   const [laneCollapsed, setLaneCollapsed] = useState<Record<string, boolean>>({});
@@ -812,18 +873,36 @@ export function BeadsPage() {
           <BoardGraphView
             graph={allGraph}
             selectedId={selectedId}
-            onSelect={(id) => setSelectedId(beadIdOf(id))}
+            onSelect={focusChain}
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
             onToggleLane={toggleLane}
             onOpenEpic={openEpicGraph}
           />
         </section>
       ) : showGraph && graphModel !== null ? (
-        <section aria-label={t('Graph')} className="min-w-0">
+        <section aria-label={t('Graph')} className="min-w-0 space-y-3">
+          {focusHeader !== null && (
+            <div
+              role="status"
+              data-testid="graph-focus-header"
+              className="flex flex-wrap items-center gap-3 font-vk-sans text-[15px] text-vk-text-high"
+            >
+              <span>
+                {tn(
+                  focusHeader.n,
+                  { one: 'Chain: {label} · {n} task', other: 'Chain: {label} · {n} tasks' },
+                  { label: focusHeader.label },
+                )}
+              </span>
+              <Button type="button" size="sm" onClick={exitFocus}>
+                {t('← full graph')}
+              </Button>
+            </div>
+          )}
           <GraphView
             model={graphModel}
             selectedId={selectedId}
-            onSelect={(id) => setSelectedId(beadIdOf(id))}
+            onSelect={focusChain}
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
           />
         </section>

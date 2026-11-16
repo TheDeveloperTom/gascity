@@ -25,8 +25,15 @@ vi.mock('../vk/graph/model', async (orig) => {
     buildGraph: (beads: ReadonlyArray<unknown>, opts: { epicId: string | null; focusIds?: string[]; nowMs: number; partial?: boolean }) => {
       graphCalls.push({ epicId: opts.epicId, ...(opts.focusIds ? { focusIds: opts.focusIds } : {}), ...(opts.partial ? { partial: true } : {}) });
       graphBeadIds.last = (beads as SupervisorBead[]).map((b) => b.id);
+      // A focus keeps the real model's membership (the chain), so the page's
+      // narrowing is observable through the spy view.
+      const inChain =
+        opts.focusIds !== undefined
+          ? new Set(real.buildGraph(beads, opts).nodes.map((n) => real.beadIdOf(n.id)))
+          : null;
+      const kept = (beads as SupervisorBead[]).filter((b) => inChain === null || inChain.has(b.id));
       // dw-b also carries its own owner question: a separate «<id>::q» card.
-      const withQuestions = (beads as SupervisorBead[]).flatMap((b) =>
+      const withQuestions = kept.flatMap((b) =>
         b.id === 'dw-b' ? [{ ...b, id: real.questionNodeId(b.id) }, b] : [b],
       );
       return {
@@ -297,7 +304,7 @@ describe('BeadsPage «Граф» tab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'all dw-b' }));
     expect(param('bead')).toBe('dw-b');
     expect(param('view')).toBe('graph');
-    expect(screen.getByTestId('board-graph-view').getAttribute('data-selected')).toBe('dw-b');
+    expect((await screen.findByTestId('graph-view')).getAttribute('data-selected')).toBe('dw-b');
     const dialog = await screen.findByRole('dialog', { name: 'Open task' });
     expect(dialog.getAttribute('aria-modal')).toBe('false');
   });
@@ -422,6 +429,64 @@ describe('BeadsPage «Граф» tab', () => {
     expect(param('view')).toBe('graph');
     expect(param('bead')).toBe('dw-b');
     await screen.findByTestId('graph-view');
+  });
+
+  // Owner 16.11: on the all-tickets graph a card's chain sat far off screen.
+  // A click now narrows the graph to that card's chain, side by side.
+  it('all-tickets graph: a click narrows the rendered nodes to the card’s chain (?focus=)', async () => {
+    renderPage('/beads?view=graph');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.ids).toContain('dw-r'));
+    fireEvent.click(await screen.findByRole('button', { name: 'all dw-c' }));
+    expect(param('focus')).toBe('dw-c');
+    expect(param('bead')).toBe('dw-c');
+    const view = await screen.findByTestId('graph-view');
+    await vi.waitFor(() => expect(within(view).queryByRole('button', { name: 'node dw-a' })).toBeTruthy());
+    expect(within(view).getByRole('button', { name: 'node dw-b' })).toBeTruthy();
+    expect(within(view).getByRole('button', { name: 'node dw-c' })).toBeTruthy();
+    expect(within(view).queryByRole('button', { name: 'node dw-r' })).toBeNull();
+    expect(screen.queryByTestId('board-graph-view')).toBeNull();
+    expect(screen.getByText('Chain: dw-c · 3 tasks')).toBeTruthy();
+  });
+
+  it('focused chain: Esc restores the full graph and closes the drawer', async () => {
+    renderPage('/beads?view=graph');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.ids).toContain('dw-r'));
+    fireEvent.click(await screen.findByRole('button', { name: 'all dw-c' }));
+    await screen.findByTestId('graph-view');
+    await screen.findByRole('dialog', { name: 'Open task' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(param('focus')).toBeNull();
+    expect(param('bead')).toBeNull();
+    const all = await screen.findByTestId('board-graph-view');
+    for (const id of ['dw-a', 'dw-b', 'dw-c', 'dw-r']) {
+      await vi.waitFor(() => expect(within(all).getByRole('button', { name: `all ${id}` })).toBeTruthy());
+    }
+    await vi.waitFor(() => expect(screen.queryByRole('dialog', { name: 'Open task' })).toBeNull());
+  });
+
+  it('focused chain: «← full graph» returns; another card refocuses', async () => {
+    renderPage('/beads?view=graph&focus=dw-a&bead=dw-a');
+    const view = await screen.findByTestId('graph-view');
+    fireEvent.click(within(view).getByRole('button', { name: 'node dw-c' }));
+    expect(param('focus')).toBe('dw-c');
+    expect(param('bead')).toBe('dw-c');
+    fireEvent.click(screen.getByRole('button', { name: '← full graph' }));
+    expect(param('focus')).toBeNull();
+    expect(param('view')).toBe('graph');
+    await screen.findByTestId('board-graph-view');
+  });
+
+  it('?focus= round-trips: a reload with it draws the chain and its header', async () => {
+    renderPage('/beads?view=graph');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.ids).toContain('dw-r'));
+    fireEvent.click(await screen.findByRole('button', { name: 'all dw-b' }));
+    const url = `/beads${probe.search}`;
+    cleanup();
+    renderPage(url);
+    const view = await screen.findByTestId('graph-view');
+    expect(graphCalls.at(-1)?.focusIds).toEqual(['dw-b']);
+    await vi.waitFor(() => expect(within(view).queryByRole('button', { name: 'node dw-r' })).toBeNull());
+    expect(await screen.findByText(/^Chain: dw-b · \d+ tasks$/)).toBeTruthy();
   });
 
   it('«Show on graph» without an epic focuses the card’s chain', async () => {
