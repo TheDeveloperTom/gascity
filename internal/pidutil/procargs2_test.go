@@ -88,3 +88,39 @@ func TestParseProcArgs2EnvironRejectsATruncatedEntry(t *testing.T) {
 		t.Fatalf("parseProcArgs2Environ = %q, nil; want an error for the truncated entry", env)
 	}
 }
+
+// parseProcArgs2EnvValue returns exactly one variable's value and nothing
+// else: a key that is a prefix of another key, an argument shaped like an
+// entry, and the kernel's strings after the environment never answer for it.
+func TestParseProcArgs2EnvValueReturnsOnlyTheNamedKey(t *testing.T) {
+	const key = "GC_SERVICE_STATE_ROOT"
+	argv := []string{"python3", "serve.py", key + "=/from/argv"}
+	for _, tc := range []struct {
+		name   string
+		tail   string
+		want   string
+		wantOK bool
+	}{
+		{name: "present among secrets", tail: "SLACK_TOKEN=xoxb-secret\x00" + key + "=/city/.gc/services/slack\x00HOME=/Users/dev\x00", want: "/city/.gc/services/slack", wantOK: true},
+		{name: "a value holding spaces", tail: key + "=/tmp/city with spaces/.gc/services/x\x00", want: "/tmp/city with spaces/.gc/services/x", wantOK: true},
+		{name: "a longer key sharing the prefix", tail: key + "_OLD=/stale\x00A=1\x00"},
+		{name: "absent", tail: "A=1\x00B=2\x00"},
+		{name: "only after the alignment gap", tail: "A=1\x00\x00" + key + "=/kernel\x00"},
+		{name: "an environment the kernel withheld", tail: ""},
+		{name: "an empty value", tail: key + "=\x00", want: "", wantOK: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok, err := parseProcArgs2EnvValue(procArgs2Buffer(argv, tc.tail), key)
+			if err != nil || ok != tc.wantOK || got != tc.want {
+				t.Fatalf("parseProcArgs2EnvValue = %q, %v, %v; want %q, %v, nil", got, ok, err, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestParseProcArgs2EnvValueRejectsATruncatedBuffer(t *testing.T) {
+	data := procArgs2Buffer([]string{"gc"}, "A=1\x00GC_SERVICE_STATE_ROOT=/tmp/ci")
+	if got, ok, err := parseProcArgs2EnvValue(data, "GC_SERVICE_STATE_ROOT"); err == nil {
+		t.Fatalf("parseProcArgs2EnvValue = %q, %v, nil; want an error for the truncated entry", got, ok)
+	}
+}

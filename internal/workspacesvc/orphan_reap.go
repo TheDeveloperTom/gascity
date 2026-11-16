@@ -62,6 +62,11 @@ type orphanIdentity struct {
 	// newOrphanIdentity leaves it 0 so the identity keeps the strict
 	// re-parented-to-init (ppid 1) rule until a subreaper is detected.
 	subreaperPID int
+	// dir is the directory the spawn path runs the command in. Only the
+	// table-driven (darwin) sweep uses it, as its cwd cross-check for a
+	// service whose wrapper exec'd a different binary; empty disables that
+	// rule.
+	dir string
 }
 
 // newOrphanIdentity builds the sweep identity for one service instance.
@@ -119,6 +124,12 @@ func (id orphanIdentity) parentIsSubreaper(ppid int) bool {
 // or signal failures are logged and never block the spawn; on hosts without
 // /proc the sweep is a no-op.
 func reapOrphanedServiceProcesses(id orphanIdentity) {
+	// Hosts without /proc (darwin) read the process table through sysctl
+	// instead; see orphan_reap_table.go.
+	if tb, ok := platformOrphanTable(); ok {
+		reapOrphansFromTable(tb, id, os.Getpid(), signalProcessOrGroup, orphanReapTermWait)
+		return
+	}
 	// The sweeper runs under the same subreaper that adopts this supervisor's
 	// orphans, so detect it from the sweeper's own ancestry. On a plain-init
 	// host this stays 0 and matchesLive keeps the strict ppid==1 rule.
