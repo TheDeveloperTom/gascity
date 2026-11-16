@@ -322,11 +322,15 @@ function stageCardsOf(
   tasks: readonly SupervisorBead[],
   routeItems: readonly SupervisorBead[],
   routesComplete: boolean,
+  /** Beads kept off the board that may still be stall alarms (C1, 16.11). */
+  serviceItems: readonly SupervisorBead[] = [],
 ) {
   // Tasks only, so a card never counts route steps as its neighbours.
   const graph = buildBeadGraph(tasks);
   const routeIndex = buildRouteIndex(routeItems, { routesComplete });
-  const stopCards = stopCardsByTask(tasks);
+  // C1 (REVIEW 16.11): the stall alarms («стоит: …», `devwork.stopped_card`)
+  // reach the model as service items, never as rows; they still mark their task.
+  const stopCards = stopCardsByTask([...tasks, ...serviceItems]);
   const taskIds = new Set(tasks.map((b) => b.id));
   const heads = headingEpics(tasks);
   const waitersOf = buildWaitersIndex(tasks);
@@ -359,7 +363,7 @@ export function buildBoardModel(
   const tasks = data.items.filter((bead) => beadRole(bead) === 'task');
   const everything = [...tasks, ...data.routeItems, ...data.serviceItems];
   const byId = new Map(everything.map((b) => [b.id, b]));
-  const own = stageCardsOf(tasks, data.routeItems, data.routesComplete);
+  const own = stageCardsOf(tasks, data.routeItems, data.routesComplete, data.serviceItems);
   const { routeIndex, taskIds, waitersOf } = own;
 
   const prefixComplete = rigs.every((rig) => (rig.prefix?.trim() ?? '').length > 0);
