@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -131,7 +134,7 @@ func TestAttachDashboardInstallsDashboardBase(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("GC_SUPERVISOR_DASHBOARD", "")
 			mux := newTestSupervisorMuxForDashboard()
-			plane, err := attachDashboard(mux, fakeDashResolver{}, false, tc.bind, 8372)
+			plane, err := attachDashboard(mux, fakeDashResolver{}, false, tc.bind, 8372, "")
 			if err != nil {
 				t.Fatalf("attachDashboard: %v", err)
 			}
@@ -151,7 +154,7 @@ func TestAttachDashboardInstallsDashboardBase(t *testing.T) {
 func TestAttachDashboardDisabledLeavesNoDashboardBase(t *testing.T) {
 	t.Setenv("GC_SUPERVISOR_DASHBOARD", "0")
 	mux := newTestSupervisorMuxForDashboard()
-	plane, err := attachDashboard(mux, fakeDashResolver{}, false, "127.0.0.1", 8372)
+	plane, err := attachDashboard(mux, fakeDashResolver{}, false, "127.0.0.1", 8372, "")
 	if err != nil {
 		t.Fatalf("attachDashboard: %v", err)
 	}
@@ -189,5 +192,80 @@ func TestWriteSupervisorDashboardStartupOnlyAdvertisesMountedDashboard(t *testin
 	want := "Dashboard:  http://127.0.0.1:8372/  [read-only]\n"
 	if out.String() != want {
 		t.Fatalf("mounted dashboard output = %q, want %q", out.String(), want)
+	}
+}
+
+const dashDirTestSHA = "0123456789abcdef0123456789abcdef01234567"
+
+// newDashboardDirRoot builds a dashboard_dir root (PLAN §1 C2) with one
+// complete version and current pointing at it.
+func newDashboardDirRoot(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "dashboard-ui")
+	v := filepath.Join(root, "versions", dashDirTestSHA)
+	if err := os.MkdirAll(v, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		filepath.Join(v, "index.html"):         `<!doctype html><html><body><div id="root"></div>dir-ui</body></html>`,
+		filepath.Join(v, "gc-ui-release.json"): `{}`,
+		filepath.Join(root, "current"):         dashDirTestSHA + "\n",
+	}
+	for p, c := range files {
+		if err := os.WriteFile(p, []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, d := range []string{root, filepath.Join(root, "versions"), v} {
+		if err := os.Chmod(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func dashboardGet(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
+
+// TestAttachDashboardServesDir: the supervisor's dashboard_dir reaches the SPA
+// handler, so GET / is served from the version folder.
+func TestAttachDashboardServesDir(t *testing.T) {
+	t.Setenv("GC_SUPERVISOR_DASHBOARD", "")
+	mux := newTestSupervisorMuxForDashboard()
+	plane, err := attachDashboard(mux, fakeDashResolver{}, false, "127.0.0.1", 8372, newDashboardDirRoot(t))
+	if err != nil || plane == nil {
+		t.Fatalf("attachDashboard = (%v, %v), want a plane and nil error", plane, err)
+	}
+	rec := dashboardGet(t, mux, "/")
+	if got := rec.Header().Get("X-GC-Dashboard-UI"); got != "dir "+dashDirTestSHA {
+		t.Fatalf("GET /: X-GC-Dashboard-UI = %q, want dir %s (status %d)", got, dashDirTestSHA, rec.Code)
+	}
+}
+
+// TestAttachDashboardBadDirStillStarts: no state of dashboard_dir may stop the
+// supervisor's boot (DESIGN-CHECK K5).
+func TestAttachDashboardBadDirStillStarts(t *testing.T) {
+	t.Setenv("GC_SUPERVISOR_DASHBOARD", "")
+	root := newDashboardDirRoot(t)
+	if err := os.Chmod(root, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{root, "rel/path", filepath.Join(t.TempDir(), "missing")} {
+		mux := newTestSupervisorMuxForDashboard()
+		plane, err := attachDashboard(mux, fakeDashResolver{}, false, "127.0.0.1", 8372, dir)
+		if err != nil || plane == nil {
+			t.Fatalf("attachDashboard(%q) = (%v, %v), want a plane and nil error", dir, plane, err)
+		}
+		rec := dashboardGet(t, mux, "/")
+		if rec.Code != http.StatusOK {
+			t.Errorf("dir %q: GET / status = %d, want 200 (embedded)", dir, rec.Code)
+		}
 	}
 }

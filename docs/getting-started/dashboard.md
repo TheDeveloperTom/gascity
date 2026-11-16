@@ -49,6 +49,49 @@ loopback (`127.0.0.1`). It is intended for local, single-operator use:
   `allow_mutations`, it runs read-only and the dashboard disables its mutating
   controls.
 
+## Serve it from a folder
+
+To ship an interface change without rebuilding `gc` or restarting the
+supervisor, name a folder in `$GC_HOME/supervisor.toml`:
+
+```toml
+[supervisor]
+dashboard_dir = "/Users/me/.gc/dashboard-ui"   # absolute path
+```
+
+The supervisor reads this key once, at start; `gc supervisor reload` does not
+re-read it. The folder itself is read on every request, so switching versions
+needs no restart:
+
+```text
+dashboard-ui/
+├── current                      # "embedded" or a 40-hex version name
+└── versions/
+    └── <sha40>/                 # a built dashboard (the contents of dist/)
+        ├── index.html
+        ├── gc-ui-release.json   # written last: marks the version complete
+        └── assets/…
+```
+
+Gas City never writes to this folder. It serves the version `current` names
+only when the folder, `versions/` and that version are owned by the
+supervisor's user and not group- or world-writable, and it never follows a
+symlink inside them. On any other state it serves the built-in dashboard
+instead; no value of `dashboard_dir` stops the supervisor from starting.
+
+Every dashboard response says which interface answered, in the
+`X-GC-Dashboard-UI` header: `dir <sha40>`, `embedded`, or
+`embedded; fallback=<reason>`, where the reason is one of `root-missing`,
+`root-perms`, `no-current`, `bad-current`, `version-missing`,
+`version-perms`, `no-index` or `incomplete`:
+
+```bash
+curl -sI http://127.0.0.1:8372/ | grep -i x-gc-dashboard-ui
+# X-GC-Dashboard-UI: dir 0123456789abcdef0123456789abcdef01234567
+```
+
+An unknown `/assets/…` path answers 404, not the app shell.
+
 ## Turn it off
 
 Set `GC_SUPERVISOR_DASHBOARD=0` before starting the supervisor to run a

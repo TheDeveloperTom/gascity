@@ -53,11 +53,14 @@ func dashboardEnabled() bool {
 // the host-side samplers read the supervisor's /v0 API back over loopback, so
 // the plane must know where to reach it. Operator identity is read from env with
 // neutral defaults applied inside the plane (ZERO hardcoded roles).
-func attachDashboard(mux *api.SupervisorMux, resolver api.CityResolver, readOnly bool, bind string, port int) (*dashboardbff.Plane, error) {
+// dashboardDir is [supervisor] dashboard_dir (fork patch): the SPA is served
+// per request from that folder, falling back to the embedded bundle; no value
+// of it is ever an error here.
+func attachDashboard(mux *api.SupervisorMux, resolver api.CityResolver, readOnly bool, bind string, port int, dashboardDir string) (*dashboardbff.Plane, error) {
 	if !dashboardEnabled() {
 		return nil, nil
 	}
-	spa, err := dashboardspa.NewStaticHandler()
+	spa, err := dashboardspa.NewStaticHandlerWithDir(dashboardDir)
 	if err != nil {
 		return nil, err
 	}
