@@ -15,6 +15,12 @@ import { subscribePeerStream } from '../supervisor/peerStream';
 
 const STALE_STEP_MS = 15_000;
 
+// 16.11 (Richard's page): a failed read retries by itself, 5 s → 30 s, until
+// one succeeds, so a page opened while the service restarted recovers
+// without a reload. A good read resets the backoff.
+export const PEER_RETRY_MIN_MS = 5_000;
+export const PEER_RETRY_MAX_MS = 30_000;
+
 export interface PeerBoardsState {
   sources: readonly PeerBoardSource[];
   /** The service answered with something that is not its contract. */
@@ -34,6 +40,23 @@ const listeners = new Set<() => void>();
 let stream: { city: string; stop: () => void } | null = null;
 let inflight: Promise<void> | null = null;
 let controller: AbortController | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryDelay = PEER_RETRY_MIN_MS;
+
+function clearRetry(): void {
+  if (retryTimer !== null) clearTimeout(retryTimer);
+  retryTimer = null;
+}
+
+function scheduleRetry(): void {
+  if (retryTimer !== null || listeners.size === 0) return;
+  const wait = retryDelay;
+  retryDelay = Math.min(retryDelay * 2, PEER_RETRY_MAX_MS);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (listeners.size > 0) void read();
+  }, wait);
+}
 
 function emit(next: Snapshot): void {
   snapshot = next;
@@ -51,6 +74,8 @@ function read(): Promise<void> {
         if (signal.aborted) return;
         // owner 16.11: the city's Mayor channel for every «Обсудить» button
         setCityMayorUrl(result.mayorUrl);
+        clearRetry();
+        retryDelay = PEER_RETRY_MIN_MS;
         emit({ city, result, error: null });
       },
       (err: unknown) => {
@@ -58,6 +83,7 @@ function read(): Promise<void> {
         const error = err instanceof Error ? err.message : String(err);
         // Keep the last good boards; say the read failed.
         emit({ city, result: snapshot.city === city ? snapshot.result : null, error });
+        scheduleRetry();
       },
     )
     .finally(() => {
@@ -88,7 +114,10 @@ function subscribe(fn: () => void): () => void {
   }
   return () => {
     listeners.delete(fn);
-    if (listeners.size === 0) stopStream();
+    if (listeners.size === 0) {
+      stopStream();
+      clearRetry();
+    }
   };
 }
 
@@ -109,6 +138,8 @@ export function resetPeerBoardsForTests(): void {
   controller = null;
   inflight = null;
   stopStream();
+  clearRetry();
+  retryDelay = PEER_RETRY_MIN_MS;
   listeners.clear();
   snapshot = { city: null, result: null, error: null };
 }

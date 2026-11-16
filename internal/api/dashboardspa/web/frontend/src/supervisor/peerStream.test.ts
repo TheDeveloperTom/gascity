@@ -1,8 +1,9 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetPeerBoardsForTests, usePeerBoards } from '../hooks/usePeerBoards';
+import { PEER_RETRY_MAX_MS, PEER_RETRY_MIN_MS, resetPeerBoardsForTests, usePeerBoards } from '../hooks/usePeerBoards';
+import { boardSourcesOf, ownerChoicesEnabled } from '../lib/boardOwner';
 import { peerBody } from '../test/fixtures/peerBoards';
-import { peerStreamUrl, subscribePeerStream } from './peerStream';
+import { PEER_STREAM_DEBOUNCE_MS, peerStreamUrl, subscribePeerStream } from './peerStream';
 
 // BOARD-LIVE L7 (contract C5): the dashboard follows `GET /v1/stream` on our
 // own peer-boards service. `event: changed` → one `/v1/boards` GET after a
@@ -102,6 +103,22 @@ describe('subscribePeerStream', () => {
     stop();
   });
 
+  // 16.11 (Richard's page): the service restarted under an open page; the
+  // stream came back but nothing read the boards again until a change.
+  it('a reopen after a drop reads once (resync); the first open does not', () => {
+    const onChanged = vi.fn();
+    const stop = subscribePeerStream('test-city', onChanged);
+    latest().open();
+    vi.advanceTimersByTime(1_000);
+    expect(onChanged).not.toHaveBeenCalled();
+    latest().fail();
+    vi.advanceTimersByTime(1_000);
+    latest().open();
+    vi.advanceTimersByTime(PEER_STREAM_DEBOUNCE_MS);
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it('reconnect backoff is capped at 30 s', () => {
     const stop = subscribePeerStream('test-city', vi.fn());
     for (let i = 0; i < 8; i += 1) {
@@ -157,5 +174,59 @@ describe('usePeerBoards follows the stream', () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
     expect(boards()).toHaveLength(initial + 1);
+  });
+});
+
+describe('usePeerBoards recovers from a failed read', () => {
+  const ok = () => new Response(JSON.stringify(peerBody()), { status: 200 });
+  const boardsCalls = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.filter((call: unknown[]) => String(call[0]).endsWith('/svc/peer-boards/v1/boards')).length;
+
+  it('a failed read then a good one ends with the peer chip enabled, no reload', async () => {
+    let fail = true;
+    const fetchSpy = vi.fn(async () => (fail ? new Response('bad gateway', { status: 502 }) : ok()));
+    vi.stubGlobal('fetch', fetchSpy);
+    const { result } = renderHook(() => usePeerBoards());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.error).not.toBeNull();
+    expect(ownerChoicesEnabled(boardSourcesOf(result.current.sources))).toBe(false);
+    fail = false; // the service is back; the stream stays quiet (never opens)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PEER_RETRY_MIN_MS);
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.sources).toHaveLength(1);
+    expect(ownerChoicesEnabled(boardSourcesOf(result.current.sources))).toBe(true);
+    // recovered: no more retries
+    const after = boardsCalls(fetchSpy);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PEER_RETRY_MAX_MS * 2);
+    });
+    expect(boardsCalls(fetchSpy)).toBe(after);
+  });
+
+  it('retries back off 5 s → 30 s while the read keeps failing', async () => {
+    const fetchSpy = vi.fn(async () => new Response('down', { status: 502 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    renderHook(() => usePeerBoards());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(PEER_RETRY_MIN_MS).toBe(5_000);
+    expect(PEER_RETRY_MAX_MS).toBe(30_000);
+    const at = [boardsCalls(fetchSpy)];
+    for (const step of [5_000, 10_000, 20_000, 30_000, 30_000]) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(step - 1);
+      });
+      expect(boardsCalls(fetchSpy)).toBe(at.at(-1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      at.push(boardsCalls(fetchSpy));
+      expect(at.at(-1)).toBe(at.at(-2)! + 1);
+    }
   });
 });

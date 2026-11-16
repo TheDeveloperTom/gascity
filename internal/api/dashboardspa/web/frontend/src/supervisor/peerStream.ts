@@ -7,6 +7,8 @@ import { withApiBase } from '../lib/apiBase';
 // `/v1/boards` once. Reconnects back off 1 s → 30 s. After 3 failed opens in
 // a row, or when the stream is switched off (PEER_STREAM, the P12 fallback),
 // it polls every 3 s instead; a later successful open stops the poll.
+// 16.11: a REopen (after a drop) reads once, since a change made while the
+// stream was down (e.g. the service restarting) sends no `changed` later.
 
 export const PEER_STREAM_DEBOUNCE_MS = 200;
 export const PEER_POLL_MS = 3_000;
@@ -46,6 +48,7 @@ export function subscribePeerStream(
   let poll: ReturnType<typeof setInterval> | null = null;
   let delay = BACKOFF_MIN_MS;
   let failedOpens = 0;
+  let everOpened = false;
 
   const startPoll = () => {
     if (poll !== null) return;
@@ -82,6 +85,8 @@ export function subscribePeerStream(
       failedOpens = 0;
       delay = BACKOFF_MIN_MS;
       stopPoll();
+      if (everOpened) changed();
+      everOpened = true;
     };
     es.addEventListener('changed', changed as EventListener);
     es.onerror = () => {
