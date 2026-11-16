@@ -359,13 +359,12 @@ func TestOpenReadOnlyFIFODoesNotBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close() //nolint:errcheck // test
-	done := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
-		f, err := openReadOnly(r, "current")
-		if f != nil {
+		defer close(done)
+		if f, err := openReadOnly(r, "current"); err == nil {
 			_ = f.Close()
 		}
-		done <- err
 	}()
 	select {
 	case <-done:
