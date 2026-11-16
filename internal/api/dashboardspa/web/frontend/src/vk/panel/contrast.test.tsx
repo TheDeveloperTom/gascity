@@ -12,7 +12,9 @@ import { QuestionCard } from './TaskDrawer';
 
 /** The `--name: L% C h;` value inside one CSS block. */
 function token(block: string, name: string): [number, number, number] {
-  const m = new RegExp(`--${name}:\\s*([\\d.]+)%\\s+([\\d.]+)\\s+([\\d.]+)`).exec(block);
+  // A token the dark block does not redefine is inherited from :root.
+  const re = new RegExp(`--${name}:\\s*([\\d.]+)%\\s+([\\d.]+)\\s+([\\d.]+)`);
+  const m = re.exec(block) ?? re.exec(LIGHT);
   if (m === null) throw new Error(`no --${name}`);
   return [Number(m[1]) / 100, Number(m[2]), Number(m[3])];
 }
@@ -47,8 +49,10 @@ function fillToken(cls: string): string {
   const vk = /(?:^|\s)bg-(vk-[a-z-]+)(?:\s|$)/.exec(cls)?.[1];
   if (vk === undefined) throw new Error(`no bg-vk-* in ${cls}`);
   const alias = new RegExp(`--${vk}:\\s*var\\(--([a-z-]+)\\)`).exec(css)?.[1];
-  if (alias === undefined) throw new Error(`no alias for --${vk}`);
-  return alias;
+  if (alias !== undefined) return alias;
+  // vk11 shell: VK brand tokens carry their own value (one for both themes).
+  if (new RegExp(`--${vk}:\\s*[\\d.]+%`).test(css)) return vk;
+  throw new Error(`no token for --${vk}`);
 }
 
 const Q: OwnerQuestion = {
