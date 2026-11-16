@@ -81,7 +81,8 @@ export function metaText(need: Need): string {
     need.holds > 0
       ? holdsText(need.holds)
       : need.kind === 'question'
-        ? t('The Mayor asks')
+        ? // owner 16.11: an asked question holding nothing stays and says so
+          t('holds nothing')
         : need.summary;
   const wait = waited === null ? null : t('waits {time}', { time: waited });
   return [head, wait].filter((part): part is string => part !== null).join(', ');

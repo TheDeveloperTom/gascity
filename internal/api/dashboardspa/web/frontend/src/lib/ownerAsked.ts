@@ -2,19 +2,28 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 import { ownerQuestionOf, type OwnerQuestion } from './ownerQuestions';
 
 // «От тебя» (owner 16.11): ONE rule for «Нужно от меня» and the graph's
-// «От тебя» column, so the two lists and their numbers are the same. An
-// owner question counts when
-//   (a) it holds at least one open task, directly or through others, and
-//   (b) it was actually put to the owner: `needs/operator`,
-//       `decision.question_id` and a Discord link (ownerQuestionOf).
-// A gate nobody asked yet is not a question (the city asks it, then it
-// counts); a question that holds nothing is noise (the city closes such
-// gates). An epic is a stage, never a question: its owner question lives on
-// the stage's gate.
+// «От тебя» column, so the two lists and their numbers are the same: every
+// open question actually put to the owner — `needs/operator`,
+// `decision.question_id` and a Discord link (ownerQuestionOf).
+// - «Держит N» is a label and a sort key (holders first). N = 0 reads
+//   «ничего не держит»; it never hides a question the owner still owes.
+// - One question id shows once: when a stage epic carries a copy of a
+//   question a gate or task also carries, the non-epic bead wins.
+// - A gate nobody asked yet (a stage plan gate before its plan exists) is no
+//   question: the tasks behind it read «у этапа нет плана».
 
 export interface AskedOwnerQuestion extends OwnerQuestion {
   /** Open tasks it holds, directly or not; an in-work carrier holds itself. */
   holds: number;
+}
+
+/** Holders first, then the longest wait (unknown waits last), then id. */
+export function byHoldersFirst(a: { holds: number; waitedMs: number | null; id: string }, b: typeof a): number {
+  return (
+    Number(a.holds === 0) - Number(b.holds === 0) ||
+    (b.waitedMs ?? -1) - (a.waitedMs ?? -1) ||
+    a.id.localeCompare(b.id)
+  );
 }
 
 /** Dependency types that do not block (lib/beadGraph, vk/graph/model). */
@@ -50,12 +59,12 @@ export function blockingIdsOf(bead: SupervisorBead): string[] {
   return [...out];
 }
 
-/** Every asked owner question on the read, whatever it holds (stage beads excluded). */
+/** Every bead that carries an asked owner question, duplicates included. */
 export function allAskedQuestionIds(beads: readonly SupervisorBead[]): Set<string> {
-  return new Set(beads.flatMap((b) => (!isStage(b) && ownerQuestionOf(b) !== null ? [b.id] : [])));
+  return new Set(beads.flatMap((b) => (ownerQuestionOf(b) !== null ? [b.id] : [])));
 }
 
-/** The «От тебя» set: asked owner questions that hold at least one open task. */
+/** The «От тебя» set: every asked owner question, once per question id, with what it holds. */
 export function askedOwnerQuestions(beads: readonly SupervisorBead[]): Map<string, AskedOwnerQuestion> {
   const byId = new Map<string, SupervisorBead>();
   for (const b of beads) if (!byId.has(b.id)) byId.set(b.id, b);
@@ -64,11 +73,21 @@ export function askedOwnerQuestions(beads: readonly SupervisorBead[]): Map<strin
     if (b.status === 'closed') continue;
     for (const id of blockingIdsOf(b)) waitersOf.set(id, [...(waitersOf.get(id) ?? []), b.id]);
   }
-  const out = new Map<string, AskedOwnerQuestion>();
+  // One carrier per question id: a gate or task before a stage epic, then by id.
+  const carrier = new Map<string, SupervisorBead>();
   for (const b of byId.values()) {
-    if (isStage(b)) continue;
     const q = ownerQuestionOf(b);
     if (q === null) continue;
+    const prev = carrier.get(q.questionId);
+    const better =
+      prev === undefined ||
+      Number(isStage(b)) - Number(isStage(prev)) < 0 ||
+      (isStage(b) === isStage(prev) && b.id.localeCompare(prev.id) < 0);
+    if (better) carrier.set(q.questionId, b);
+  }
+  const out = new Map<string, AskedOwnerQuestion>();
+  for (const b of carrier.values()) {
+    const q = ownerQuestionOf(b) as OwnerQuestion;
     const seen = new Set<string>([b.id]);
     const stack = [...(waitersOf.get(b.id) ?? [])];
     let holds = b.status === 'in_progress' && isOpenTask(b) ? 1 : 0;
@@ -81,7 +100,7 @@ export function askedOwnerQuestions(beads: readonly SupervisorBead[]): Map<strin
       if (isOpenTask(w)) holds++;
       stack.push(...(waitersOf.get(id) ?? []));
     }
-    if (holds > 0) out.set(b.id, { ...q, holds });
+    out.set(b.id, { ...q, holds });
   }
   return out;
 }

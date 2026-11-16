@@ -10,14 +10,13 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
 import { transitiveWaiters } from './holds';
-import { allAskedQuestionIds, askedOwnerQuestions } from './ownerAsked';
+import { allAskedQuestionIds, askedOwnerQuestions, byHoldersFirst } from './ownerAsked';
 import { OWNER_QUESTION_LABEL } from './ownerQuestions';
 import { milestoneOf } from './waitReasons';
 
 // «Нужно от меня» (vk lane 3): one model for the page and for the red badge,
-// so the two can never disagree. A need is an asked owner question that holds
-// an open task (lib/ownerAsked — the same rule as the graph's «От тебя»),
-// or a «Застряло» item the Mayor does not know about
+// so the two can never disagree. A need is an asked owner question
+// (lib/ownerAsked — the same rule as the graph's «От тебя»), or a «Застряло» item the Mayor does not know about
 // (stuckItems, mayor !== 'knows'). Everything is read from the one board.
 
 export interface MilestoneCount {
@@ -149,7 +148,7 @@ export function needsFromBoard(
   const byId = new Map(everything.map((bead) => [bead.id, bead]));
 
   // «От тебя» (owner 16.11): the one shared rule with the graph column —
-  // asked AND holding an open task (lib/ownerAsked).
+  // every asked question, once per question id, holders first (lib/ownerAsked).
   const questions = [...askedOwnerQuestions(everything).values()]
     .map((q): NeedItem => {
       const askedMs = parseMs(q.askedAt);
@@ -166,7 +165,7 @@ export function needsFromBoard(
         questionId: q.questionId,
       };
     })
-    .sort((a, b) => (b.waitedMs ?? -1) - (a.waitedMs ?? -1));
+    .sort(byHoldersFirst);
   // Every asked question, held or not: one that holds nothing is noise, so
   // it never comes back as an owner-marked stall or a mail/agent ask.
   const questionIds = allAskedQuestionIds(everything);

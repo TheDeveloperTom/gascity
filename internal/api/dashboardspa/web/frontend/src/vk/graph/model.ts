@@ -8,13 +8,19 @@
 // Data: the board's SupervisorBead (routes/Beads.tsx). A bead's blockers are
 // its `needs` plus its blocking `dependencies[]` (lib/beadGraph.ts reads the
 // same two fields). Owner questions («От тебя») follow the one rule shared
-// with «Нужно от меня» (lib/ownerAsked): asked to the owner AND holding an
-// open task. An owner gate nobody asked yet is no question: the tasks behind
-// it say «вопрос ещё не задан».
+// with «Нужно от меня» (lib/ownerAsked): every question actually asked to the
+// owner, once per question id, with the same «держит N». An owner gate nobody
+// asked yet is no question: the tasks behind a stage plan gate read «у этапа
+// нет плана».
 
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { milestoneOf } from '../../lib/waitReasons';
 import { askedOwnerQuestions } from '../../lib/ownerAsked';
+
+/** What each asked question holds, by carrier id: the graph's view of lib/ownerAsked. */
+export function askedHoldsOf(beads: ReadonlyArray<GraphBead>): Map<string, number> {
+  return new Map([...askedOwnerQuestions(beads)].map(([id, q]) => [id, q.holds]));
+}
 import { cardLabel } from '../board/cardLabel';
 
 /** The bead element the graph reads: exactly what the board loads. */
@@ -79,8 +85,8 @@ function isRouteBead(bead: GraphBead): boolean {
   return ['gc.kind', 'gc.root_bead_id', 'gc.cross_store_blocker', 'gc.cross_store_gate_owner'].some((k) => meta(bead, k).length > 0);
 }
 
-/** Asked owner questions holding an open task (lib/ownerAsked): the «От тебя» set. */
-type Asked = ReadonlySet<string>;
+/** The «От тебя» set (lib/ownerAsked): asked question carrier → what it holds. */
+type Asked = ReadonlyMap<string, number>;
 
 /**
  * An owner gate: a human gate, or a decision gate (dw-ssmbcp) with no route
@@ -121,8 +127,9 @@ export function beadIdOf(nodeId: string): string {
 
 /** Engine plumbing (route roots/steps, drains, cross-store gates, epics): never a node. */
 function isPlumbing(bead: GraphBead, asked: Asked): boolean {
-  if (bead.issue_type === 'epic' || bead.issue_type === 'convoy') return true;
+  // A stage epic carrying an asked question of its own is that question.
   if (isQuestionBead(bead, asked)) return false;
+  if (bead.issue_type === 'epic' || bead.issue_type === 'convoy') return true;
   return bead.issue_type === 'gate' || isRouteBead(bead);
 }
 
@@ -249,12 +256,19 @@ function columnTitle(col: number, last: number): string {
 
 export function buildGraph(
   beads: ReadonlyArray<unknown>,
-  opts: { epicId: string | null; focusIds?: string[]; nowMs: number; partial?: boolean },
+  opts: {
+    epicId: string | null;
+    focusIds?: string[];
+    nowMs: number;
+    partial?: boolean;
+    /** The «От тебя» set when the caller read it from beads this graph does not get as is (board graph). */
+    asked?: Asked;
+  },
 ): GraphModel {
   const all = beads.filter(isBead);
   const byId = new Map<string, GraphBead>();
   for (const b of all) if (!byId.has(b.id)) byId.set(b.id, b);
-  const asked: Asked = new Set(askedOwnerQuestions(all).keys());
+  const asked: Asked = opts.asked ?? askedHoldsOf(all);
   const live = (id: string): GraphBead | undefined => {
     const b = byId.get(id);
     return b !== undefined && b.status !== 'closed' && !isPlumbing(b, asked) ? b : undefined;
@@ -349,15 +363,19 @@ export function buildGraph(
     const assignee = d.kind === 'task' && b.assignee && b.assignee.trim().length > 0 ? b.assignee.trim() : null;
     const base = { id, kind: d.kind, label: d.label, title: d.title, holds, row: 0, outside: d.outside, assignee };
     if (d.kind === 'question') {
-      return { ...base, column: 0, state: 'waits_owner', reason: `держит ${holds}` };
+      // «Держит N» is the shared count (lib/ownerAsked), the same as in «Нужно от меня».
+      const n = asked.get(b.id) ?? holds;
+      return { ...base, holds: n, column: 0, state: 'waits_owner', reason: n === 0 ? 'ничего не держит' : `держит ${n}` };
     }
     const column = depth.get(id) ?? 1;
     const qs = d.blockers.filter((x) => drafts.get(x)?.kind === 'question').map(shortOf);
     const ts = d.blockers.filter((x) => drafts.get(x)?.kind === 'task').map(shortOf);
-    const unasked = blockerIds(b)
+    const unaskedGates = blockerIds(b)
       .map((x) => byId.get(x))
-      .filter((g): g is GraphBead => isUnaskedGate(g, asked))
-      .map((g) => shorten(g.title));
+      .filter((g): g is GraphBead => isUnaskedGate(g, asked));
+    const unasked = unaskedGates.map((g) => shorten(g.title));
+    // The feeder's own wording for class `no-plan` (feeder_contract.py).
+    const noPlan = unaskedGates.some((g) => meta(g, 'devwork.gate_kind') === 'plan');
     let state: GraphNodeState;
     let reason: string;
     if (b.status === 'in_progress') {
@@ -376,7 +394,7 @@ export function buildGraph(
       // An owner gate the city has not asked yet: it holds, but it is no
       // question for the owner, and the task is not «никто не взял».
       state = 'waits_task';
-      reason = `ждёт: ${listShort(unasked)} — вопрос ещё не задан`;
+      reason = noPlan ? 'у этапа нет плана' : `ждёт: ${listShort(unasked)} — вопрос ещё не задан`;
     } else {
       const since = Date.parse(b.updated_at ?? b.created_at);
       const days = Number.isFinite(since) ? Math.floor((opts.nowMs - since) / DAY_MS) : 0;

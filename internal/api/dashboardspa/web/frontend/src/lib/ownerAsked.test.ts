@@ -6,9 +6,10 @@ import { needsFromBoard } from './needsFromMe';
 import { askedOwnerQuestions } from './ownerAsked';
 
 // One rule for «Нужно от меня» and the graph's «От тебя» (owner 16.11):
-// an open owner question that (a) holds at least one open task, directly
-// or through others, and (b) was actually put to the owner (needs/operator,
-// decision.question_id, a Discord link). Shapes are the live 16.11 cases.
+// every open question actually put to the owner (needs/operator,
+// decision.question_id, a Discord link), once per question id (the non-epic
+// carrier wins). «Держит N» is a label and a sort key; N = 0 reads «ничего не
+// держит» and never hides the question. Shapes are the live 16.11 cases.
 
 const NOW_MS = Date.parse('2026-11-16T20:00:00Z');
 const AT = '2026-11-16T10:00:00Z';
@@ -37,6 +38,8 @@ const BEADS: SupervisorBead[] = [
   // dw-eba63…: the M03 epic carrying a stale copy of the re-slice question.
   bead('dw-e1', { issue_type: 'epic', title: 'M03. Эпик', labels: ['milestone:M03', 'needs/operator'], metadata: asked('q4') }),
   bead('dw-t3', { labels: ['milestone:M13'], dependencies: blocks('dw-e1') }),
+  // The same question (q1) carried by an epic too: it shows once, on the gate.
+  bead('dw-e2', { issue_type: 'epic', title: 'M05. Эпик', labels: ['milestone:M05', 'needs/operator'], metadata: asked('q1') }),
   // dw-cs2w: «ответ владельца» placeholder task, not marked, waits on an asked gate.
   bead('dw-a1', { title: 'M04 — ответ владельца на ВВ-6', labels: ['milestone:M04'], dependencies: blocks('dw-g1') }),
   // dw-37352…: a task in work that asked its own question; it holds itself.
@@ -46,15 +49,20 @@ const BEADS: SupervisorBead[] = [
   bead('dw-t4', { status: 'closed', dependencies: blocks('dw-g3') }),
 ];
 
+const ASKED_SET = ['dw-e1', 'dw-g1', 'dw-g3', 'dw-p1', 'dw-w1'];
+
 describe('askedOwnerQuestions', () => {
-  it('keeps only asked questions that hold an open task', () => {
-    expect([...askedOwnerQuestions(BEADS).keys()].sort()).toEqual(['dw-g1', 'dw-w1']);
+  it('keeps every asked question, once per question id, the non-epic carrier first', () => {
+    expect([...askedOwnerQuestions(BEADS).keys()].sort()).toEqual(ASKED_SET);
   });
 
   it('counts held tasks transitively, an in-work carrier holding itself', () => {
     const q = askedOwnerQuestions(BEADS);
     expect(q.get('dw-g1')?.holds).toBe(2);
     expect(q.get('dw-w1')?.holds).toBe(1);
+    expect(q.get('dw-e1')?.holds).toBe(1);
+    expect(q.get('dw-p1')?.holds).toBe(0);
+    expect(q.get('dw-g3')?.holds).toBe(0);
   });
 });
 
@@ -63,21 +71,38 @@ describe('«Нужно от меня» and the graph «От тебя» agree', (
   const graph = buildBoardGraph(BEADS, { nowMs: NOW_MS });
   const graphQuestions = graph.nodes.filter((n) => n.kind === 'question').map((n) => beadIdOf(n.id));
 
-  it('shows the same set in both places', () => {
+  it('shows the same set in both places, and the badge equals the column header', () => {
     const needIds = needs.needs.filter((n) => n.kind === 'question').map((n) => n.id);
-    expect(needIds.sort()).toEqual(['dw-g1', 'dw-w1']);
-    expect(graphQuestions.sort()).toEqual(['dw-g1', 'dw-w1']);
-    expect(needs.count).toBe(graphQuestions.length);
+    expect([...needIds].sort()).toEqual(ASKED_SET);
+    expect([...graphQuestions].sort()).toEqual(ASKED_SET);
+    expect(graph.columns[0]?.title).toBe('От тебя');
+    expect(needs.count).toBe(graph.columns[0]?.count);
   });
 
-  it('a question that holds nothing never comes back as an owner stall', () => {
+  it('gives the same «держит N» in both places', () => {
+    const graphHolds = Object.fromEntries(graph.nodes.filter((n) => n.kind === 'question').map((n) => [beadIdOf(n.id), n.holds]));
+    const needHolds = Object.fromEntries(needs.needs.map((n) => [n.id, n.holds]));
+    expect(graphHolds).toEqual(needHolds);
+  });
+
+  it('lists holders first; a question that holds nothing says so and stays', () => {
+    const holds = needs.needs.map((n) => n.holds);
+    expect(holds.slice(-2)).toEqual([0, 0]);
+    expect(holds.slice(0, 3).every((h) => h > 0)).toBe(true);
+    expect(graph.nodes.find((n) => n.id === 'dw-p1')?.reason).toBe('ничего не держит');
+    const rows = graph.nodes.filter((n) => n.kind === 'question').sort((a, b) => a.row - b.row);
+    expect(rows.slice(-2).every((n) => n.holds === 0)).toBe(true);
+  });
+
+  it('an asked question is never re-listed as a stall', () => {
     expect(needs.stalls.map((s) => s.id)).not.toContain('dw-p1');
   });
 
-  it('a task behind a gate not yet asked says so instead of «никто не взял»', () => {
+  it('a task behind a stage gate with no plan says «у этапа нет плана»', () => {
     const t2 = graph.nodes.find((n) => n.id === 'dw-t2');
     expect(t2?.state).toBe('waits_task');
-    expect(t2?.reason).toContain('вопрос ещё не задан');
+    expect(t2?.reason).toBe('у этапа нет плана');
+    expect(graphQuestions).not.toContain('dw-g2');
   });
 
   it('the «ответ владельца» placeholder is a task waiting on the question', () => {

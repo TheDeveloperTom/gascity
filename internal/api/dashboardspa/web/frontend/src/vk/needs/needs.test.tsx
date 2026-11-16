@@ -8,6 +8,7 @@ import {
   NOW_MS,
   OWNER_ITEMS,
   QUESTION_ID,
+  SECOND_QUESTION_ID,
   HELD_STALL_ID,
   STALLED_ID,
   UNLINKED_ID,
@@ -114,6 +115,13 @@ describe('«Нужно от меня» shelves', () => {
     expect(within(item).getByText('M04 10 · M03 4')).toBeTruthy();
     // Chips are read-only on the list: the decision happens inside the card.
     expect(within(item).getByText('Сегодня в 18:00').closest('button')).toBeNull();
+  });
+
+  // owner 16.11: an asked question that holds nothing stays and says so.
+  it('a question that holds nothing reads «ничего не держит» and stays on the list', () => {
+    show();
+    const item = itemOf(SECOND_QUESTION_ID);
+    expect(within(item).getByTestId('need-meta').textContent).toMatch(/^ничего не держит, ждёт /);
   });
 
   it('«держит N задач» opens the graph of that chain (?view=graph&focus=<id>)', () => {
