@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph, chainOf, whatIfBanner, type GraphBead } from './model';
+import { beadIdOf, buildGraph, chainOf, questionNodeId, whatIfBanner, type GraphBead } from './model';
 
 // The M04 chain of the owner-approved mockups (gen.py EPIC_ID / EPIC_EDGES),
 // in the live bead shape: `needs` and `dependencies[]` both carry blockers,
@@ -193,6 +193,42 @@ describe('chainOf and whatIfBanner', () => {
 });
 
 describe('buildGraph edges of the live data', () => {
+  it('keeps real tasks that carry engine gc.* keys; drops route steps and cross-store gates', () => {
+    const beads = [
+      bead('dw-t', 'M04 #1 — Задача', { metadata: { 'gc.exclusive_drain_reservation': 'x', 'gc.routed_to': 'w' } }),
+      bead('gcg-step', 'prepare-worktree', { metadata: { 'gc.root_bead_id': 'gcg-root' } }),
+      bead('gcg-xsg', 'cross-store gate', { issue_type: 'gate', metadata: { 'gc.cross_store_blocker': 'dw-t' } }),
+      bead('dw-u', 'M04 #2 — Ждёт', { dependencies: [blocks('dw-u', 'gcg-xsg'), blocks('dw-u', 'gcg-step')] }),
+    ];
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
+    expect(m.nodes.map((n) => n.id).sort()).toEqual(['dw-t', 'dw-u']);
+  });
+
+  it('a task in work that carries its own owner decision gets a question card in column 0 (live M04 #3)', () => {
+    const beads = [
+      bead(ID.m3, 'M04 #3 — Сделать invalidation', {
+        status: 'in_progress',
+        labels: ['milestone:M04', 'needs/operator'],
+        metadata: { 'decision.question_id': 'b736', 'decision.decide': 'ВВ-4: применять ли миграцию 0426' },
+      }),
+      bead(ID.s3, 'M04 #33 — Не затирать', { needs: [ID.m3] }),
+      bead(ID.qv6, 'M04 — ответ владельца на ВВ-6 (способ оплаты)'),
+    ];
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
+    const task = node(m, ID.m3);
+    expect(task.kind).toBe('task');
+    expect(task.state).toBe('in_work');
+    expect(task.reason).toBe('ждёт тебя: ВВ-4');
+    const qid = questionNodeId(ID.m3);
+    expect(node(m, qid).kind).toBe('question');
+    expect(node(m, qid).label).toBe('вопрос · ВВ-4');
+    expect(beadIdOf(qid)).toBe(ID.m3);
+    expect(m.edges).toContainEqual({ from: qid, to: ID.m3 });
+    expect(node(m, qid).holds).toBe(2);
+    expect(node(m, ID.qv6).kind).toBe('question');
+    expect(node(m, ID.qv6).label).toBe('вопрос · ВВ-6');
+  });
+
   it('marks an untaken free task «никто не взял · N дн» and says so in the subline', () => {
     const beads = [bead('dw-a', 'M04 #9 — Старое', { created_at: new Date(NOW - 5 * DAY).toISOString() })];
     const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
@@ -200,6 +236,18 @@ describe('buildGraph edges of the live data', () => {
     expect(m.nodes[0]?.reason).toBe('никто не взял · 5 дн');
     expect(m.columns[1]?.alarm).toBe(true);
     expect(m.subline).toBe('Без причины стоит 1: никто не взял.');
+  });
+
+  it('counts each bead once when the board read repeats it across legs', () => {
+    const m = buildGraph([...m04(), ...m04()], { epicId: 'M04', nowMs: NOW });
+    expect(m.headline.startsWith('M04: 5 из 17 закрыто.')).toBe(true);
+  });
+
+  it('accepts an epic bead id as well as the milestone key', () => {
+    const byKey = buildGraph(m04(), { epicId: 'M04', nowMs: NOW });
+    const byBead = buildGraph(m04(), { epicId: 'dw-m04', nowMs: NOW });
+    expect(byBead.nodes.map((n) => n.id).sort()).toEqual(byKey.nodes.map((n) => n.id).sort());
+    expect(byBead.headline).toBe(byKey.headline);
   });
 
   it('focusIds restrict the graph to the chains of those beads', () => {
