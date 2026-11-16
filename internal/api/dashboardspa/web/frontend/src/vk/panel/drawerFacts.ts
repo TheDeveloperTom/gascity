@@ -14,7 +14,9 @@ function meta(bead: SupervisorBead, key: string): string {
 function ordinal(bead: SupervisorBead): string | null {
   const step = meta(bead, 'devwork.step') || meta(bead, 'step');
   if (/^\d+$/.test(step)) return step;
-  return null;
+  // live titles open with their label: «M04 #1 — Перенести …»
+  const m = /^\s*M\d+\s+#(\d+)\b/.exec(bead.title ?? '');
+  return m?.[1] ?? null;
 }
 
 /**

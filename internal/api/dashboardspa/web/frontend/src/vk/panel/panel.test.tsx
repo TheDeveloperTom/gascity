@@ -102,8 +102,9 @@ describe('task drawer', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('a plain task shows «Обсудить с Мэром» and no question block', () => {
+  it('a plain task shows «Обсудить с Мэром», no question block and no empty chips row', () => {
     show(plain);
+    expect(screen.queryByTestId('task-chips')).toBeNull();
     expect(screen.getByRole('button', { name: 'Обсудить с Мэром' })).toBeTruthy();
     expect(screen.queryByTestId('question-card')).toBeNull();
     expect(screen.queryByText('Ответить в Discord')).toBeNull();
@@ -149,6 +150,11 @@ describe('task drawer', () => {
     expect(within(header).getByRole('button', { name: 'Ещё' })).toBeTruthy();
     expect(within(header).getByRole('button', { name: 'Закрыть' })).toBeTruthy();
     expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('Открытая задача');
+  });
+
+  it('the crumb takes «#N» from a live title «M04 #1 — …» when no step is stored', () => {
+    show(bead({ id: 'dw-a4e4', title: 'M04 #1 — Перенести sync', labels: ['milestone:M04'] }));
+    expect(screen.getByTestId('task-crumb').textContent).toBe('M04 #1');
   });
 
   it('status row «В работе», «И Исполнитель», «Подзадача M04»; chips M04, «Пакет этапа», #580', () => {

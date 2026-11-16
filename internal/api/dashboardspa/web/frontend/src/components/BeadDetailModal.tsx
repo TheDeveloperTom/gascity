@@ -127,10 +127,12 @@ export function BeadDetailModal({
   );
   const recipe = bead?.metadata?.['gc.kind'] === 'run';
   const needsYou = question !== null && answer === null;
-  const chips = bead ? (
+  const stage = bead ? stageChip(bead) : null;
+  const hasChips = milestone !== null || stage !== null || needsYou || pr !== null || recipe;
+  const chips = bead && hasChips ? (
     <>
       {milestone !== null && <DotChip color={tagColor(milestone)}>{milestone}</DotChip>}
-      {stageChip(bead) !== null && <DotChip color="#64748B">{stageChip(bead)}</DotChip>}
+      {stage !== null && <DotChip color="#64748B">{stage}</DotChip>}
       {needsYou && (
         <span className="inline-flex h-5 items-center rounded-sm bg-vk-brand/15 px-2 text-sm font-medium text-vk-text-high">
           {t('needs you')}
