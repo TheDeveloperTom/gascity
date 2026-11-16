@@ -5,8 +5,7 @@ import { openExternal } from '../../lib/openExternal';
 import type { OwnerQuestion } from '../../lib/ownerQuestions';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
-import type { DiscussContext } from '../../lib/discussWithMayor';
-import { DiscussButton } from '../DiscussButton';
+import { mayorChannelUrl } from '../../lib/mayorLink';
 
 // The VK task panel (vk lane 2): a right-side drawer from `md` up, a
 // full-screen card below it. Design frames: Main (right panel),
@@ -213,15 +212,17 @@ function ChoiceButton({
 
 export interface QuestionCardProps {
   q: OwnerQuestion;
-  discussCtx: DiscussContext;
   onAnswered: (a: Answer) => void;
 }
 
-/** The open question, compact: title, «Что случилось», options, «Другое». */
-export function QuestionCard({ q, discussCtx }: QuestionCardProps) {
+/** The open question, compact: title, «Что случилось», the options, one button. */
+export function QuestionCard({ q }: QuestionCardProps) {
   // Owner 16.11: the owner answers in Discord, on the Mayor's own message
-  // (its buttons prove it is the owner); every choice here opens it.
-  const pick = () => openExternal(q.chatUrl);
+  // (its buttons prove it is the owner). polish2 16.11: ONE primary
+  // «Ответить в Discord» (the old «Answer» + «Other — discuss» pair did the
+  // same thing); the options are read-only so he knows what he will pick.
+  // With no message link it opens the #мэр chat.
+  const target = q.chatUrl.length > 0 ? q.chatUrl : mayorChannelUrl();
 
   return (
     <section
@@ -235,16 +236,30 @@ export function QuestionCard({ q, discussCtx }: QuestionCardProps) {
           <p className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">{q.why}</p>
         </div>
       )}
-      <div data-testid="question-choices" className="flex flex-col gap-2">
-        {q.choices.length === 0 ? (
-          <ChoiceButton label={t('Answer in Discord')} then="" primary onClick={pick} />
-        ) : (
-          q.choices.map((c, i) => (
-            <ChoiceButton key={`${i}:${c.label}`} label={c.label} then={c.then} primary={i === 0} onClick={pick} />
-          ))
-        )}
-      </div>
-      <DiscussButton ctx={discussCtx} label={t('Other — discuss in Discord')} />
+      {q.choices.length > 0 && (
+        <ul data-testid="question-choices" className="flex flex-col gap-1.5">
+          {q.choices.map((c, i) => (
+            <li
+              key={`${i}:${c.label}`}
+              className="flex flex-col gap-0.5 rounded-sm border border-vk-border bg-vk-bg-primary px-3 py-2"
+            >
+              <span className="text-base font-medium text-vk-text-high [overflow-wrap:anywhere]">{c.label}</span>
+              {c.then.length > 0 && (
+                <span className="text-sm text-vk-text-low [overflow-wrap:anywhere]">{c.then}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <ChoiceButton
+        label={t('Answer in Discord')}
+        then=""
+        primary
+        disabled={target === null}
+        onClick={() => {
+          if (target !== null) openExternal(target);
+        }}
+      />
     </section>
   );
 }

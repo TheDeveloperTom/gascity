@@ -9,6 +9,7 @@ import { RU_VK5 } from './ru.vk5';
 import { RU_VK6 } from './ru.vk6';
 import { RU_VKFINAL } from './ru.vkfinal';
 import { RU_H1 } from './ru.h1';
+import { RU_POLISH2 } from './ru.polish2';
 
 // A small gettext-style layer: the English string is the key, Russian lives
 // in `ru.ts` plus one dictionary per dashboard-v3 lane (`ru.home.ts`,
@@ -27,13 +28,17 @@ const RU: Readonly<Record<string, string | RuPlural>> = {
   ...RU_VK6,
   ...RU_VKFINAL,
   ...RU_H1,
+  ...RU_POLISH2,
 };
 
 export type Locale = 'en' | 'ru';
 export type Vars = Readonly<Record<string, string | number>>;
 export type PluralForms = { one: string; other: string };
 
-export const LOCALE_STORAGE_KEY = 'gascity:locale';
+// polish2 16.11: `:v2` because the owner's browser kept an `en` under the old
+// key that he does not remember choosing; Russian is the default again and
+// only the toggle (which writes this key) switches to English.
+export const LOCALE_STORAGE_KEY = 'gascity:locale:v2';
 const COMPONENT = 'i18n';
 
 // The owner reads Russian (dashboard v3): `ru` is the default, and English
@@ -47,7 +52,7 @@ export function resolveInitialLocale(
   return 'ru';
 }
 
-function readInitialLocale(): Locale {
+export function readInitialLocale(): Locale {
   if (typeof window === 'undefined') return 'ru';
   const stored = readBrowserStorage('localStorage', LOCALE_STORAGE_KEY, COMPONENT);
   return resolveInitialLocale(
@@ -95,12 +100,23 @@ function substitute(template: string, vars: Vars | undefined): string {
   );
 }
 
+// A label-map key (`status.open`, `resolution.duplicate`) is not English
+// text: with no entry in the current locale it shows its last segment as a
+// readable label («Open», «In progress»), never the raw key (polish2 16.11).
+const DOTTED_KEY = /^[a-z][a-z0-9]*(?:\.[a-z0-9_-]+)+$/;
+
+function readable(key: string): string {
+  if (!DOTTED_KEY.test(key)) return key;
+  const last = key.slice(key.lastIndexOf('.') + 1).replace(/[_-]+/g, ' ').trim();
+  return last.length === 0 ? key : last.charAt(0).toUpperCase() + last.slice(1);
+}
+
 export function t(en: string, vars?: Vars): string {
-  if (current === 'en') return substitute(en, vars);
+  if (current === 'en') return substitute(readable(en), vars);
   const entry = RU[en];
   if (typeof entry === 'string') return substitute(entry, vars);
   missing.add(en);
-  return substitute(en, vars);
+  return substitute(readable(en), vars);
 }
 
 // For strings that may be a label or a name (page titles): translate when a

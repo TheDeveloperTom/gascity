@@ -167,18 +167,6 @@ export function Header() {
     <header className="border-b border-vk-border bg-vk-bg-secondary pl-[var(--sail)] pr-[var(--sair)] pt-[var(--sait)] font-vk-sans md:sticky md:top-0 md:z-30">
       <div className="flex min-h-11 items-center gap-2 px-3 md:gap-3">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span
-            title={t('devwork product')}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[4.5px] bg-vk-bg-panel text-[13px] font-medium text-vk-text-high"
-          >
-            DW
-          </span>
-          <span
-            title={t('The city itself')}
-            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[4.5px] text-[13px] font-medium text-vk-text-normal sm:inline-flex"
-          >
-            ГО
-          </span>
           {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
               {t('Switch city')}
@@ -314,7 +302,7 @@ export function Header() {
             <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[17px] w-[17px]" />
           </button>
           {/* Language toggle (SH-18, ruling R2): the label names the language
-              it switches TO; the choice persists in gascity:locale. The tree
+              it switches TO; the choice persists in gascity:locale:v2. The tree
               remounts on a change, so focus is handed back (review M-5). */}
           <button
             ref={localeToggleRef}

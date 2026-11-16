@@ -138,7 +138,7 @@ export function BeadDetailModal({
         title={bead?.title ?? beadId ?? t('Task')}
         top={
           question !== null && answer === null && discussCtx ? (
-            <QuestionCard q={question} discussCtx={discussCtx} onAnswered={setAnswer} />
+            <QuestionCard q={question} onAnswered={setAnswer} />
           ) : undefined
         }
         actions={actions}

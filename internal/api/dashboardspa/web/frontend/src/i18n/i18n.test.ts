@@ -4,6 +4,7 @@ import {
   collectMissing,
   getLocale,
   resetMissing,
+  readInitialLocale,
   resolveInitialLocale,
   setLocale,
   t,
@@ -155,5 +156,27 @@ describe('i18n', () => {
     installStorage(throwing);
     expect(() => setLocale('ru')).not.toThrow();
     expect(getLocale()).toBe('ru');
+  });
+
+  // polish2 16.11 (owner): a raw key such as `status.open` must never reach the screen.
+  it('a dotted key without a translation shows a readable label, never the raw key', () => {
+    setLocale('en');
+    expect(t('status.open')).toBe('Open');
+    expect(t('status.in_progress')).toBe('In progress');
+    setLocale('ru');
+    expect(t('status.open')).toBe('Ждёт');
+    expect(t('kind.never_seen_kind')).toBe('Never seen kind');
+  });
+
+  // polish2 16.11 (owner, Brave at 2000 px rendered in English with the toggle
+  // on «RU»): an `en` left under the old storage key is not his choice today.
+  // Russian by default; only a choice made with the toggle under the current
+  // key switches to English.
+  it('a stale stored `en` under the pre-polish2 key is ignored', () => {
+    window.localStorage.setItem('gascity:locale', 'en');
+    expect(LOCALE_STORAGE_KEY).not.toBe('gascity:locale');
+    expect(readInitialLocale()).toBe('ru');
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
+    expect(readInitialLocale()).toBe('en');
   });
 });

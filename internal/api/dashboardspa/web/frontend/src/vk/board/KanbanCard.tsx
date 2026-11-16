@@ -183,14 +183,16 @@ function OwnKanbanCard({
       ref={ref}
       data-bead-id={bead.id}
       data-card-key={card.key}
+      {...(selected ? { 'aria-current': 'true' as const } : {})}
       data-stage={stage.stage}
       {...(routeAttention === null ? {} : { 'data-route-attention': routeAttention.kind })}
       {...(attentionSeverity === null ? {} : { 'data-attention-severity': attentionSeverity })}
       onClick={() => onSelect(bead.id)}
       className={cn(
-        'group flex min-w-0 cursor-pointer flex-col gap-1 border-vk-border bg-vk-bg-primary p-2 font-vk-sans',
+        'group flex min-w-0 cursor-pointer flex-col gap-1 border-vk-border p-2 font-vk-sans',
+        selected ? null : 'bg-vk-bg-primary',
         variant === 'column' ? '-mx-px -mt-px border' : 'border-b',
-        selected && 'relative z-[1] ring-1 ring-inset ring-vk-brand',
+        selected && 'relative z-[1] bg-vk-brand/10 ring-2 ring-inset ring-vk-brand-secondary',
         className,
       )}
     >

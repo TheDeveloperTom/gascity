@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
+import type { NavigateFunction } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeadsPage } from './Beads';
 import { invalidate } from '../api/cache';
@@ -111,10 +112,20 @@ afterEach(() => {
   act(() => setLocale('en'));
 });
 
+// polish2: the router's current location and navigate(), read by URL tests.
+const probe: { search: string; navigate: NavigateFunction | null } = { search: '', navigate: null };
+function LocationProbe() {
+  const location = useLocation();
+  probe.search = location.search;
+  probe.navigate = useNavigate();
+  return null;
+}
+
 function renderPage(contributors: AttentionContributor[] = [], entry = '/beads') {
   return render(
     <LocaleProvider>
       <MemoryRouter initialEntries={[entry]}>
+        <LocationProbe />
         <NowProvider intervalMs={1_000_000}>
           <OperatorConfigProvider
             operator={{ operatorAlias: 'owner', operatorWireAlias: 'human', decisionLabel: 'x' }}
@@ -162,7 +173,7 @@ describe('BeadsPage one board', () => {
     await screen.findByText('Приёмка города: часть B');
     const before = beadQueries.length;
     fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
-    fireEvent.click(screen.getByRole('option', { name: /^City/ }));
+    fireEvent.click(screen.getByRole('option', { name: /^City \(service\)/ }));
     expect(screen.getByText('Приёмка города: часть B')).toBeTruthy();
     expect(screen.queryByText('M04 — приёмка этапа')).toBeNull();
     expect(beadQueries.length).toBe(before);
@@ -175,7 +186,7 @@ describe('BeadsPage one board', () => {
     const names = within(screen.getByRole('listbox', { name: 'Choose a project' }))
       .getAllByRole('option')
       .map((b) => b.textContent);
-    expect(names).toEqual(['All2', 'devwork1', 'City1']);
+    expect(names).toEqual(['All2', 'devwork product1', 'City (service)1']);
     for (const name of names) expect(name).not.toContain('/r/');
   });
 
@@ -183,15 +194,15 @@ describe('BeadsPage one board', () => {
     renderPage([], '/beads?project=city');
     await screen.findByText('Приёмка города: часть B');
     expect(screen.queryByText('M04 — приёмка этапа')).toBeNull();
-    expect(screen.getByRole('button', { name: /Project:/ }).textContent).toBe('Project: City');
+    expect(screen.getByRole('button', { name: /Project:/ }).textContent).toBe('Project: City (service)');
   });
 
   it('every card carries its project tag when two projects exist', async () => {
     renderPage();
     await screen.findByText('Приёмка города: часть B');
     const card = (id: string) => document.querySelector(`[data-bead-id="${id}"]`) as HTMLElement;
-    expect(within(card('dw-iy9a')).getByText('devwork')).toBeTruthy();
-    expect(within(card('dp-dh6')).getByText('City')).toBeTruthy();
+    expect(within(card('dw-iy9a')).getByText('devwork product')).toBeTruthy();
+    expect(within(card('dp-dh6')).getByText('City (service)')).toBeTruthy();
   });
 
   it('test cards stay hidden until asked', async () => {
@@ -278,5 +289,74 @@ describe('BeadsPage one board', () => {
     expect(screen.queryByText('Choose the window')).toBeNull();
     expect(document.querySelector('.bg-plate')).toBeNull();
     expect(collectMissing()).toEqual([]);
+  });
+});
+
+// polish2 16.11 (owner): the open card lives in the URL, and the board shows it.
+describe('BeadsPage selection in the URL', () => {
+  const titleButton = (title: string) => screen.getByRole('button', { name: title });
+
+  it('selecting a card writes ?bead=<id>; closing removes it', async () => {
+    renderPage();
+    await screen.findByText('M04 — приёмка этапа');
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await waitFor(() => expect(new URLSearchParams(probe.search).get('bead')).toBe('dw-iy9a'));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(new URLSearchParams(probe.search).has('bead')).toBe(false));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opening a URL with ?bead= selects the card', async () => {
+    renderPage([], '/beads?bead=dw-iy9a');
+    await screen.findByText('Приёмка города: часть B');
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    const card = document.querySelector('[data-bead-id="dw-iy9a"]') as HTMLElement;
+    expect(card.getAttribute('aria-current')).toBe('true');
+  });
+
+  it('Back after opening a card closes it; Forward opens it again', async () => {
+    renderPage();
+    await screen.findByText('M04 — приёмка этапа');
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    act(() => {
+      void probe.navigate!(-1);
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(new URLSearchParams(probe.search).has('bead')).toBe(false);
+    act(() => {
+      void probe.navigate!(1);
+    });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(new URLSearchParams(probe.search).get('bead')).toBe('dw-iy9a');
+  });
+
+  it('the selected card is marked aria-current with a visible ring and tint; others are not', async () => {
+    renderPage();
+    await screen.findByText('M04 — приёмка этапа');
+    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('dialog');
+    const card = (id: string) => document.querySelector(`[data-bead-id="${id}"]`) as HTMLElement;
+    expect(card('dw-iy9a').getAttribute('aria-current')).toBe('true');
+    expect(card('dw-iy9a').className).toContain('ring-2');
+    expect(card('dw-iy9a').className).toContain('bg-vk-brand/10');
+    expect(card('dp-dh6').hasAttribute('aria-current')).toBe(false);
+  });
+});
+
+describe('BeadsPage project names (polish2 16.11)', () => {
+  it('Russian: «Все», «Продукт devwork», «Город (служебное)», «Проект:», «Найти задачу…»', async () => {
+    setLocale('ru');
+    renderPage();
+    await screen.findByText('Приёмка города: часть B');
+    const button = screen.getByRole('button', { name: /Проект:/ });
+    expect(button.textContent).toBe('Проект: Все');
+    fireEvent.click(button);
+    const names = within(screen.getByRole('listbox', { name: 'Выбрать проект' }))
+      .getAllByRole('option')
+      .map((b) => b.textContent);
+    expect(names).toEqual(['Все2', 'Продукт devwork1', 'Город (служебное)1']);
+    expect(screen.getByPlaceholderText('Найти задачу…')).toBeTruthy();
   });
 });

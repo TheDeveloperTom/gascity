@@ -129,6 +129,19 @@ describe('Header top bar', () => {
     expect(column.className.split(/\s+/)).not.toContain('mx-auto');
   });
 
+  // polish2 16.11 (owner): «DW» / «ГО» were two hover-only tiles that
+  // controlled nothing; they are gone (the scope lives in the board's
+  // «Проект» menu: «Продукт devwork», «Город (служебное)»).
+  it('no cryptic two-letter scope tiles in the top bar', () => {
+    const { container } = renderHeader([]);
+    const header = container.querySelector('header')!;
+    for (const el of Array.from(header.querySelectorAll('span'))) {
+      expect(['DW', 'ГО']).not.toContain(el.textContent?.trim());
+    }
+    expect(header.querySelector('[title="devwork product"]')).toBeNull();
+    expect(header.querySelector('[title="The city itself"]')).toBeNull();
+  });
+
   it('theme toggle', () => {
     renderHeader([]);
     const toggle = screen.getByRole('button', { name: /Switch to (dark|light) theme/ });

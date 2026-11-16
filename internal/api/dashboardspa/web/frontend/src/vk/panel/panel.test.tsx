@@ -144,9 +144,8 @@ describe('question card', () => {
     expect(within(card).getByText('Что случилось')).toBeTruthy();
     expect(within(card).getByText('Только ты можешь войти под основным аккаунтом.')).toBeTruthy();
     expect(within(card).getByText('Перенос утром, 22 задачи подождут ещё ночь')).toBeTruthy();
-    expect(
-      within(card).getByRole('button', { name: 'Другое — обсудить в Discord' }),
-    ).toBeTruthy();
+    // polish2 16.11 (owner): one Russian primary button, no «Другое — обсудить в Discord».
+    expect(within(card).queryByText(/Другое —|Other|discuss/i)).toBeNull();
     // Owner change 15.11: no «Мэр спрашивает», no «Почему нужен ты», no hint line.
     const text = card.textContent ?? '';
     expect(text).not.toContain('Мэр спрашивает');
@@ -159,31 +158,45 @@ describe('question card', () => {
     expect(screen.getByRole('button', { name: 'Обсудить с Мэром' })).toBeTruthy();
   });
 
-  it('a choice opens the Mayor’s Discord message and sends nothing (owner 16.11: answers live in Discord)', () => {
+  it('one primary «Ответить в Discord» opens the question message; the choices are read-only (polish2 16.11)', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     show(question);
-    const choices = within(screen.getByTestId('question-choices')).getAllByRole('button');
-    expect(choices).toHaveLength(3);
-    fireEvent.click(choices[1]!);
+    const card = screen.getByTestId('question-card');
+    const buttons = within(card).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual(['Ответить в Discord']);
+    // the options stay visible as text so the owner knows what he will pick
+    expect(within(card).getByText('Завтра в 10:00')).toBeTruthy();
+    fireEvent.click(buttons[0]!);
     expect(mockOpen).toHaveBeenCalledWith(CHAT);
     expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
-    // Nothing was sent from here: the question stays open, no «отвечено» claim.
     expect(screen.getByTestId('question-card')).toBeTruthy();
     expect(screen.queryByText(/отвечено/)).toBeNull();
   });
 
-
-  it('a legacy question with no choices offers «Ответить в Discord», which opens the message', () => {
+  it('a legacy question with no choices has the same single button, which opens the message', () => {
     const legacy = bead({
       id: 'gc-legacy',
       labels: ['needs/operator'],
       metadata: { 'decision.question_id': 'q-3', 'decision.chat_url': CHAT },
     });
     show(legacy);
+    const card = screen.getByTestId('question-card');
+    expect(within(card).getAllByRole('button').map((b) => b.textContent)).toEqual(['Ответить в Discord']);
     fireEvent.click(screen.getByRole('button', { name: 'Ответить в Discord' }));
     expect(mockOpen).toHaveBeenCalledWith(CHAT);
+  });
+
+  it('the header status chip reads «Ждёт», never a raw key, in Russian and in English', () => {
+    show(question);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('Ждёт');
+    expect(dialog.textContent).not.toMatch(/status\./);
+    cleanup();
+    setLocale('en');
+    show(question);
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/status\./);
   });
 });
 

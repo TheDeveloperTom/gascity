@@ -117,7 +117,25 @@ export function BeadsPage() {
       setOwnerFilter('all');
     }
   }, [ownerFilter, peerSources]);
-  const [selectedId, setSelectedId] = useState<string | null>(selectedBeadParam);
+  // polish2 16.11 (owner): the open card IS the URL (`?bead=<id>`), so a link
+  // can be shared and survives a reload. Opening or switching a card pushes a
+  // history entry (Back closes it, Forward reopens it); closing replaces the
+  // entry so it does not leave a dead step behind.
+  const selectedId = selectedBeadParam;
+  const setSelectedId = useCallback(
+    (id: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id === null) next.delete('bead');
+          else next.set('bead', id);
+          return next;
+        },
+        { replace: id === null },
+      );
+    },
+    [setSearchParams],
+  );
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
@@ -183,10 +201,6 @@ export function BeadsPage() {
     },
     { coalesceMs: BOARD_REFRESH_COALESCE_MS },
   );
-
-  useEffect(() => {
-    if (selectedBeadParam !== null) setSelectedId(selectedBeadParam);
-  }, [selectedBeadParam]);
 
   useEffect(() => {
     if (epicParam !== null) setEpic(epicParam);
@@ -320,10 +334,19 @@ export function BeadsPage() {
   }, [selectedId, rigItems, peerBoards.result, ownLogin]);
   const openTopicFromCard = useCallback(
     (login: string, topicId: string) => {
-      setSelectedId(null);
-      setTopicsParams(login, topicId);
+      // one URL write: two functional updates in one tick would race
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('bead');
+          next.set('topics', login);
+          next.set('topic', topicId);
+          return next;
+        },
+        { replace: true },
+      );
     },
-    [setTopicsParams],
+    [setSearchParams],
   );
   const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
   const epics = useMemo(

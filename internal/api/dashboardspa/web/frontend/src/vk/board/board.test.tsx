@@ -204,9 +204,9 @@ describe('PhoneBoard', () => {
       </MemoryRouter>,
     );
     const rig = screen.getByText('rig card').closest('article') as HTMLElement;
-    expect(within(rig).getByText('devwork')).toBeTruthy();
+    expect(within(rig).getByText('Продукт devwork')).toBeTruthy();
     const city = screen.getByText('city card').closest('article') as HTMLElement;
-    expect(within(city).getByText('Город')).toBeTruthy();
+    expect(within(city).getByText('Город (служебное)')).toBeTruthy();
   });
 
   it('an empty model renders without throwing', () => {

@@ -232,7 +232,7 @@ describe('BeadsPage', () => {
     const names = within(screen.getByRole('listbox', { name: 'Choose a project' }))
       .getAllByRole('option')
       .map((option) => option.textContent ?? '');
-    expect(names).toEqual(['All3', 'east1', 'west1', 'City1']);
+    expect(names).toEqual(['All3', 'east product1', 'west product1', 'City (service)1']);
     for (const name of names) {
       expect(name).not.toContain('/home/ds');
       expect(name).not.toContain('gascity-main');

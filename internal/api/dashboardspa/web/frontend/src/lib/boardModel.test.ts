@@ -50,8 +50,8 @@ describe('buildBoardModel', () => {
     ]);
     const card = (id: string) => model.columns.waiting.find((c) => c.node.bead.id === id)!;
     // vk-final: more than one project ⇒ every card carries its project tag.
-    expect(card('dp-dh6').tag).toBe('City');
-    expect(card('dw-iy9a').tag).toBe('devwork');
+    expect(card('dp-dh6').tag).toBe('City (service)');
+    expect(card('dw-iy9a').tag).toBe('devwork product');
   });
 
   it('one project only ⇒ no project tags', () => {
@@ -80,7 +80,7 @@ describe('buildBoardModel', () => {
     ];
     const model = buildBoardModel(data([DP, IY, bead('ea-1')]), rigs, NO_FILTERS);
     const tags = Object.fromEntries(model.columns.waiting.map((c) => [c.node.bead.id, c.tag]));
-    expect(tags).toEqual({ 'dp-dh6': 'City', 'dw-iy9a': 'devwork', 'ea-1': 'east' });
+    expect(tags).toEqual({ 'dp-dh6': 'City (service)', 'dw-iy9a': 'devwork product', 'ea-1': 'east product' });
   });
 
   it('service beads never cards', () => {
@@ -284,10 +284,10 @@ describe('buildBoardModel with a peer board', () => {
     const model = buildBoardModel(data([DP, IY]), RIGS, NO_FILTERS, [PEER]);
     expect(model.projects.map((p) => [p.key, p.label, p.count])).toEqual([
       ['all', 'All', 4],
-      ['devwork', 'devwork', 1],
+      ['devwork', 'devwork product', 1],
       ['peer:rich:crm-api', 'crm-api · Ричарда', 1],
       ['peer:rich:devwork', 'devwork · Ричарда', 1],
-      ['city', 'City', 1],
+      ['city', 'City (service)', 1],
     ]);
     const crm = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'peer:rich:crm-api' }, [PEER]);
     expect(all(crm).map((c) => c.key)).toEqual(['peer:rich:crm-api:dw-iy9a']);
