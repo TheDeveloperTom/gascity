@@ -67,6 +67,28 @@ describe('«Нужно от меня» shelves', () => {
     expect(screen.queryByRole('button', { name: /^Тихо/ })).toBeNull();
   });
 
+  // H1 16.11 (phone, peer data): the Mayors' questions arrive with the peer
+  // boards after our board; landing above «Стоит» they pushed it and every
+  // shelf below down (CLS 0.22). While the peer read settles, «Стоит» and the
+  // shelves below wait too.
+  it('while the peer boards settle, holds «Стоит» and the shelves below', () => {
+    const model = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
+    const view = render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} settling />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('heading', { level: 3, name: 'Стоит' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Работает/ })).toBeNull();
+    view.rerender(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} settling={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('heading', { level: 3, name: 'Стоит' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Работает/ })).toBeTruthy();
+  });
+
   it('shows three shelves, the first counting the same needs as the badge', () => {
     const { model } = show();
     expect(screen.getByRole('button', { name: `Нужно от меня ${model.count}` })).toBeTruthy();

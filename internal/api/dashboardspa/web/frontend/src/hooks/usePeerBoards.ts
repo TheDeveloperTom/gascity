@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getActiveCity } from '../api/cityBase';
 import { useNowOrNull } from '../contexts/NowContext';
 import { peerSourcesOf, type PeerBoardSource } from '../lib/boardOwner';
@@ -135,4 +135,26 @@ export function usePeerBoards(): PeerBoardsState {
     [result, bucket],
   );
   return { sources, error: snap.city === city ? snap.error : null, result };
+}
+
+/** How long a page waits for the peer boards before drawing what sits under their lines. */
+export const PEER_SETTLE_CAP_MS = 3_000;
+
+/**
+ * H1 16.11: true once the peer boards have answered (a result or an error)
+ * for the active city, or once `capMs` has passed since mount, whichever is
+ * first. «Нужно от меня» holds its lower part until then, so the Mayors'
+ * questions do not push it down when they land; the cap keeps a hanging
+ * peer read (seen live) from holding the page.
+ */
+export function usePeerBoardsSettled(capMs: number): boolean {
+  const { result, error } = usePeerBoards();
+  const answered = result !== null || error !== null;
+  const [capped, setCapped] = useState(false);
+  useEffect(() => {
+    if (answered) return;
+    const timer = setTimeout(() => setCapped(true), capMs);
+    return () => clearTimeout(timer);
+  }, [answered, capMs]);
+  return answered || capped;
 }

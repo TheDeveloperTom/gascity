@@ -11,7 +11,7 @@ import { BeadBoard } from '../components/beads/BeadBoard';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
 import { boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
-import { usePeerBoards } from '../hooks/usePeerBoards';
+import { PEER_SETTLE_CAP_MS, usePeerBoards, usePeerBoardsSettled } from '../hooks/usePeerBoards';
 import type { PeerCard } from '../supervisor/peerBoardReads';
 import { topicsForCard } from '../lib/peerTopics';
 import { peerStatusLines } from '../lib/peerLive';
@@ -105,6 +105,9 @@ export function BeadsPage() {
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
   // vk-final part 3: the peers' read-only boards (city service peer-boards).
   const peerBoards = usePeerBoards();
+  // H1 16.11: the peer lines sit above the board; draw the board once the peer
+  // boards have answered (capped), so they never push it down.
+  const peerSettled = usePeerBoardsSettled(PEER_SETTLE_CAP_MS);
   const peerSources = peerBoards.sources;
   const boardSources = useMemo(() => boardSourcesOf(peerSources), [peerSources]);
   // review M-1: a peer board that vanishes (service restart) must not leave
@@ -529,7 +532,7 @@ export function BeadsPage() {
         )}
       </div>
 
-      {!hasLoadedBoard && loading ? (
+      {(!hasLoadedBoard && loading) || !peerSettled ? (
         <p className="text-body text-fg-muted">{t('Loading beads.')}</p>
       ) : boardModel.matched === 0 &&
         (search.trim().length > 0 ||

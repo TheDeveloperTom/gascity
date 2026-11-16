@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
 import { NowProvider } from '../contexts/NowContext';
 import { peerBody } from '../test/fixtures/peerBoards';
-import { refreshPeerBoards, resetPeerBoardsForTests, usePeerBoards } from './usePeerBoards';
+import { refreshPeerBoards, resetPeerBoardsForTests, usePeerBoards, usePeerBoardsSettled } from './usePeerBoards';
 
 // vk-final: every consumer of the peer boards (board, «Нужно от меня», the
 // badge) shares ONE poller, so the page never multiplies the GET.
@@ -59,5 +59,47 @@ describe('usePeerBoards', () => {
       await refreshPeerBoards();
     });
     expect(calls()).toBe(2);
+  });
+});
+
+// H1 16.11: «Нужно от меня» holds its lower part until the peer boards have
+// answered once, so the Mayors' questions do not push it down when they land;
+// a peer read that hangs (seen live) releases it after the cap.
+describe('usePeerBoardsSettled', () => {
+  let settled: boolean[] = [];
+  function Probe({ capMs }: { capMs: number }) {
+    settled.push(usePeerBoardsSettled(capMs));
+    return null;
+  }
+
+  it('is false until the first read answers, then true', async () => {
+    settled = [];
+    render(
+      <NowProvider intervalMs={1_000_000}>
+        <Probe capMs={60_000} />
+      </NowProvider>,
+    );
+    expect(settled[0]).toBe(false);
+    await waitFor(() => expect(settled.at(-1)).toBe(true));
+  });
+
+  it('settles after the cap when the read hangs', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation(() => new Promise(() => {}));
+      settled = [];
+      render(
+        <NowProvider intervalMs={1_000_000}>
+          <Probe capMs={3_000} />
+        </NowProvider>,
+      );
+      expect(settled.at(-1)).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(settled.at(-1)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

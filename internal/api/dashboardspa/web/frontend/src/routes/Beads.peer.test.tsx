@@ -125,6 +125,20 @@ const peerCard = () => document.querySelector('[data-card-key="peer:rich:crm-api
 const myCard = () => document.querySelector('[data-card-key="dw-ab12"]') as HTMLElement | null;
 
 describe('BeadsPage with Richard’s board', () => {
+  // H1 16.11 (live sweep, 768 px): the peer line («Мак Ричарда не в сети»,
+  // «Обсуждения с городом Ричарда») landed above a board that was already
+  // drawn and pushed it down (CLS 0.17). The board waits for the peer read.
+  it('the board waits for the peer boards so their lines do not push it down', async () => {
+    let release: (r: Response) => void = () => {};
+    peerResponse = () => new Promise<Response>((resolve) => (release = resolve)) as unknown as Response;
+    renderPage();
+    await waitFor(() => expect(requests).toContain('/v0/city/test-city/beads'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('region', { name: 'Доска' })).toBeNull();
+    await act(async () => release(json(peerBody({ snapshotAt: minutesAgo(1) }))));
+    expect(await screen.findByRole('region', { name: 'Доска' })).toBeTruthy();
+  });
+
   it('«Все / Мои / Ричарда» turn on with peer data and show both, mine, his', async () => {
     renderPage();
     await screen.findByText('Изменение схемы users');

@@ -24,7 +24,7 @@ import { CityStrip, type CityAgents } from '../components/home/CityStrip';
 import { ownQuestionIdsOf, useNeedsModel } from '../lib/needsFromMe';
 import { topicNeedsOf } from '../lib/peerTopics';
 import { peerNeedsCount, pendingTopicQuestions } from '../lib/topicQuestions';
-import { usePeerBoards } from '../hooks/usePeerBoards';
+import { PEER_SETTLE_CAP_MS, usePeerBoards, usePeerBoardsSettled } from '../hooks/usePeerBoards';
 import { NeedsShelves } from '../vk/needs/Shelf';
 import { StatusShape } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
@@ -61,6 +61,10 @@ export function CockpitHomePage() {
   const needs = useNeedsModel();
   // vk-final part 4: Mayor topics that need the owner or have unread messages.
   const peerBoards = usePeerBoards();
+  // H1 16.11: the Mayors' questions land with the peer boards; hold the lower
+  // part of the page until they have answered once (capped), so it never jumps.
+  const peerSettled = usePeerBoardsSettled(PEER_SETTLE_CAP_MS);
+  const holding = needs.state === 'loading' || !peerSettled;
   const topicNeeds = useMemo(() => topicNeedsOf(peerBoards.result, Date.now()), [peerBoards.result]);
   // BOARD-LIVE L7: the owner's plain topic questions, each counted once
   const ownQuestionIds = useMemo(() => ownQuestionIdsOf(needs), [needs]);
@@ -251,11 +255,12 @@ export function CockpitHomePage() {
           topicNeeds={topicNeeds}
           topicQuestions={topicQuestions}
           peerCount={peerCount}
+          settling={!peerSettled}
         />
       </div>
 
-      {/* H1 16.11: below the shelves only once the board is read (no layout shift). */}
-      {needs.state !== 'loading' && (
+      {/* H1 16.11: below the shelves only once the board and the peer boards are read (no layout shift). */}
+      {!holding && (
       <>
       <CityStrip
         agents={cityAgents}
