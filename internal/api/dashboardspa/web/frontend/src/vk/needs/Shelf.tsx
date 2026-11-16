@@ -12,9 +12,10 @@ import { NeedItem } from './NeedItem';
 import { TopicQuestionCard } from './TopicQuestion';
 
 // «Нужно от меня» (vk lane 3, Attention / Phone-Needs frames): three shelves.
-// polish2 16.11 (owner, 2000 px): from xl two columns, «Нужно от меня» on the
-// left, «Стоит», «Работает» and «Тихо» on the right; one column below xl. «Нужно от меня» is open, «Работает» is open,
-// «Тихо» starts folded.
+// Owner 16.11: no «Стоит» column. Free tasks nobody took are a city alarm, not
+// the owner's work; a stall held behind a question still folds under it
+// («из них стоят N»). One readable column: «Нужно от меня» and «Работает» are
+// open, «Тихо» starts folded.
 
 const QUIET_LIMIT = 8;
 
@@ -140,6 +141,7 @@ export function NeedsShelves({
   topicQuestions = [],
   peerCount,
   settling,
+  onOpenBead,
 }: {
   model: NeedsModel;
   stages: TaskStages;
@@ -149,43 +151,28 @@ export function NeedsShelves({
   /** What the peer boards add to the count (lib/topicQuestions peerNeedsCount). */
   peerCount?: number;
   /**
-   * Hold «Стоит», the Mayors' lines and the shelves below (the page decides,
-   * capped; review I-1). Unset: hold while our board is read.
+   * Hold the Mayors' lines and the shelves below (the page decides, capped;
+   * review I-1). Unset: hold while our board is read.
    */
   settling?: boolean;
+  /** Open a board card in place (the page's drawer) instead of going to the board. */
+  onOpenBead?: (id: string) => void;
 }) {
-  const stuckId = useId();
   const count = model.count + (peerCount ?? 0);
   // H1 16.11: nothing renders under content that may still grow (the board
   // read, then the peer boards' questions), or it jumps when that lands.
   const holding = settling ?? model.state === 'loading';
-  // polish2 16.11: the right column exists only when «Стоит» has items; with
-  // none (or while the boards settle) nothing is reserved and the questions
-  // take the width, two per row from 1440 px.
-  const twoColumns = !holding && model.stalls.length > 0;
+  // Owner 16.11: one column at a reading width, never stretched edge to edge.
   return (
-    <div
-      className={
-        twoColumns
-          ? 'grid min-w-0 grid-cols-1 gap-2 font-vk-sans xl:grid-cols-2 xl:items-start xl:gap-10'
-          : 'flex min-w-0 flex-col gap-2 font-vk-sans'
-      }
-    >
-      <div className="flex min-w-0 flex-col gap-2">
+    <div className="flex min-w-0 max-w-3xl flex-col gap-2 font-vk-sans">
       <Shelf
         title={t('Needs from me')}
         {...(model.state === 'ready' || count > 0 ? { count } : {})}
       >
         {model.needs.length > 0 && (
-          <ul
-            className={
-              twoColumns
-                ? 'flex min-w-0 flex-col gap-2'
-                : 'flex min-w-0 flex-col gap-2 min-[1440px]:grid min-[1440px]:grid-cols-2 min-[1440px]:items-start min-[1440px]:gap-3'
-            }
-          >
+          <ul className="flex min-w-0 flex-col gap-2">
             {model.needs.map((need) => (
-              <NeedItem key={need.id} need={need} />
+              <NeedItem key={need.id} need={need} {...(onOpenBead ? { onOpenBead } : {})} />
             ))}
           </ul>
         )}
@@ -198,7 +185,6 @@ export function NeedsShelves({
             </Link>
           </Status>
         ) : model.needs.length === 0 &&
-          model.stalls.length === 0 &&
           topicNeeds.length === 0 &&
           topicQuestions.length === 0 ? (
           <Status>{t('Nothing needs you right now.')}</Status>
@@ -208,25 +194,9 @@ export function NeedsShelves({
         {!holding && topicQuestions.length > 0 && <TopicQuestions items={topicQuestions} />}
         {!holding && topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
       </Shelf>
-      </div>
-
-      <div className="flex min-w-0 flex-col gap-2">
-      {!holding && model.stalls.length > 0 && (
-        <section aria-labelledby={stuckId} className="min-w-0">
-          {/* Phone-Needs: «Стоит» is a quiet 14 px label over its rows. */}
-          <h3 id={stuckId} className="mb-2 mt-2 px-1 text-sm font-medium text-vk-text-low xl:mt-0">
-            {t('Stuck')}
-          </h3>
-          <ul className="flex min-w-0 flex-col gap-2">
-            {model.stalls.map((stall) => (
-              <NeedItem key={stall.id} need={stall} />
-            ))}
-          </ul>
-        </section>
-      )}
 
       {/* H1 16.11: nothing renders under a shelf that is still reading the
-          board, or the stuck list pushes it down when it lands (layout shift). */}
+          board, or it pushes them down when it lands (layout shift). */}
       {!holding && (
       <>
       <Shelf
@@ -266,7 +236,6 @@ export function NeedsShelves({
       </Shelf>
       </>
       )}
-      </div>
     </div>
   );
 }
