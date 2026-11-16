@@ -310,9 +310,9 @@ describe('buildBoardModel with a peer board', () => {
     expect(all(model).find((c) => c.key === 'peer:rich:crm-api:dw-iy9a')?.tag).toBe('crm-api');
   });
 
-  it('L14: our devwork project never shows his devwork cards, and his never shows ours', () => {
+  it('L14 + 16.11 owner: our devwork board also shows his devwork cards; his project never shows ours', () => {
     const ours = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'devwork' }, [PEER]);
-    expect(all(ours).map((c) => c.key)).toEqual(['dw-iy9a']);
+    expect(all(ours).map((c) => c.key)).toEqual(['dw-iy9a', 'peer:rich:devwork:dw-zz1']);
     const his = buildBoardModel(data([DP, IY]), RIGS, { ...NO_FILTERS, project: 'peer:rich:devwork' }, [PEER]);
     expect(all(his).map((c) => c.key)).toEqual(['peer:rich:devwork:dw-zz1']);
   });

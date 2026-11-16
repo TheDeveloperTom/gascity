@@ -543,12 +543,12 @@ describe('BeadsPage with Richard’s board', () => {
       expect(posts.at(-1)!.body.card).toEqual({ city: 'me', rig: 'devwork', id: 'dw-ab12' });
     });
 
-    it('the project filter is (city, rig): our devwork never shows his card, his never shows ours', async () => {
+    it('the project filter: our devwork board also shows his devwork card (16.11 owner); his project never shows ours', async () => {
       collide();
       renderPage('/beads?project=devwork');
       await screen.findByText('Моя карточка с тем же id');
       expect(myCard()).not.toBeNull();
-      expect(hisCard()).toBeNull();
+      expect(hisCard()).not.toBeNull();
       cleanup();
       renderPage(`/beads?${new URLSearchParams({ project: 'peer:rich:devwork' })}`);
       await screen.findByText('Изменение схемы users');
