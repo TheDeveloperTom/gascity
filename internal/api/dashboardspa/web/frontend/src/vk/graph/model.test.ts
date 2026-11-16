@@ -239,6 +239,15 @@ describe('buildGraph edges of the live data', () => {
     expect(m.subline).toBe('Без причины стоит 1: никто не взял.');
   });
 
+  it('partial data never says «никто не взял» (ALL-README rule 11)', () => {
+    const beads = [bead('dw-a', 'M04 #9 — Старое', { created_at: new Date(NOW - 5 * DAY).toISOString() })];
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW, partial: true });
+    expect(m.nodes[0]?.state).toBe('free');
+    expect(JSON.stringify(m)).not.toContain('никто не взял');
+    expect(m.columns[1]?.alarm).toBe(false);
+    expect(m.subline).toBe('Данные догружаются: кто ничего не ждёт, может ждать то, что ещё не прочитано.');
+  });
+
   it('counts each bead once when the board read repeats it across legs', () => {
     const m = buildGraph([...m04(), ...m04()], { epicId: 'M04', nowMs: NOW });
     expect(m.headline.startsWith('M04: 5 из 17 закрыто.')).toBe(true);

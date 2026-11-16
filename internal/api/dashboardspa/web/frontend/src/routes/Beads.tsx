@@ -23,6 +23,9 @@ import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
 import { taskShortLabel } from '../vk/panel/drawerFacts';
 import { beadIdOf, buildGraph } from '../vk/graph/model';
 import { GraphView } from '../vk/graph/GraphView';
+import { buildBoardGraph, type BoardFilter } from '../vk/graph/boardModel';
+import { BoardGraphView } from '../vk/graph/BoardGraphView';
+import { useThrottledValue } from '../hooks/useThrottledValue';
 import type { BoardCard } from '../lib/boardModel';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
 import {
@@ -40,6 +43,7 @@ import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts
 import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel, CITY_PROJECT_KEY, rigProjectLabel } from '../lib/boardModel';
 import { isBoardNoise } from '../lib/boardNoise';
+import { splitCityRestarting } from '../lib/cityRestarting';
 import {
   BOARD_RECENT_CLOSED_LIMIT,
   BOARD_REFRESH_COALESCE_MS,
@@ -55,6 +59,9 @@ import { listSupervisorBeads, type SupervisorBead } from '../supervisor/beadRead
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { closeSupervisorBead } from '../supervisor/beadWrites';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
+
+/** The all-tickets graph re-lays out at most this often on live data. */
+const ALL_GRAPH_RELAYOUT_MS = 4_000;
 
 // The Beads page (OWNER-HOME-PLAN B7): one board for every project, in the
 // owner's words. The route line carries the counts (RB12), so there is no
@@ -212,7 +219,25 @@ export function BeadsPage() {
         : Promise.resolve(null),
   );
   const historyData = useMemo(() => boardDataOf(history.data), [history.data]);
-  const data = showAllHistory ? historyData : board.data;
+  // Progressive loading (owner 16.11): the unscoped read takes seconds under
+  // load, the project's rig read a tenth of one. The board draws from the rig
+  // read first and fills in when the unscoped read lands.
+  const unscopedIn = board.data !== undefined;
+  const fastRig = useMemo(() => {
+    const name = projectState ?? defaultBoardProject(board.rigs);
+    return board.rigs.some((rig) => rig.name === name) ? name : null;
+  }, [projectState, board.rigs]);
+  const fastKey = !unscopedIn && !showAllHistory && fastRig !== null ? fastRig : 'off';
+  const fast = useCachedData(`beads:board:${cityCacheKey}:fast-rig:${fastKey}`, () =>
+    fastKey === 'off'
+      ? Promise.resolve(null)
+      : // No withRoutes: a rig read with routes adds an unscoped route leg, the
+        // very read this one is here to outrun. Routes fill in with it.
+        listSupervisorBeads({ rigFilter: fastKey }),
+  );
+  const fastData = useMemo(() => boardDataOf(fast.data), [fast.data]);
+  const data = showAllHistory ? historyData : (board.data ?? fastData);
+  const boardPartial = !showAllHistory && !unscopedIn && fastData !== undefined;
   const loading = showAllHistory ? history.loading : board.loading;
   const error = showAllHistory ? history.error : board.error;
   const refreshHistory = history.refresh;
@@ -453,6 +478,9 @@ export function BeadsPage() {
   const nowMs = useNow();
   const graphAvailable = epic !== ALL_EPICS || focusParam !== null;
   const showGraph = viewGraphParam && graphAvailable;
+  // «Эпик: Все» + «Граф»: the all-tickets graph (ALL-README).
+  const showAllGraph = viewGraphParam && !graphAvailable;
+  const anyGraph = showGraph || showAllGraph;
   // Graph integration 16.11: the unscoped window can miss a rig's tasks (the
   // model lane saw 2 of the M04 beads unscoped, all of them with rig=devwork),
   // so the graph also reads each rig's own open work store, merged by id.
@@ -461,9 +489,9 @@ export function BeadsPage() {
     [rigItems],
   );
   const graphRigs = useCachedData(
-    `beads:board:${cityCacheKey}:graph-rigs:${showGraph ? graphRigNames.join(',') : 'off'}`,
+    `beads:board:${cityCacheKey}:graph-rigs:${anyGraph ? graphRigNames.join(',') : 'off'}`,
     () =>
-      showGraph && graphRigNames.length > 0
+      anyGraph && graphRigNames.length > 0
         ? Promise.all(
             graphRigNames.map((rig) =>
               listSupervisorBeads({ rigFilter: rig })
@@ -477,7 +505,7 @@ export function BeadsPage() {
   useGcEventRefresh(
     [GC_EVENT_PREFIX.bead],
     () => {
-      if (showGraph) void refreshGraphRigs();
+      if (anyGraph) void refreshGraphRigs();
     },
     { coalesceMs: BOARD_REFRESH_COALESCE_MS },
   );
@@ -491,6 +519,10 @@ export function BeadsPage() {
     }
     return out;
   }, [allRows, graphRigs.data, serviceItems]);
+  // Until every read is in, the graphs are built from what has arrived and
+  // marked partial (no «никто не взял», ALL-README rule 11).
+  const graphRigsIn = graphRigNames.length === 0 || graphRigs.data !== undefined;
+  const graphPartial = !unscopedIn || !graphRigsIn;
   const graphModel = useMemo(
     () =>
       showGraph
@@ -498,10 +530,75 @@ export function BeadsPage() {
             epicId: focusParam !== null ? null : epic,
             ...(focusParam !== null ? { focusIds: [focusParam] } : {}),
             nowMs,
+            ...(graphPartial ? { partial: true } : {}),
           })
         : null,
-    [showGraph, graphRows, epic, focusParam, nowMs],
+    [showGraph, graphRows, epic, focusParam, nowMs, graphPartial],
   );
+  // Live data re-lays the all-tickets graph out at most every few seconds
+  // (rule 16); collapse and filter are the page's own state.
+  const [laneCollapsed, setLaneCollapsed] = useState<Record<string, boolean>>({});
+  const [graphFilter, setGraphFilter] = useState<BoardFilter>('all');
+  // A read landing (rig → unscoped) shows at once; live churn is throttled.
+  const liveAllGraphRows = useThrottledValue(
+    graphRows,
+    ALL_GRAPH_RELAYOUT_MS,
+    `${unscopedIn}:${graphRigsIn}:${graphRows.length > 0}`,
+  );
+  const allGraph = useMemo(
+    () =>
+      showAllGraph
+        ? buildBoardGraph(liveAllGraphRows, {
+            nowMs,
+            partial: graphPartial,
+            collapsed: laneCollapsed,
+            filter: graphFilter,
+          })
+        : null,
+    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, laneCollapsed, graphFilter],
+  );
+  const toggleLane = useCallback(
+    (key: string) => {
+      const lane = allGraph?.lanes.find((l) => l.key === key);
+      setLaneCollapsed((prev) => ({ ...prev, [key]: !(lane?.collapsed ?? prev[key] ?? false) }));
+    },
+    [allGraph],
+  );
+  const openEpicGraph = useCallback(
+    (key: string) => {
+      setEpic(key);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('epic', key);
+          next.set('view', 'graph');
+          next.delete('focus');
+          return next;
+        },
+        { replace: true, state: location.state },
+      );
+    },
+    [setSearchParams, location.state],
+  );
+  // The board's search box finds a card on the all-tickets graph: it is
+  // selected (drawer + ?bead=) and the view scrolls to it.
+  // Each query selects once (live re-layouts never steal the selection back).
+  const searchedFor = useRef('');
+  useEffect(() => {
+    const q = search.trim().toLowerCase();
+    if (!showAllGraph || q.length === 0) {
+      searchedFor.current = '';
+      return;
+    }
+    if (allGraph === null || searchedFor.current === q) return;
+    const hit = allGraph.nodes.find(
+      (n) => n.kind === 'task' && `${n.id} ${n.label} ${n.title}`.toLowerCase().includes(q),
+    );
+    if (hit === undefined) return;
+    searchedFor.current = q;
+    setSelectedId(beadIdOf(hit.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, showAllGraph, allGraph]);
   const sessionsForNotes = useMemo(
     () =>
       sessions.data === undefined || sessions.data.partial === true
@@ -557,6 +654,7 @@ export function BeadsPage() {
   // drawer is 560 px at the right), so the board makes room instead of hiding.
   const drawerOpen = selectedId !== null && (selectedPeer !== null || ownSelectedId !== null);
 
+  const pageErrors = splitCityRestarting([error, sessions.error, rigs.error]);
   const isTruncated =
     typeof upstreamTotal === 'number' &&
     typeof upstreamFetched === 'number' &&
@@ -586,7 +684,17 @@ export function BeadsPage() {
         {readOnly && <ReadOnlyBadge />}
       </div>
 
-      <PageAlerts messages={[error, sessions.error, rigs.error]} />
+      {pageErrors.restarting && (
+        <p role="status" className="mb-4 font-vk-sans text-[15px] text-vk-text-low">
+          {t('The city is restarting… data will appear in a minute')}
+        </p>
+      )}
+      <PageAlerts messages={pageErrors.rest} />
+      {(boardPartial || (anyGraph && graphPartial && hasLoadedBoard)) && !pageErrors.restarting && (
+        <p role="status" className="mb-3 font-vk-sans text-sm text-vk-text-low">
+          {t('Data still loading…')}
+        </p>
+      )}
 
       {(isTruncated || actionMessage) && (
         <div className="mb-6 max-w-prose space-y-2 text-body text-fg-muted">
@@ -698,9 +806,18 @@ export function BeadsPage() {
 
       {(!hasLoadedBoard && loading) || !peerSettled ? (
         <p className="text-body text-fg-muted">{t('Loading beads.')}</p>
-      ) : viewGraphParam && !graphAvailable ? (
-        // The all-tickets graph lands here (next lane); until then a placeholder.
-        <div data-testid="graph-all-placeholder" className="min-w-0" />
+      ) : showAllGraph && allGraph !== null ? (
+        <section aria-label={t('Graph')} className="min-w-0 space-y-3">
+          <GraphFilterSwitch value={graphFilter} onChange={setGraphFilter} />
+          <BoardGraphView
+            graph={allGraph}
+            selectedId={selectedId}
+            onSelect={(id) => setSelectedId(beadIdOf(id))}
+            onAnswer={(id) => setSelectedId(beadIdOf(id))}
+            onToggleLane={toggleLane}
+            onOpenEpic={openEpicGraph}
+          />
+        </section>
       ) : showGraph && graphModel !== null ? (
         <section aria-label={t('Graph')} className="min-w-0">
           <GraphView
@@ -841,7 +958,7 @@ export function BeadsPage() {
               if (ownSelectedId === null) return;
               setView('graph', epic === ALL_EPICS || focusParam !== null ? ownSelectedId : undefined);
             }}
-            graphChain={showGraph ? { cameFrom: prevBead } : null}
+            graphChain={anyGraph ? { cameFrom: prevBead } : null}
             backCrumb={
               prevBead !== null && prevBead !== ownSelectedId
                 ? { label: crumbLabel(prevBead, allRows), onBack: () => jumpToBead(prevBead) }
@@ -919,6 +1036,40 @@ function ViewSwitch({ graph, onView }: { graph: boolean; onView: (view: 'board' 
     >
       {button(!graph, 'board', t('Board'))}
       {button(graph, 'graph', t('Graph'))}
+    </div>
+  );
+}
+
+const GRAPH_FILTERS: ReadonlyArray<[BoardFilter, string]> = [
+  ['all', 'Everything'],
+  ['holds_me', 'Only what holds me'],
+  ['stuck', 'Only stuck'],
+  ['in_work', 'Only in work'],
+];
+
+/** The all-tickets graph's quick filters, a small segmented control. */
+function GraphFilterSwitch({ value, onChange }: { value: BoardFilter; onChange: (v: BoardFilter) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label={t('Graph filter')}
+      className="inline-flex flex-wrap items-center gap-0.5 rounded-[3px] border border-vk-border bg-vk-bg-primary p-0.5 font-vk-sans"
+    >
+      {GRAPH_FILTERS.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={value === key}
+          onClick={() => onChange(key)}
+          className={
+            value === key
+              ? 'inline-flex h-11 items-center rounded-[2px] bg-vk-bg-panel px-3 text-[14px] text-vk-text-high focus-mark md:h-7'
+              : 'inline-flex h-11 items-center rounded-[2px] px-3 text-[14px] text-vk-text-low hover:text-vk-text-high focus-mark md:h-7'
+          }
+        >
+          {t(label)}
+        </button>
+      ))}
     </div>
   );
 }

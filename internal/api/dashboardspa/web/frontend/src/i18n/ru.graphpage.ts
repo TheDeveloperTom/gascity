@@ -5,6 +5,13 @@ import type { RuPlural } from './ru';
 export const RU_GRAPHPAGE: Readonly<Record<string, string | RuPlural>> = {
   View: 'Вид',
   Graph: 'Граф',
+  'Data still loading…': 'данные догружаются…',
+  'The city is restarting… data will appear in a minute': 'Город перезапускается… данные появятся через минуту',
+  'Graph filter': 'Фильтр графа',
+  Everything: 'всё',
+  'Only what holds me': 'только то, что держит меня',
+  'Only stuck': 'только стоящее',
+  'Only in work': 'только в работе',
   'Show on graph': 'Показать на графе',
   'Why it stands': 'Почему стоит',
   'Waiting on it': 'Её ждут',

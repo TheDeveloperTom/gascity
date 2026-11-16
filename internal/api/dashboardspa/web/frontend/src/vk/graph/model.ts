@@ -245,7 +245,7 @@ function columnTitle(col: number, last: number): string {
 
 export function buildGraph(
   beads: ReadonlyArray<unknown>,
-  opts: { epicId: string | null; focusIds?: string[]; nowMs: number },
+  opts: { epicId: string | null; focusIds?: string[]; nowMs: number; partial?: boolean },
 ): GraphModel {
   const all = beads.filter(isBead);
   const byId = new Map<string, GraphBead>();
@@ -366,7 +366,7 @@ export function buildGraph(
     } else {
       const since = Date.parse(b.updated_at ?? b.created_at);
       const days = Number.isFinite(since) ? Math.floor((opts.nowMs - since) / DAY_MS) : 0;
-      if (assignee === null && days >= 1) {
+      if (assignee === null && days >= 1 && opts.partial !== true) {
         state = 'nobody_took';
         reason = `никто не взял · ${days} дн`;
       } else {
@@ -456,7 +456,9 @@ export function buildGraph(
   const idle = tasks.filter((n) => n.state === 'nobody_took' || n.state === 'free').length;
   const questions = nodes.filter((n) => n.kind === 'question').length;
   const subline =
-    idle > 0
+    opts.partial === true
+      ? 'Данные догружаются: кто ничего не ждёт, может ждать то, что ещё не прочитано.'
+      : idle > 0
       ? `Без причины ${idle === 1 ? 'стоит' : 'стоят'} ${idle}: никто не взял.`
       : questions > 0
         ? 'Без причины не стоит ничего: всё, что сейчас не в работе, ждёт твоих ответов — они слева, в колонке «От тебя».'

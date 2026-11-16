@@ -16,14 +16,14 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 // (buildGraph(beads, {epicId, focusIds, nowMs}); GraphView {model, selectedId,
 // onSelect, onAnswer}), so these tests hold for the real files too.
 
-const graphCalls = vi.hoisted(() => [] as Array<{ epicId: string | null; focusIds?: string[] }>);
+const graphCalls = vi.hoisted(() => [] as Array<{ epicId: string | null; focusIds?: string[]; partial?: boolean }>);
 const graphBeadIds = vi.hoisted(() => ({ last: [] as string[] }));
 vi.mock('../vk/graph/model', async (orig) => {
   const real = await orig<typeof import('../vk/graph/model')>();
   return {
     ...real,
-    buildGraph: (beads: ReadonlyArray<unknown>, opts: { epicId: string | null; focusIds?: string[]; nowMs: number }) => {
-      graphCalls.push({ epicId: opts.epicId, ...(opts.focusIds ? { focusIds: opts.focusIds } : {}) });
+    buildGraph: (beads: ReadonlyArray<unknown>, opts: { epicId: string | null; focusIds?: string[]; nowMs: number; partial?: boolean }) => {
+      graphCalls.push({ epicId: opts.epicId, ...(opts.focusIds ? { focusIds: opts.focusIds } : {}), ...(opts.partial ? { partial: true } : {}) });
       graphBeadIds.last = (beads as SupervisorBead[]).map((b) => b.id);
       // dw-b also carries its own owner question: a separate «<id>::q» card.
       const withQuestions = (beads as SupervisorBead[]).flatMap((b) =>
@@ -80,6 +80,76 @@ vi.mock('../vk/graph/GraphView', () => ({
   ),
 }));
 
+
+// The all-tickets graph («Эпик: Все» + «Граф»): model and view are spies that
+// keep the ALL-README contract (buildBoardGraph(beads, {nowMs, partial,
+// collapsed, filter}); BoardGraphView {graph, selectedId, onSelect, onAnswer,
+// onToggleLane, onOpenEpic}).
+const net = vi.hoisted(() => ({ unscoped: 'ok' as 'ok' | 'hang' | 'restarting', release: [] as Array<() => void> }));
+const boardCalls = vi.hoisted(
+  () => [] as Array<{ ids: string[]; partial?: boolean; collapsed?: Record<string, boolean>; filter?: string }>,
+);
+vi.mock('../vk/graph/boardModel', async (orig) => {
+  const real = await orig<typeof import('../vk/graph/boardModel')>();
+  return {
+    ...real,
+    buildBoardGraph: (
+      beads: ReadonlyArray<{ id: string; title: string }>,
+      opts: { partial?: boolean; collapsed?: Record<string, boolean>; filter?: string },
+    ) => {
+      boardCalls.push({
+        ids: beads.map((b) => b.id),
+        ...(opts.partial !== undefined ? { partial: opts.partial } : {}),
+        ...(opts.collapsed !== undefined ? { collapsed: opts.collapsed } : {}),
+        ...(opts.filter !== undefined ? { filter: opts.filter } : {}),
+      });
+      const collapsed = opts.collapsed?.M04 ?? false;
+      return {
+        nodes: beads.map((b, row) => ({
+          id: b.id, kind: 'task' as const, label: b.id, title: b.title, state: 'free' as const, reason: '',
+          holds: 0, column: 1, row, outside: false, assignee: null,
+        })),
+        edges: [],
+        lanes: [{ key: 'M04', title: 'M04', done: 0, total: beads.length, approved: true, collapsed, waitsOnEpics: [], nodeIds: beads.map((b) => b.id) }],
+        laneOf: Object.fromEntries(beads.map((b) => [b.id, 'M04'])),
+        columns: [],
+        headline: '',
+        subline: '',
+        warnings: [],
+      };
+    },
+  };
+});
+vi.mock('../vk/graph/BoardGraphView', () => ({
+  BoardGraphView: ({
+    graph,
+    selectedId,
+    onSelect,
+    onToggleLane,
+    onOpenEpic,
+  }: {
+    graph: { nodes: { id: string }[]; lanes: { key: string; collapsed: boolean }[] };
+    selectedId: string | null;
+    onSelect: (id: string) => void;
+    onToggleLane: (key: string) => void;
+    onOpenEpic: (key: string) => void;
+  }) => (
+    <div data-testid="board-graph-view" data-selected={selectedId ?? ''}>
+      {graph.nodes.map((n) => (
+        <button key={n.id} type="button" onClick={() => onSelect(n.id)}>
+          {`all ${n.id}`}
+        </button>
+      ))}
+      {graph.lanes.map((l) => (
+        <span key={l.key}>
+          <button type="button" onClick={() => onToggleLane(l.key)}>{`toggle ${l.key} ${l.collapsed ? 'closed' : 'open'}`}</button>
+          <button type="button" onClick={() => onOpenEpic(l.key)}>{`epic ${l.key}`}</button>
+        </span>
+      ))}
+    </div>
+  ),
+}));
+
 function bead(id: string, extra: Partial<SupervisorBead> = {}): SupervisorBead {
   return {
     id,
@@ -117,6 +187,8 @@ function json(payload: unknown): Response {
 
 beforeEach(() => {
   graphCalls.length = 0;
+  boardCalls.length = 0;
+  net.unscoped = 'ok';
   setActiveCity('test-city');
   window.localStorage.clear();
   invalidate('beads:board:');
@@ -132,8 +204,18 @@ beforeEach(() => {
       if (url.pathname === '/v0/city/test-city/beads') {
         const status = url.searchParams.get('status');
         if (status === 'closed' || status === 'in_progress') return json({ items: [], total: 0 });
+        // A restarting city answers not_found on every bead read.
+        if (net.unscoped === 'restarting') {
+          return new Response(
+            JSON.stringify({ code: 'not_found', message: 'city not found or not running: test-city' }),
+            { status: 404, headers: { 'content-type': 'application/json' } },
+          );
+        }
         // The rig's own work store holds a task the unscoped window lacks.
         if (url.searchParams.get('rig') === 'devwork') return json({ items: [...items, R], total: items.length + 1 });
+        if (net.unscoped === 'hang') {
+          return new Promise<Response>((resolve) => net.release.push(() => resolve(json({ items, total: items.length }))));
+        }
         return json({ items, total: items.length });
       }
       const one = /^\/v0\/city\/test-city\/bead\/(.+)$/.exec(url.pathname);
@@ -150,8 +232,11 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // A held unscoped read must not stay in the shared in-flight map.
+  net.release.splice(0).forEach((go) => go());
+  await new Promise((r) => setTimeout(r, 0));
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   act(() => setLocale('en'));
@@ -194,14 +279,64 @@ describe('BeadsPage «Граф» tab', () => {
     expect(screen.getByRole('group', { name: 'View' })).toBeTruthy();
   });
 
-  it('with «Все», «Граф» shows the all-tickets placeholder, not the board', async () => {
+  it('with «Все», «Граф» shows the all-tickets graph over the unscoped and rig reads, merged by id', async () => {
     renderPage('/beads');
     const group = await screen.findByRole('group', { name: 'View' });
     fireEvent.click(within(group).getByRole('button', { name: 'Graph' }));
     expect(param('view')).toBe('graph');
-    await screen.findByTestId('graph-all-placeholder');
+    await screen.findByTestId('board-graph-view');
+    expect(screen.queryByTestId('graph-all-placeholder')).toBeNull();
     expect(screen.queryByTestId('graph-view')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Board' })).toBeNull();
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.ids).toContain('dw-r'));
+    expect(boardCalls.at(-1)?.ids.filter((id) => id === 'dw-a')).toHaveLength(1);
+  });
+
+  it('all-tickets graph: a card selects (?bead=) and opens the drawer beside the graph', async () => {
+    renderPage('/beads?view=graph');
+    fireEvent.click(await screen.findByRole('button', { name: 'all dw-b' }));
+    expect(param('bead')).toBe('dw-b');
+    expect(param('view')).toBe('graph');
+    expect(screen.getByTestId('board-graph-view').getAttribute('data-selected')).toBe('dw-b');
+    const dialog = await screen.findByRole('dialog', { name: 'Open task' });
+    expect(dialog.getAttribute('aria-modal')).toBe('false');
+  });
+
+  it('all-tickets graph: the epic name opens that epic’s graph (?epic=)', async () => {
+    renderPage('/beads?view=graph');
+    fireEvent.click(await screen.findByRole('button', { name: 'epic M04' }));
+    expect(param('epic')).toBe('M04');
+    expect(param('view')).toBe('graph');
+    await screen.findByTestId('graph-view');
+  });
+
+  it('all-tickets graph: the lane toggle keeps its collapse state in the page', async () => {
+    renderPage('/beads?view=graph');
+    fireEvent.click(await screen.findByRole('button', { name: 'toggle M04 open' }));
+    await screen.findByRole('button', { name: 'toggle M04 closed' });
+    expect(boardCalls.at(-1)?.collapsed).toEqual({ M04: true });
+    fireEvent.click(screen.getByRole('button', { name: 'toggle M04 closed' }));
+    await screen.findByRole('button', { name: 'toggle M04 open' });
+  });
+
+  it('all-tickets graph: the quick filters feed buildBoardGraph', async () => {
+    renderPage('/beads?view=graph');
+    const filters = await screen.findByRole('group', { name: 'Graph filter' });
+    expect(within(filters).getByRole('button', { name: 'Everything' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(filters).getByRole('button', { name: 'Only what holds me' }));
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.filter).toBe('holds_me'));
+    fireEvent.click(within(filters).getByRole('button', { name: 'Only stuck' }));
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.filter).toBe('stuck'));
+    fireEvent.click(within(filters).getByRole('button', { name: 'Only in work' }));
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.filter).toBe('in_work'));
+  });
+
+  it('all-tickets graph: the search box selects the matching card', async () => {
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Третья' } });
+    await vi.waitFor(() => expect(param('bead')).toBe('dw-c'));
+    expect(screen.getByTestId('board-graph-view').getAttribute('data-selected')).toBe('dw-c');
   });
 
   it('with an epic, «Граф» writes ?view=graph and shows the epic graph', async () => {
@@ -294,5 +429,45 @@ describe('BeadsPage «Граф» tab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Show on graph' }));
     expect(param('view')).toBe('graph');
     expect(param('focus')).toBe('dw-b');
+  });
+});
+
+describe('BeadsPage progressive loading and the restarting city', () => {
+  it('the board renders as soon as the project’s rig read lands (the unscoped read still pending)', async () => {
+    net.unscoped = 'hang';
+    renderPage('/beads');
+    const board = await screen.findByRole('region', { name: 'Board' });
+    expect(within(board).getAllByText(/Вторая/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Data still loading…')).toBeTruthy();
+    expect(screen.queryByText('Loading beads.')).toBeNull();
+  });
+
+  it('the epic graph builds from what has arrived, marked partial', async () => {
+    net.unscoped = 'hang';
+    renderPage('/beads?epic=M04&view=graph');
+    await screen.findByTestId('graph-view');
+    expect(graphCalls.at(-1)).toMatchObject({ epicId: 'M04', partial: true });
+    expect(screen.getByText('Data still loading…')).toBeTruthy();
+  });
+
+  it('the all-tickets graph builds from what has arrived, marked partial', async () => {
+    net.unscoped = 'hang';
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    expect(boardCalls.at(-1)?.partial).toBe(true);
+  });
+
+  it('once every read is in, the graphs are not partial', async () => {
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
+    expect(screen.queryByText('Data still loading…')).toBeNull();
+  });
+
+  it('a restarting city shows one calm line, not red not_found alerts', async () => {
+    net.unscoped = 'restarting';
+    renderPage('/beads');
+    await screen.findByText('The city is restarting… data will appear in a minute');
+    expect(screen.queryByText(/city not found or not running/)).toBeNull();
   });
 });
