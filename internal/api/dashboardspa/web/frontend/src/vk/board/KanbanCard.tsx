@@ -43,7 +43,7 @@ import { ageText, lastProgressMs, STUCK_AFTER_MS } from '../../lib/boardFacts';
 import type { BoardCard } from '../../lib/boardModel';
 import { OWNER_QUESTION_LABEL } from '../../lib/ownerQuestions';
 import { routeRunHref } from '../../lib/stageBoard';
-import { blockerIds, milestoneOf } from '../../lib/waitReasons';
+import { blockerIds, milestoneOf, titleStartsWithTag } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
@@ -84,7 +84,8 @@ function shortTitle(title: string): string {
 
 function relationLabel(bead: SupervisorBead): string {
   const tag = milestoneOf(bead);
-  return tag === null ? shortTitle(bead.title) : `${tag} ${shortTitle(bead.title)}`;
+  const title = shortTitle(bead.title);
+  return tag === null || titleStartsWithTag(title, tag) ? title : `${tag} ${title}`;
 }
 
 export interface KanbanCardProps {

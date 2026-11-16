@@ -100,6 +100,22 @@ describe('VK board', () => {
     expect(holder.querySelector('[data-relationship="blocks"]')?.textContent).toContain('блокирует:');
   });
 
+  // H1 16.11 (live board): «блокирует: M04 M04 — приёмка этапа» — the tag was
+  // prefixed to a title that already starts with it.
+  it('does not repeat the milestone tag when the related title already starts with it', () => {
+    const holder = bead('dw-h', 'open', { title: 'Holder task', labels: ['milestone:M04'] });
+    const gate = bead('dw-g', 'open', {
+      title: 'M04 — приёмка этапа',
+      labels: ['milestone:M04'],
+      is_blocked: true,
+      dependencies: [{ issue_id: 'dw-g', depends_on_id: 'dw-h', type: 'blocks' }],
+    });
+    renderBoard([holder, gate], { nowMs: NOW });
+    const card = screen.getByText('Holder task').closest('article') as HTMLElement;
+    const badge = card.querySelector('[data-relationship="blocks"]') as HTMLElement;
+    expect(badge.textContent).toBe('блокирует: M04 — приёмка этапа');
+  });
+
   it('the PR link calls openExternal and has no target', () => {
     renderBoard([LIVE_MQFCX13, LIVE_7LPZG7], { nowMs: NOW });
     const link = within(column('Ревью')).getByRole('link', { name: '#489' });

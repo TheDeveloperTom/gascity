@@ -32,7 +32,7 @@ import { ArrowBendUpRightIcon, ProhibitIcon } from '@phosphor-icons/react';
 import { useMemo } from 'react';
 import { t } from '../../i18n';
 import { transitiveWaiters } from '../../lib/holds';
-import { blockerIds, buildWaitersIndex, milestoneOf } from '../../lib/waitReasons';
+import { blockerIds, buildWaitersIndex, milestoneOf, titleStartsWithTag } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 
@@ -79,7 +79,7 @@ function RelationshipBadge({
       <span className="min-w-0 truncate text-vk-text-normal">{row.title}</span>
     </>
   );
-  const cls = 'flex min-h-[32px] w-full min-w-0 items-center gap-1.5 py-1 text-left text-sm';
+  const cls = 'flex min-h-11 md:min-h-[32px] w-full min-w-0 items-center gap-1.5 py-1 text-left text-sm';
   return onClick ? (
     <button
       type="button"
@@ -106,7 +106,9 @@ export function Relationships({ bead, items, onOpenBead }: RelationshipsProps) {
     const waitersOf = buildWaitersIndex(items);
     const toRow = (id: string, displayType: DisplayType): Row => {
       const b = byId.get(id);
-      return { id, displayType, tag: b ? milestoneOf(b) : null, title: b?.title ?? id };
+      const tag = b ? milestoneOf(b) : null;
+      const title = b?.title ?? id;
+      return { id, displayType, tag: tag !== null && titleStartsWithTag(title, tag) ? null : tag, title };
     };
     const all: Row[] = [
       ...(waitersOf.get(bead.id) ?? []).map((id) => toRow(id, 'blocks')),

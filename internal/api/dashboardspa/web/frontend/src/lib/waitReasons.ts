@@ -86,6 +86,15 @@ export function milestoneOf(bead: SupervisorBead): string | null {
   return null;
 }
 
+/**
+ * True when a title already opens with its milestone tag («M04 — приёмка»),
+ * so a label must not prefix the tag again (H1 16.11: «M04 M04 — …»).
+ */
+export function titleStartsWithTag(title: string, tag: string): boolean {
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}(?![\\p{L}\\p{N}])`, 'u').test(title.trim());
+}
+
 function sinceOf(bead: SupervisorBead | undefined): { since?: string } {
   if (bead === undefined) return {};
   const at = bead.updated_at ?? bead.created_at;

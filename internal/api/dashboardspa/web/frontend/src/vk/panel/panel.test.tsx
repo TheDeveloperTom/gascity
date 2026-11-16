@@ -207,4 +207,20 @@ describe('relationships', () => {
     expect(within(section).getByText('и ещё 20')).toBeTruthy();
     expect(within(section).getByText('держит 22')).toBeTruthy();
   });
+
+  // H1 16.11 (live drawer at 390 px): the rows were 32 px tall (tap targets
+  // ≥ 44 px on a phone) and read «M04 M04 — приёмка этапа».
+  it('rows are 44 px tap targets on a phone and do not repeat a tag the title starts with', () => {
+    const target = bead({ id: 'gc-t', title: 'Цель' });
+    const gate = bead({ id: 'gc-g', title: 'M04 — приёмка этапа', labels: ['milestone:M04'], needs: ['gc-t'] });
+    mockDetail.mockReturnValue({ bead: target, loading: false, error: null, notFound: false, now: 0 });
+    mockBoard.mockReturnValue({ data: { items: [target, gate] }, sessions: [], rigs: [], loading: false, error: null });
+    render(<BeadDetailModal open onClose={() => {}} beadId="gc-t" initialBead={target} onOpenBead={vi.fn()} />);
+    const section = screen.getByTestId('task-relationships');
+    const row = within(section).getByRole('button', { name: /приёмка этапа/ });
+    expect(row.className.split(/\s+/)).toContain('min-h-11');
+    expect(within(section).queryAllByText('M04')).toHaveLength(0);
+    expect(row.textContent).toBe('блокируетM04 — приёмка этапа');
+  });
 });
+
