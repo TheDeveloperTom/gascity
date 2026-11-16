@@ -23,6 +23,7 @@ const LEFT: Readonly<Record<string, { max: number; why: string }>> = {
   'components/mail/ComposeModal.tsx': { max: 1, why: 'placeholder lists agent names' },
   'components/icons.tsx': { max: 4, why: 'icon-name object keys, not text' },
   'vk/CommandBar.tsx': { max: 2, why: 'the «esc» key cap' },
+  'vk/shell/ProjectRail.tsx': { max: 1, why: 'the «DW» project mark (canvas rail)' },
   'vk/board/KanbanCard.tsx': { max: 1, why: 'a template literal, not text' },
   'CityBootstrap.tsx': {
     max: 7,

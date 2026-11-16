@@ -73,18 +73,15 @@
 @tailwind utilities;
 
 @layer base {
-  /* «Табличка» tokens (OWNER-HOME-REVIEW §4). OKLCH triplets "L% C H",
-     consumed by Tailwind as `oklch(var(--token) / <alpha-value>)`. Light is
-     the default.
-
-     The enamel street plate is the one loud thing: --plate (cobalt enamel)
-     with --on-plate (white rim and letters) and --on-plate-muted (secondary
-     text on the plate). Enamel goes on the plate and the focus ring, nothing
-     else. Everything else is ink on plaster. primary is ink: pressable things
-     are ink with an underline or an ink fill, never a second blue. Colour is
-     meaning: warn is lamp amber (city trouble), accent is stop red (broken or
-     failed), ok is the done green. Every text token clears WCAG AA on ground,
-     panel and hover (tokens.owner.test.ts re-measures the shipped values). */
+  /* VK tokens (vk-1to1 16.11): the approved canvas `.vk` / `.vk.dark` values,
+     1:1, as OKLCH triplets "L% C H" consumed by Tailwind as
+     `oklch(var(--token) / <alpha-value>)`. Light is the default. The old
+     names stay (surface = bg-secondary, surface-raised = bg-primary,
+     surface-tint = bg-panel, fg/fg-muted/fg-faint = text high/normal/low,
+     rule = border, accent = error, ok = success); the plate is VK's one
+     blue (active-fg). Contrast is re-measured in tokens.owner.test.ts; the
+     two canvas pairs under 4.5:1 are listed there, kept as the canvas has
+     them. */
   /* Default border-color. Tailwind's `border` utility without an
      explicit color falls back to `currentColor`, which inherits the
      text color and produces stark white-on-dark borders in dark mode.
@@ -96,24 +93,24 @@
   }
 
   :root {
-    --surface: 96% 0.004 106.5; /* Штукатурка #F2F2EF: page ground */
-    --surface-raised: 100% 0 0; /* #FFFFFF: panel, table, modal */
-    --surface-tint: 93.9% 0.007 106.5; /* #EBEBE6: hover, selected, active nav */
-    --fg: 26% 0.041 277.2; /* Чернила #1F2238: school ink */
-    --fg-muted: 42.4% 0.028 277.3; /* #4A4D5E: secondary text */
-    --fg-faint: 51.2% 0.033 278.8; /* #62657A: tertiary, still AA */
-    --rule: 88.4% 0.007 106.5; /* #D9D9D4: hairlines */
-    --primary: 26% 0.041 277.2; /* = ink #1F2238: pressable */
-    --on-primary: 100% 0 0; /* text on ink, red, amber or green fills */
-    --accent: 50.1% 0.178 28.7; /* Стоп #B3261E: broken or failed only */
-    --warn: 53.1% 0.119 65.1; /* Фонарь #9A5B00: city trouble */
-    --ok: 48.4% 0.095 153.8; /* done #2B6E45 */
-    --plate: 39% 0.134 262.8; /* Эмаль #1B3F8B: the plate and the focus ring */
-    --on-plate: 100% 0 0; /* Кромка #FFFFFF: rim and letters on the plate */
-    --on-plate-muted: 86.8% 0.039 269.4; /* #C9D3EE: secondary text on the plate */
-    --plate-ring: 39% 0.134 262.8; /* = enamel #1B3F8B: focus ring, ≥8.2:1 on every ground */
-    --scrim: 18.1% 0.018 259.7; /* #0D121A: modal backdrop, use /50 */
-    --shadow-overlay: 0 18px 48px -12px rgb(13 18 26 / 0.28), 0 2px 8px rgb(13 18 26 / 0.1);
+    --surface: 96.1% 0 0; /* VK bg-secondary #F2F2F2: rail, columns, inputs */
+    --surface-raised: 100% 0 0; /* VK bg-primary #FFFFFF: page, cards, drawer */
+    --surface-tint: 91.6% 0 0; /* VK bg-panel #E3E3E3: hover, active section */
+    --fg: 15.9% 0 0; /* VK text-high #0D0D0D */
+    --fg-muted: 32.1% 0 0; /* VK text-normal #333333 */
+    --fg-faint: 50% 0 0; /* VK text-low #636363 */
+    --rule: 91.6% 0 0; /* VK border #E3E3E3 */
+    --primary: 15.9% 0 0; /* = text-high: pressable */
+    --on-primary: 100% 0 0;
+    --accent: 53.4% 0.161 24.4; /* VK error #B83B3B */
+    --warn: 51.3% 0.116 60.1; /* VK warn #96540A */
+    --ok: 52.3% 0.14 142.5; /* VK success #2F7D2B */
+    --plate: 51.1% 0.199 262.1; /* VK active-fg #1D5BD6: the one blue */
+    --on-plate: 100% 0 0;
+    --on-plate-muted: 92.9% 0.034 263.6; /* VK active-bg #DCE8FF */
+    --plate-ring: 51.1% 0.199 262.1; /* = plate: focus ring */
+    --scrim: 15.9% 0 0; /* VK overlay ink #0D0D0D, use /45 */
+    --shadow-overlay: 0 18px 48px -12px rgb(13 13 13 / 0.28), 0 2px 8px rgb(13 13 13 / 0.1);
 
     color-scheme: light;
     accent-color: oklch(var(--primary));
@@ -126,8 +123,8 @@
        #F5F5F5/#C4C4C4/#969696. Being aliases, they resolve against the
        light values here and the dark values under [data-theme='dark'] and
        prefers-color-scheme: dark below. */
-    --vk-brand: var(--plate);
-    --vk-brand-secondary: var(--plate-ring);
+    --vk-brand: 69.5% 0.164 51.3; /* VK brand #EA7A29 */
+    --vk-brand-secondary: 54% 0.138 48.9; /* VK brand-2 #AC5111 */
     --vk-bg-primary: var(--surface-raised);
     --vk-bg-secondary: var(--surface);
     --vk-bg-panel: var(--surface-tint);
@@ -140,8 +137,19 @@
     --vk-success: var(--ok);
     /* vk-final: the two cities' side colours (comments, peer cards). Mine is
        the brand; the peer's is a calm teal (design Main: #0F766E). */
-    --vk-mine: var(--plate);
-    --vk-peer: 51.1% 0.086 186.4; /* #0F766E */
+    --vk-mine: 69.5% 0.164 51.3; /* VK mine #EA7A29 */
+    --vk-peer: 62.3% 0.188 259.8; /* VK peer #3B82F6 */
+    --vk-merged: 48.6% 0.249 298.9; /* VK merged #7816D4 */
+    --vk-sel: 69.5% 0.164 51.3; /* VK sel #EA7A29: selected card border */
+    /* VK colours that carry their own alpha, as full colour values:
+       bg-[var(--vkc-active-bg)] text-[var(--vkc-active-fg)] (rail tile). */
+    --vkc-active-bg: #dce8ff;
+    --vkc-active-fg: #1d5bd6;
+    --vkc-warn-bg: rgb(245 158 11 / 0.14);
+    --vkc-success-bg: rgb(84 176 79 / 0.12);
+    --vkc-error-bg: rgb(210 81 81 / 0.1);
+    --vkc-merged-bg: rgb(120 22 212 / 0.1);
+    --vkc-overlay: rgb(13 13 13 / 0.45);
     /* IBM Plex, self-hosted from @fontsource (imported in main.tsx); never Google Fonts. */
     --vk-font-sans: 'IBM Plex Sans', 'Golos Text Variable', system-ui, sans-serif;
     --vk-font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -156,32 +164,37 @@
     --sair: env(safe-area-inset-right, 0px);
   }
 
-  /* Dark (owner 15.11, design pass): vibe-kanban's neutral dark ladder
-     (#1C1C1C / #212121 / #292929, border #333, text 96/77/56 %) pulled a hair
-     cool so it sits inside Discord's #1E1F22 frame instead of reading as a
-     grey slab. Ground < card < hover each one clear step apart; the enamel is
-     a brighter cobalt so the one primary action actually carries weight. */
+  /* Dark (vk-1to1 16.11): the canvas `.vk.dark` values, 1:1 (the 709124f1b
+     cool ladder and #3355C2 enamel are gone). */
   :root[data-theme='dark'] {
-    --surface: 22.2% 0.006 271.1; /* #1A1B1E: ground, Discord's darker frame */
-    --surface-raised: 25.7% 0.008 274.7; /* #222327: cards, columns, panels */
-    --surface-tint: 29.8% 0.009 276.8; /* #2C2D32: hover, selected, inputs */
-    --fg: 96.2% 0.003 286.3; /* #F2F2F4 */
-    --fg-muted: 82.4% 0.009 271.3; /* #C3C5CB */
-    --fg-faint: 67.7% 0.014 271.2; /* #9497A0, AA on every ground */
-    --rule: 34.1% 0.011 271.1; /* #36383E */
-    --primary: 96.2% 0.003 286.3; /* = ink #F2F2F4 */
-    --on-primary: 22.2% 0.006 271.1; /* #1A1B1E */
-    --accent: 75.9% 0.144 26.1; /* #FF8A80 */
-    --warn: 77.6% 0.142 77.4; /* #E8A93A */
-    --ok: 76.9% 0.121 156.6; /* #6CCB94 */
-    --plate: 49% 0.175 266.7; /* #3355C2: enamel, white letters 6.5:1 */
-    --on-plate: 100% 0 0; /* #FFFFFF */
-    --on-plate-muted: 91.7% 0.03 271.1; /* #DCE3F8: 5.1:1 on the brighter enamel */
-    --plate-ring: 80.2% 0.087 270.6; /* #A9BCF7: ≥3:1 on the plate and every ground */
-    --scrim: 13.2% 0.011 250.2; /* #05080C */
+    --surface: 22.6% 0 0; /* VK bg-secondary #1C1C1C */
+    --surface-raised: 24.8% 0 0; /* VK bg-primary #212121 */
+    --surface-tint: 28.1% 0 0; /* VK bg-panel #292929 */
+    --fg: 97% 0 0; /* VK text-high #F5F5F5 */
+    --fg-muted: 82% 0 0; /* VK text-normal #C4C4C4 */
+    --fg-faint: 67.3% 0 0; /* VK text-low #969696 */
+    --rule: 32.1% 0 0; /* VK border #333333 */
+    --primary: 97% 0 0; /* = text-high */
+    --on-primary: 22.6% 0 0; /* #1C1C1C */
+    --accent: 71.4% 0.128 20.8; /* VK error #E88080 */
+    --warn: 81% 0.144 79.3; /* VK warn #F2B544 */
+    --ok: 74.3% 0.153 143; /* VK success #6CC468 */
+    --plate: 51.1% 0.199 262.1; /* #1D5BD6: white letters 6.0:1 */
+    --on-plate: 100% 0 0;
+    --on-plate-muted: 92.9% 0.034 263.6; /* #DCE8FF */
+    --plate-ring: 77.1% 0.116 262.9; /* VK active-fg #8DB4FF: ring on the dark grounds */
+    --scrim: 0% 0 0; /* VK overlay #000, use /62 */
     --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
-    --vk-mine: var(--plate-ring);
-    --vk-peer: 72% 0.11 183; /* lighter teal on the night street */
+    --vk-mine: 69.5% 0.164 51.3; /* #EA7A29 */
+    --vk-peer: 68.9% 0.153 257.8; /* VK dark peer #5B9BF8 */
+    --vk-merged: 71.9% 0.153 303.6; /* #B98AF2 */
+    --vkc-active-bg: rgb(59 130 246 / 0.18);
+    --vkc-active-fg: #8db4ff;
+    --vkc-warn-bg: rgb(245 158 11 / 0.16);
+    --vkc-success-bg: rgb(84 176 79 / 0.16);
+    --vkc-error-bg: rgb(210 81 81 / 0.16);
+    --vkc-merged-bg: rgb(168 102 240 / 0.16);
+    --vkc-overlay: rgb(0 0 0 / 0.62);
 
     color-scheme: dark;
   }
@@ -189,35 +202,44 @@
   /* System dark with no pinned choice: repeats the dark values exactly. */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']):not([data-theme='dark']) {
-      --surface: 22.2% 0.006 271.1;
-      --surface-raised: 25.7% 0.008 274.7;
-      --surface-tint: 29.8% 0.009 276.8;
-      --fg: 96.2% 0.003 286.3;
-      --fg-muted: 82.4% 0.009 271.3;
-      --fg-faint: 67.7% 0.014 271.2;
-      --rule: 34.1% 0.011 271.1;
-      --primary: 96.2% 0.003 286.3;
-      --on-primary: 22.2% 0.006 271.1;
-      --accent: 75.9% 0.144 26.1;
-      --warn: 77.6% 0.142 77.4;
-      --ok: 76.9% 0.121 156.6;
-      --plate: 49% 0.175 266.7;
+      --surface: 22.6% 0 0; /* VK bg-secondary #1C1C1C */
+      --surface-raised: 24.8% 0 0; /* VK bg-primary #212121 */
+      --surface-tint: 28.1% 0 0; /* VK bg-panel #292929 */
+      --fg: 97% 0 0; /* VK text-high #F5F5F5 */
+      --fg-muted: 82% 0 0; /* VK text-normal #C4C4C4 */
+      --fg-faint: 67.3% 0 0; /* VK text-low #969696 */
+      --rule: 32.1% 0 0; /* VK border #333333 */
+      --primary: 97% 0 0; /* = text-high */
+      --on-primary: 22.6% 0 0; /* #1C1C1C */
+      --accent: 71.4% 0.128 20.8; /* VK error #E88080 */
+      --warn: 81% 0.144 79.3; /* VK warn #F2B544 */
+      --ok: 74.3% 0.153 143; /* VK success #6CC468 */
+      --plate: 51.1% 0.199 262.1; /* #1D5BD6: white letters 6.0:1 */
       --on-plate: 100% 0 0;
-      --on-plate-muted: 91.7% 0.03 271.1;
-      --plate-ring: 80.2% 0.087 270.6;
-      --scrim: 13.2% 0.011 250.2;
+      --on-plate-muted: 92.9% 0.034 263.6; /* #DCE8FF */
+      --plate-ring: 77.1% 0.116 262.9; /* VK active-fg #8DB4FF: ring on the dark grounds */
+      --scrim: 0% 0 0; /* VK overlay #000, use /62 */
       --shadow-overlay: 0 18px 48px -12px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.4);
-      --vk-mine: var(--plate-ring);
-      --vk-peer: 72% 0.11 183;
+      --vk-mine: 69.5% 0.164 51.3; /* #EA7A29 */
+      --vk-peer: 68.9% 0.153 257.8; /* VK dark peer #5B9BF8 */
+      --vk-merged: 71.9% 0.153 303.6; /* #B98AF2 */
+      --vkc-active-bg: rgb(59 130 246 / 0.18);
+      --vkc-active-fg: #8db4ff;
+      --vkc-warn-bg: rgb(245 158 11 / 0.16);
+      --vkc-success-bg: rgb(84 176 79 / 0.16);
+      --vkc-error-bg: rgb(210 81 81 / 0.16);
+      --vkc-merged-bg: rgb(168 102 240 / 0.16);
+      --vkc-overlay: rgb(0 0 0 / 0.62);
 
       color-scheme: dark;
     }
   }
 
   body {
-    background: oklch(var(--surface));
-    color: oklch(var(--fg));
+    background: oklch(var(--surface-raised));
+    color: oklch(var(--fg-muted));
     font-family:
+      'IBM Plex Sans',
       'Golos Text Variable',
       system-ui,
       -apple-system,

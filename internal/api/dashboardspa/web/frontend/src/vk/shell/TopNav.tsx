@@ -31,7 +31,7 @@ export function TopNav() {
           }
         >
           {t('Needs from me')}
-          <NeedsBadge count={count} />
+          <NeedsBadge count={count} tone="warn" />
         </NavLink>
         <NavLink
           to="/beads"

@@ -74,15 +74,30 @@ export function MoreGlyph(props: GlyphProps) {
   );
 }
 
-/** The red «Нужно от меня» count. Hidden at zero. */
-export function NeedsBadge({ count, className }: { count: number; className?: string }) {
+/**
+ * The «Нужно от меня» count. Hidden at zero. Canvas: on the phone tab it is
+ * red #C53030 with white figures in both themes (Phone-Board); in the desktop
+ * header it is the amber warn chip (Attention).
+ */
+export function NeedsBadge({
+  count,
+  className,
+  tone = 'red',
+}: {
+  count: number;
+  className?: string;
+  tone?: 'red' | 'warn';
+}) {
   if (count <= 0) return null;
   return (
     <span
       data-testid="needs-badge"
       aria-hidden="true"
       className={cn(
-        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-vk-error px-[5px] text-[11px] font-semibold leading-[18px] text-on-primary tnum',
+        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-[5px] font-semibold leading-[18px] tnum',
+        tone === 'red'
+          ? 'bg-[#C53030] text-[11px] text-white'
+          : 'bg-[var(--vkc-warn-bg)] text-[12px] text-warn',
         className,
       )}
     >

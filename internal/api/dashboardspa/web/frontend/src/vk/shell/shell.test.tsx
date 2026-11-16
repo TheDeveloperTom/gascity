@@ -11,6 +11,7 @@ import { ThemeProvider } from '../../contexts/ThemeContext';
 import { ViewingAsProvider } from '../../contexts/ViewingAsContext';
 import { setLocale } from '../../i18n';
 import { BottomTabs } from './BottomTabs';
+import { ProjectRail } from './ProjectRail';
 import { TopNav } from './TopNav';
 
 // vk lane 5: the VK shell. The top bar replaces the left rail (ruling 4);
@@ -152,14 +153,15 @@ describe('BottomTabs (phone)', () => {
 });
 
 describe('TopNav (desktop)', () => {
-  it('shows «Нужно от меня» with the red count and «Доска»', () => {
+  it('shows «Нужно от меня» with the amber count and «Доска» (canvas Attention)', () => {
     mocks.count = 4;
     inRouter(<TopNav />);
     const link = screen.getByRole('link', { name: 'Нужно от меня, 4' });
     const badge = within(link).getByTestId('needs-badge');
     expect(badge.textContent).toBe('4');
-    // vk integration: the VK `error` alias (= our accent) replaces lane 5's bg-accent.
-    expect(badge.className).toContain('bg-vk-error');
+    // vk-1to1: the canvas header chip is warn on warn-bg, 12 px.
+    expect(badge.className).toContain('bg-[var(--vkc-warn-bg)]');
+    expect(badge.className).toContain('text-warn');
     expect(link.getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Доска' })).toBeTruthy();
   });
@@ -200,6 +202,75 @@ describe('Header (VK top bar)', () => {
       (a.textContent ?? '').replace(/\d+$/, '').trim(),
     );
     expect(labels).toEqual(['Home', 'Runs', 'Agents', 'Beads', 'Mail', 'Activity', 'Health']);
+  });
+});
+
+describe('ProjectRail (canvas left rail)', () => {
+  it('is a 56 px desktop rail: menu, DW, ГО, «+», spacer, «А», Mayor', () => {
+    inRouter(<ProjectRail />, '/beads');
+    const rail = screen.getByRole('navigation', { name: 'Проекты' });
+    expect(rail.className.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        'w-14',
+        'hidden',
+        'md:flex',
+        'flex-col',
+        'gap-2',
+        'p-2',
+        'bg-vk-bg-secondary',
+        'border-r',
+      ]),
+    );
+    const names = [...rail.children].map(
+      (el) => el.getAttribute('aria-label') ?? (el.className.includes('flex-1') ? 'spacer' : ''),
+    );
+    expect(names).toEqual([
+      'Меню',
+      'Продукт devwork',
+      'Сам город',
+      'Подключить проект',
+      'spacer',
+      'Ты',
+      'Мэр в Discord',
+    ]);
+  });
+
+  it('highlights the current project tile with active-bg / active-fg', () => {
+    inRouter(<ProjectRail />, '/beads?project=city');
+    const go = screen.getByRole('link', { name: 'Сам город' });
+    expect(go.getAttribute('aria-current')).toBe('page');
+    expect(go.className).toContain('bg-[var(--vkc-active-bg)]');
+    expect(go.className).toContain('text-[var(--vkc-active-fg)]');
+    const dw = screen.getByRole('link', { name: 'Продукт devwork' });
+    expect(dw.getAttribute('aria-current')).toBeNull();
+    expect(dw.getAttribute('href')).toBe('/beads?project=devwork');
+  });
+
+  it('DW is the default project on the board', () => {
+    inRouter(<ProjectRail />, '/beads');
+    expect(screen.getByRole('link', { name: 'Продукт devwork' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+  });
+});
+
+describe('Header (canvas 44 px bar)', () => {
+  it('centres the city name and has list / help / settings icons', () => {
+    renderHeader('/beads');
+    expect(screen.getByLabelText('Список')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Помощь' })).toBeTruthy();
+    expect(screen.getByLabelText('Настройки')).toBeTruthy();
+  });
+
+  it('shows the open task id with a copy-link button on the left', () => {
+    renderHeader('/beads?bead=dw-abc');
+    const copy = screen.getByRole('button', { name: 'Скопировать ссылку на dw-abc' });
+    expect(copy.textContent).toBe('dw-abc');
+  });
+
+  it('no task id when no card is open', () => {
+    renderHeader('/beads');
+    expect(screen.queryByRole('button', { name: /Скопировать ссылку/ })).toBeNull();
   });
 });
 

@@ -64,12 +64,11 @@ describe('Signal & Pavement tokens', () => {
   });
 
   it('pins signal values', () => {
-    // «Табличка» values (OWNER-HOME-REVIEW §4); primary is ink.
-    expect(lightBlock).toContain('--accent: 50.1% 0.178 28.7');
-    expect(lightBlock).toContain('--primary: 26% 0.041 277.2');
-    expect(darkBlock).toContain('--accent: 75.9% 0.144 26.1');
-    // design pass 15.11: the vibe-kanban dark ladder inside Discord's frame
-    expect(darkBlock).toContain('--primary: 96.2% 0.003 286.3');
+    // vk-1to1 16.11: canvas VK values; primary is text-high.
+    expect(lightBlock).toContain('--accent: 53.4% 0.161 24.4'); // #B83B3B
+    expect(lightBlock).toContain('--primary: 15.9% 0 0'); // #0D0D0D
+    expect(darkBlock).toContain('--accent: 71.4% 0.128 20.8'); // #E88080
+    expect(darkBlock).toContain('--primary: 97% 0 0'); // #F5F5F5
   });
 
   it('self-hosts Golos and drops Inter', () => {

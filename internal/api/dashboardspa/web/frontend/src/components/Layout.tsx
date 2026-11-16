@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { BottomTabs } from '../vk/shell/BottomTabs';
+import { ProjectRail } from '../vk/shell/ProjectRail';
 import { Header } from './Header';
 
 interface LayoutProps {
@@ -20,7 +21,8 @@ function measureOf(pathname: string): string {
   return 'max-w-dashboard';
 }
 
-// Shell (vk lane 5): the VK top bar, then the main column, left-aligned and
+// Shell (vk-1to1 16.11): the canvas 56 px project rail (desktop), then the
+// column: the 44 px header and the main column, left-aligned and
 // capped at the page's measure. Below md a fixed bottom tab bar carries the
 // sections; main is padded by its height plus the bottom safe area so the bar
 // never covers content. The side insets follow the safe area too (390×844
@@ -29,11 +31,14 @@ export function Layout({ children }: LayoutProps) {
   const { pathname } = useLocation();
   const measure = measureOf(pathname);
   return (
-    <div className="min-h-screen bg-vk-bg-secondary text-fg antialiased">
-      <Header />
-      <main className="min-w-0 pb-[calc(3.5rem+var(--saib))] pl-[calc(1rem+var(--sail))] pr-[calc(1rem+var(--sair))] pt-3 md:px-6 md:pb-0 md:pt-6 lg:px-10 lg:pt-8">
-        <div className={measure}>{children}</div>
-      </main>
+    <div className="flex min-h-screen bg-vk-bg-primary text-vk-text-normal antialiased">
+      <ProjectRail />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header />
+        <main className="min-w-0 pb-[calc(3.5rem+var(--saib))] pl-[calc(1rem+var(--sail))] pr-[calc(1rem+var(--sair))] pt-3 md:px-4 md:pb-0 md:pt-4">
+          <div className={measure}>{children}</div>
+        </main>
+      </div>
       <BottomTabs />
     </div>
   );
