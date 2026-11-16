@@ -36,10 +36,20 @@ import { STAGES } from '../../lib/stageBoard';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 
-/** Every card bead of the model by id (blocker / waiter names on a card). */
-export function useBeadLookup(model: BoardModel): (id: string) => SupervisorBead | undefined {
+const NO_BEADS: readonly SupervisorBead[] = [];
+
+/**
+ * Every card bead of the model by id (blocker / waiter names on a card), plus
+ * `extra` beads that are not cards — the epics from BoardData.items, so a card
+ * can name its epic («Один тип»; vk11/card). A card's own bead wins.
+ */
+export function useBeadLookup(
+  model: BoardModel,
+  extra: readonly SupervisorBead[] = NO_BEADS,
+): (id: string) => SupervisorBead | undefined {
   return useMemo(() => {
     const byId = new Map<string, SupervisorBead>();
+    for (const bead of extra) byId.set(bead.id, bead);
     for (const stage of STAGES) {
       // My cards only: a peer card's id may name a different bead of mine.
       for (const card of model.columns[stage.id]) {
@@ -47,7 +57,12 @@ export function useBeadLookup(model: BoardModel): (id: string) => SupervisorBead
       }
     }
     return (id: string) => byId.get(id);
-  }, [model]);
+  }, [model, extra]);
+}
+
+/** The epic beads of a board read (BoardData.items), for useBeadLookup. */
+export function epicBeadsOf(items: readonly SupervisorBead[]): SupervisorBead[] {
+  return items.filter((bead) => bead.issue_type === 'epic');
 }
 
 export type VkColumnId = 'waiting' | 'working' | 'review' | 'merged';

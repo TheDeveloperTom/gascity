@@ -8,6 +8,7 @@ import { useAttentionModel } from '../attention/context';
 import { inProgressCardNote } from '../attention/beadsNeedingAttention';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadBoard } from '../components/beads/BeadBoard';
+import { epicBeadsOf } from '../vk/board/KanbanColumn';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
 import { boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
@@ -379,6 +380,8 @@ export function BeadsPage() {
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
     [rows, showAllHistory],
   );
+  // vk11/card: a card names its epic, so the lookup also holds the epic beads.
+  const epicBeads = useMemo(() => epicBeadsOf(allRows), [allRows]);
   const plannedEmpty = useMemo(() => milestoneRangeLabel(plannedEmptyMilestones(rows)), [rows]);
   const boardSessions = board.sessions;
 
@@ -632,6 +635,7 @@ export function BeadsPage() {
             showAllHistory={showAllHistory}
             onToggleHistory={() => setShowAllHistory((prev) => !prev)}
             onAddTask={openNewTask}
+            epicBeads={epicBeads}
           />
         </section>
       )}

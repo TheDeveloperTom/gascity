@@ -3,6 +3,7 @@ import type { BadgeSeverity } from '../../attention/compose';
 import type { BeadAttentionSession } from '../../attention/beadsNeedingAttention';
 import { t } from '../../i18n';
 import type { BoardCard, BoardModel } from '../../lib/boardModel';
+import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../../vk/cn';
 import { KanbanCard } from '../../vk/board/KanbanCard';
 import {
@@ -38,6 +39,8 @@ export interface BeadBoardProps {
   commentCountOf?: (card: BoardCard) => number;
   /** A column header's «+» (Main.dc.html): start a new task. */
   onAddTask?: () => void;
+  /** Epic beads of the read (BoardData.items), so cards can name their epic. */
+  epicBeads?: readonly SupervisorBead[];
 }
 
 export function BeadBoard({
@@ -52,11 +55,12 @@ export function BeadBoard({
   attentionSeverity,
   commentCountOf,
   onAddTask,
+  epicBeads,
 }: BeadBoardProps) {
   const [showOld, setShowOld] = useState(showAllHistory);
   const [phoneColumn, setPhoneColumn] = useState<VkColumnId>('waiting');
   const columns = useMemo(() => boardColumns(model, nowMs), [model, nowMs]);
-  const beadById = useBeadLookup(model);
+  const beadById = useBeadLookup(model, epicBeads);
 
   const renderCard = (card: BoardCard) => (
     <KanbanCard
