@@ -101,20 +101,29 @@ describe('«Нужно от меня» shelves', () => {
     expect(screen.getByText('ждут своей очереди или другую задачу')).toBeTruthy();
   });
 
-  it('a question card opens as a whole, with holds, wait and read-only choices', () => {
+  // vk11 (canvas Attention.dc.html / Phone-Needs.dc.html): one meta line
+  // «держит 22 задачи, ждёт 3 дня», the epic breakdown, one action.
+  it('a question row opens its card, with holds, wait, breakdown and read-only choices', () => {
     show();
     const item = itemOf(QUESTION_ID);
     const link = within(item).getByRole('link');
     expect(link.getAttribute('href')).toBe(`/beads?bead=${QUESTION_ID}`);
     expect(within(link).getByText('Когда окно для переноса ящика на основной аккаунт?')).toBeTruthy();
     expect(within(link).getByText(/Gmail, доступ и собеседования/)).toBeTruthy();
-    expect(within(item).getByText('держит 22 задачи')).toBeTruthy();
-    expect(within(item).getByText(/ждёт тебя 3 дня 8 ч/)).toBeTruthy();
+    expect(within(link).getByText('держит 22 задачи, ждёт 3 дня')).toBeTruthy();
     expect(within(item).getByText('M04 10 · M03 4')).toBeTruthy();
     // Chips are read-only on the list: the decision happens inside the card.
     expect(within(item).getByText('Сегодня в 18:00').closest('button')).toBeNull();
-    expect(within(item).queryByText('Ответить в Discord')).toBeNull();
-    expect(within(item).getByRole('button', { name: 'Обсудить в Discord' })).toBeTruthy();
+  });
+
+  it('a Mayor question row has exactly one action: «Ответить в Discord», filled brand-2', () => {
+    show();
+    const item = itemOf(QUESTION_ID);
+    const buttons = within(item).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual(['Ответить в Discord']);
+    expect(buttons[0]!.className).toContain('bg-vk-brand-secondary');
+    expect(buttons[0]!.className).toContain('h-7');
+    expect(within(item).queryByText('Обсудить в Discord')).toBeNull();
   });
 
   it('an owner ask from mail is a card that opens its page', () => {
@@ -123,7 +132,7 @@ describe('«Нужно от меня» shelves', () => {
     const link = within(item).getByRole('link');
     expect(link.getAttribute('href')).toBe('/mail?message=M-1');
     expect(within(link).getByText('Нужен доступ к Supabase')).toBeTruthy();
-    expect(within(link).getByText('Мэру нужен ключ сервиса')).toBeTruthy();
+    expect(within(link).getByText('Мэру нужен ключ сервиса, ждёт 4 ч')).toBeTruthy();
     expect(within(item).getByRole('button', { name: 'Обсудить в Discord' })).toBeTruthy();
   });
 
@@ -142,13 +151,13 @@ describe('«Нужно от меня» shelves', () => {
     const item = itemOf(STALLED_ID);
     expect(within(item).getByText('Миграция 0425')).toBeTruthy();
     expect(within(item).getByText(/стоит 20 ч/)).toBeTruthy();
-    expect(within(item).getByRole('button', { name: 'Обсудить в Discord' })).toBeTruthy();
+    expect(within(item).getAllByRole('button').map((b) => b.textContent)).toEqual(['Обсудить в Discord']);
     expect(within(item).queryByText(/Ответить/)).toBeNull();
   });
 
   it('never offers an unlinked question an answer, and cuts reminders and PR states', () => {
     const { container } = show();
-    expect(container.textContent).not.toMatch(/Ответить/);
+    expect(within(itemOf(UNLINKED_ID)).queryByText(/Ответить/)).toBeNull();
     expect(container.textContent).not.toMatch(/напомнит/);
     expect(itemOf(UNLINKED_ID).getAttribute('data-kind')).toBe('stall');
     expect(container.textContent).not.toMatch(/\b(merged|checks)\b|PR открыт|влит|проверки/i);
@@ -181,10 +190,13 @@ describe('«Нужно от меня» shelves', () => {
     expect(within(left!).queryByRole('heading', { level: 3, name: 'Стоит' })).toBeNull();
   });
 
-  it('larger type on desktop', () => {
+  // vk11: canvas type — phone question card 17 px medium; desktop row 15 px on one line.
+  it('canvas type: 17 px question card on a phone, 15 px one-line row on desktop', () => {
     show();
     const title = within(itemOf(QUESTION_ID)).getByText('Когда окно для переноса ящика на основной аккаунт?');
-    expect(title.className).toContain('xl:text-[17px]');
+    expect(title.className).toContain('text-[17px]');
+    expect(title.className).toContain('md:text-[15px]');
+    expect(title.className).toContain('md:truncate');
   });
 
   it('a stall held behind the question folds under it: «держит N задач ▸» expands it', () => {
@@ -197,7 +209,8 @@ describe('«Нужно от меня» shelves', () => {
     const stuck = screen.getByRole('heading', { level: 3, name: 'Стоит' }).closest('section')!;
     expect(within(stuck).queryByText('Удалить mp_assignment после переноса ящика')).toBeNull();
     const question = itemOf(QUESTION_ID);
-    const toggle = within(question).getByRole('button', { name: /держит 24 задачи/ });
+    expect(within(question).getByText(/держит 24 задачи/)).toBeTruthy();
+    const toggle = within(question).getByRole('button', { name: /из них стоит/ });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(within(question).queryByText('Удалить mp_assignment после переноса ящика')).toBeNull();
     fireEvent.click(toggle);
@@ -233,7 +246,17 @@ describe('«Нужно от меня» shelves', () => {
 
   it('«Обсудить в Discord» on a row is not faded when enabled', () => {
     show();
-    const btn = within(itemOf(QUESTION_ID)).getByRole('button', { name: 'Обсудить в Discord' });
+    const btn = within(itemOf(STALLED_ID)).getByRole('button', { name: 'Обсудить в Discord' });
     expect(btn.className).not.toMatch(/(^|\s)sm:opacity-70(\s|$)/);
+  });
+
+  it('drops a leading slug id from a row title and keeps the meta on one line', async () => {
+    const { rowTitle } = await import('./NeedItem');
+    expect(rowTitle('m03-d3-fixed-dispatch — фиксированный диспатч')).toBe('фиксированный диспатч');
+    expect(rowTitle('Миграция 0425')).toBe('Миграция 0425');
+    expect(rowTitle('M02 #7 — Выполнить 58 сценариев')).toBe('M02 #7 — Выполнить 58 сценариев');
+    show();
+    const meta = within(itemOf(STALLED_ID)).getByText(/стоит 20 ч/);
+    expect(meta.className).toContain('truncate');
   });
 });

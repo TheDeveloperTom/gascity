@@ -24,7 +24,11 @@ export function ColumnChips({ columns, active, onPick, className }: ColumnChipsP
     <div
       role="group"
       aria-label={t('Board columns')}
-      className={cn('-mx-4 flex gap-2 overflow-x-auto px-4 pb-3 font-vk-sans', className)}
+      className={cn(
+        // Phone-Board.dc.html: gap 6, padding 8 16, a rule under the row.
+        '-mx-4 flex gap-1.5 overflow-x-auto border-b border-vk-border px-4 py-2 font-vk-sans',
+        className,
+      )}
     >
       {columns.map((c) => {
         const pressed = c.id === active;
@@ -35,7 +39,7 @@ export function ColumnChips({ columns, active, onPick, className }: ColumnChipsP
             aria-pressed={pressed}
             onClick={() => onPick(c.id)}
             className={cn(
-              'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-sm border px-3 text-[15px] focus-mark',
+              'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[3px] border px-3 text-[15px] focus-mark',
               pressed
                 ? 'border-vk-brand bg-vk-bg-primary font-medium text-vk-text-high'
                 : 'border-vk-border bg-vk-bg-secondary text-vk-text-normal',
@@ -81,9 +85,10 @@ export function PhoneBoard({
   return (
     <div className={cn('min-w-0 font-vk-sans', className)}>
       <ColumnChips columns={columns} active={active} onPick={setActive} />
-      <div className="flex min-w-0 flex-col border-x border-vk-border">
+      {/* Phone-Board: the rows run edge to edge, one rule under each (the card's own). */}
+      <div className="-mx-4 flex min-w-0 flex-col">
         {cards.length === 0 ? (
-          <p className="border-y border-vk-border p-3 text-sm text-vk-text-low">{t('Nothing here')}</p>
+          <p className="border-b border-vk-border px-4 py-2.5 text-sm text-vk-text-low">{t('Nothing here')}</p>
         ) : (
           cards.map((card) => (
             <KanbanCard
@@ -96,7 +101,6 @@ export function PhoneBoard({
               beadById={beadById}
               waitersOf={model.waitersOf}
               variant="list"
-              className="first:border-t"
             />
           ))
         )}
