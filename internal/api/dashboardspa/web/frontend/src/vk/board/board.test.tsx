@@ -192,6 +192,19 @@ describe('PhoneBoard', () => {
     expect(screen.getByRole('button', { name: /^Ревью/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
+  // vk11: Phone-Board.dc.html chip row — 44 px chips, gap 6, padding 8 16, 3 px radius, sel border.
+  it('column chips match the canvas', () => {
+    renderPhone([bead('dw-wait', 'open', { title: 'waiting one' })]);
+    const group = screen.getByRole('group', { name: 'Колонки доски' });
+    expect(group.className).toContain('gap-1.5');
+    expect(group.className).toContain('py-2');
+    expect(group.className).toContain('border-b');
+    const chip = screen.getByRole('button', { name: /^Ждёт/ });
+    expect(chip.className).toContain('h-11');
+    expect(chip.className).toContain('rounded-[3px]');
+    expect(chip.className).toContain('border-vk-brand');
+  });
+
   it('phone cards carry the project tag when two projects exist (vk-final)', () => {
     const model = buildBoardModel(
       boardData([bead('dw-a', 'open', { title: 'rig card' }), bead('gc-b', 'open', { title: 'city card' })]),
