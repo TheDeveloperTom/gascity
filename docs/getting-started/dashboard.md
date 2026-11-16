@@ -49,7 +49,14 @@ loopback (`127.0.0.1`). It is intended for local, single-operator use:
   `allow_mutations`, it runs read-only and the dashboard disables its mutating
   controls.
 
+## Turn it off
+
+Set `GC_SUPERVISOR_DASHBOARD=0` before starting the supervisor to run a
+typed-API-only supervisor with no embedded dashboard.
+
 ## Serve it from a folder
+
+This section describes an addition carried by the TheDeveloperTom/gascity fork; upstream Gas City does not have it.
 
 To ship an interface change without rebuilding `gc` or restarting the
 supervisor, name a folder in `$GC_HOME/supervisor.toml`:
@@ -74,8 +81,8 @@ dashboard-ui/
 ```
 
 Gas City never writes to this folder. It serves the version `current` names
-only when the folder, `versions/` and that version are owned by the
-supervisor's user and not group- or world-writable, and it never follows a
+only when the folder, `versions/`, `current` and that version are owned by
+the supervisor's user and not group- or world-writable, and it never follows a
 symlink inside them. On any other state it serves the built-in dashboard
 instead; no value of `dashboard_dir` stops the supervisor from starting.
 
@@ -91,8 +98,3 @@ curl -sI http://127.0.0.1:8372/ | grep -i x-gc-dashboard-ui
 ```
 
 An unknown `/assets/…` path answers 404, not the app shell.
-
-## Turn it off
-
-Set `GC_SUPERVISOR_DASHBOARD=0` before starting the supervisor to run a
-typed-API-only supervisor with no embedded dashboard.
