@@ -139,7 +139,7 @@ export function NeedsShelves({
   topicNeeds = [],
   topicQuestions = [],
   peerCount,
-  settling = false,
+  settling,
 }: {
   model: NeedsModel;
   stages: TaskStages;
@@ -148,14 +148,17 @@ export function NeedsShelves({
   topicQuestions?: readonly PendingTopicQuestion[];
   /** What the peer boards add to the count (lib/topicQuestions peerNeedsCount). */
   peerCount?: number;
-  /** The peer boards have not answered yet: hold «Стоит» and the shelves below. */
+  /**
+   * Hold «Стоит», the Mayors' lines and the shelves below (the page decides,
+   * capped; review I-1). Unset: hold while our board is read.
+   */
   settling?: boolean;
 }) {
   const stuckId = useId();
   const count = model.count + (peerCount ?? 0);
   // H1 16.11: nothing renders under content that may still grow (the board
   // read, then the peer boards' questions), or it jumps when that lands.
-  const holding = model.state === 'loading' || settling;
+  const holding = settling ?? model.state === 'loading';
   return (
     <div className="flex min-w-0 flex-col gap-2 font-vk-sans">
       <Shelf
@@ -185,8 +188,8 @@ export function NeedsShelves({
         ) : null}
         {/* Our own asks land with our board; the Mayors' lines wait for it, or
             the asks push them down (H1 16.11). */}
-        {model.state !== 'loading' && topicQuestions.length > 0 && <TopicQuestions items={topicQuestions} />}
-        {model.state !== 'loading' && topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
+        {!holding && topicQuestions.length > 0 && <TopicQuestions items={topicQuestions} />}
+        {!holding && topicNeeds.length > 0 && <TopicNeeds needs={topicNeeds} />}
         {!holding && model.stalls.length > 0 && (
           <section aria-labelledby={stuckId} className="mt-4 min-w-0">
             <h3 id={stuckId} className="pb-2 text-label font-semibold text-vk-text-low">

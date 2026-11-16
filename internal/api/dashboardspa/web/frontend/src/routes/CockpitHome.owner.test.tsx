@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import type { AttentionContributor, AttentionItem, OwnerReadiness } from '../attention/compose';
@@ -28,6 +28,8 @@ const peerBoards = vi.hoisted(() => ({ result: null as unknown }));
 vi.mock('../hooks/usePeerBoards', async (importOriginal) => ({
   ...(await importOriginal<typeof PeerBoardsModule>()),
   usePeerBoards: () => ({ sources: [], error: null, result: peerBoards.result }),
+  // the mocked peer boards have answered (their value is set synchronously)
+  usePeerBoardsSettled: () => true,
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -224,5 +226,28 @@ describe('<CockpitHomePage> owner home', () => {
     expect(screen.queryByText(/Nothing needs you/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Needs from me' })).toBeTruthy();
     expect(screen.getAllByText('Reading the board…').length).toBeGreaterThan(0);
+  });
+
+  // Review I-1 (VK-POLISH-review.md): the H1 no-shift hold hid «Город»
+  // (supervisor and health rows), «Работает», «Тихо» and the instruments until
+  // the first board read answered, with no cap; a slow supervisor hid the
+  // diagnostics exactly when they matter. The hold is capped at 3 s.
+  it('a board read that never answers still shows the city diagnostics within 3 s', async () => {
+    vi.useFakeTimers();
+    try {
+      needsModel.current = { state: 'loading', needs: [], stalls: [], quiet: [], count: 0 };
+      home([cityItem(1)], { state: 'loading' });
+      expect(screen.queryByText('City thing 1')).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(screen.getByText('City thing 1')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^At work/ })).toBeTruthy();
+      expect(screen.getByText('Usage and load')).toBeTruthy();
+      // the board itself is still being read, and says so
+      expect(screen.getAllByText('Reading the board…').length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
