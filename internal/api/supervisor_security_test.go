@@ -109,6 +109,54 @@ func TestSupervisorHostAllowlistAcceptsLoopbackAndConfiguredHost(t *testing.T) {
 	}
 }
 
+// TestSupervisorTailnetHostSameOriginMutation pins what the phone over
+// Tailscale Serve relies on (WEB-WRITES-PLAN F1): `[supervisor] allowed_hosts`
+// alone admits the tailnet Host; a same-origin typed mutation then needs only
+// X-GC-Request (the engine has no Origin gate); and allowed_hosts never grants
+// CORS. A FAIL means the engine changed and F1 must be redone.
+func TestSupervisorTailnetHostSameOriginMutation(t *testing.T) {
+	const host = "macbook-air-artem.tailfa6540.ts.net"
+	newReq := func(withHeader bool) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "https://"+host+"/v0/city/fake/mail/m-1/read", nil)
+		req.RemoteAddr = "127.0.0.1:5555"
+		req.Header.Set("Origin", "https://"+host)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		if withHeader {
+			req.Header.Set("X-GC-Request", "dashboard")
+		}
+		return req
+	}
+	allowed := func() *SupervisorMux {
+		return newTestSupervisorMux(t, map[string]*fakeState{}).WithAllowedHosts([]string{host})
+	}
+
+	rec := httptest.NewRecorder()
+	allowed().Handler().ServeHTTP(rec, newReq(true))
+	if rec.Code == http.StatusMisdirectedRequest {
+		t.Fatalf("tailnet host with allowed_hosts: status 421; body=%s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "csrf:") {
+		t.Fatalf("same-origin mutation with X-GC-Request hit CSRF: body=%s", rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("allowed_hosts must not grant CORS: Access-Control-Allow-Origin = %q", got)
+	}
+
+	// Control: the request does reach the CSRF stage, so X-GC-Request is the gate.
+	rec = httptest.NewRecorder()
+	allowed().Handler().ServeHTTP(rec, newReq(false))
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "csrf:") {
+		t.Fatalf("without X-GC-Request: status = %d, want 403 csrf; body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Without allowed_hosts the tailnet Host is refused before anything else.
+	rec = httptest.NewRecorder()
+	newTestSupervisorMux(t, map[string]*fakeState{}).Handler().ServeHTTP(rec, newReq(true))
+	if rec.Code != http.StatusMisdirectedRequest {
+		t.Fatalf("no allowed_hosts: status = %d, want 421; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestDashboardSurfacesServedBehindHostAllowlist is the mount-topology guard
 // for the dashboard half of #2723. The allowlist logic itself is pinned by
 // TestIsAllowedSupervisorHost; what this test pins is the SupervisorMux-internal
