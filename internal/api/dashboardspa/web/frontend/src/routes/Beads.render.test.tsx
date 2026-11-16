@@ -68,7 +68,8 @@ describe('BeadsPage supervisor reads', () => {
     renderPage('/beads?bead=td-window-miss');
 
     expect(await screen.findByRole('heading', { name: 'detail-only bead' })).toBeTruthy();
-    expect(screen.getAllByText(/td-window-miss/i).length).toBeGreaterThan(0);
+    // vk-1to1: the crumb shows the short label; the full id is its hover title
+    expect(screen.getAllByTitle(/td-window-miss/i).length).toBeGreaterThan(0);
     expect(fetchCalls.some((call) => call.path === '/v0/city/test-city/bead/td-window-miss')).toBe(
       true,
     );

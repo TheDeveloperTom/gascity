@@ -4,7 +4,7 @@ import type { BeadNode } from '../lib/beadGraph';
 import { useBeadDetail } from '../hooks/useBeadDetail';
 import { useBoardData } from '../hooks/useBoardData';
 import { useEntityLinks } from '../hooks/useEntityLinks';
-import { getLocale, t } from '../i18n';
+import { t } from '../i18n';
 import { MARKDOWN_CLASS, renderMiniMarkdown } from '../lib/miniMarkdown';
 import { ownerQuestionOf } from '../lib/ownerQuestions';
 import { milestoneOf } from '../lib/waitReasons';
@@ -14,14 +14,18 @@ import { DiscussButton } from '../vk/DiscussButton';
 import { AgentWork } from '../vk/panel/AgentWork';
 import { blockerTags, Relationships } from '../vk/panel/Relationships';
 import {
-  Chip,
+  DotChip,
+  MayorMessageBox,
   QuestionCard,
   QuestionHistory,
-  statusLabel,
+  StatusRow,
   TaskDrawer,
   taskSummary,
   type Answer,
 } from '../vk/panel/TaskDrawer';
+import { taskKind, taskPr, taskShortLabel } from '../vk/panel/drawerFacts';
+import { tagColor } from '../vk/board/KanbanCard';
+import { ExternalLink } from '../vk/ExternalLink';
 import { BeadLiveRunModal } from './beads/BeadLiveRunModal';
 import { isSessionStreamable } from './LiveSessionPeek';
 import { otherLinkCount, RelatedEntities } from './RelatedEntities';
@@ -105,15 +109,53 @@ export function BeadDetailModal({
   );
   const milestone = bead ? milestoneOf(bead) : null;
 
-  const idTag = (id: string) => (
-    <code className="font-vk-mono text-sm text-vk-text-low [overflow-wrap:anywhere]">{id}</code>
+  const pr = useMemo(() => (bead ? taskPr(bead, items) : null), [bead, items]);
+  const label = bead ? taskShortLabel(bead) : (beadId ?? '');
+  // vk-1to1 canvas: «M04 #3 / PR #580» (short label, never the raw id).
+  const crumb = (
+    <>
+      <span className="shrink-0" title={bead?.id ?? beadId ?? undefined}>
+        {label}
+      </span>
+      {pr !== null && (
+        <>
+          <span className="text-vk-text-low">/</span>
+          <span className="truncate">{t('PR #{n}', { n: pr.number })}</span>
+        </>
+      )}
+    </>
   );
-  const chips = bead ? <>{idTag(bead.id)}</> : beadId ? idTag(beadId) : null;
+  const recipe = bead?.metadata?.['gc.kind'] === 'run';
+  const needsYou = question !== null && answer === null;
+  const chips = bead ? (
+    <>
+      {milestone !== null && <DotChip color={tagColor(milestone)}>{milestone}</DotChip>}
+      {stageChip(bead) !== null && <DotChip color="#64748B">{stageChip(bead)}</DotChip>}
+      {needsYou && (
+        <span className="inline-flex h-5 items-center rounded-sm bg-vk-brand/15 px-2 text-sm font-medium text-vk-text-high">
+          {t('needs you')}
+        </span>
+      )}
+      {pr !== null &&
+        (pr.url !== null ? (
+          <ExternalLink href={pr.url} className="px-0.5 font-vk-mono text-[13px] text-vk-text-low hover:text-vk-text-high">
+            #{pr.number}
+          </ExternalLink>
+        ) : (
+          <span className="px-0.5 font-vk-mono text-[13px] text-vk-text-low">#{pr.number}</span>
+        ))}
+      {recipe && (
+        <span className="text-sm font-medium text-warn">{t('A formula recipe, not work: do not close it')}</span>
+      )}
+    </>
+  ) : null;
 
+  // ONE «Обсудить с Мэром» (canvas quiet secondary link under the title);
+  // the caller's write actions sit next to it.
   const actions =
     bead && discussCtx ? (
       <>
-        <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} />
+        <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} variant="secondary" />
         {renderActions?.(bead)}
       </>
     ) : undefined;
@@ -123,15 +165,27 @@ export function BeadDetailModal({
       <TaskDrawer
         open={open}
         onClose={onClose}
+        crumb={crumb}
+        statusRow={
+          bead ? (
+            <StatusRow
+              status={bead.status}
+              assignee={bead.assignee ?? null}
+              kind={taskKind(bead)}
+              tag={milestone}
+            />
+          ) : undefined
+        }
         chips={chips}
         title={bead?.title ?? beadId ?? t('Task')}
-        meta={
-          bead ? (
-            <TaskMeta
-              bead={bead}
-              milestone={milestone}
-              needsYou={question !== null && answer === null}
-            />
+        description={
+          bead?.description && bead.description.length > 0 ? (
+            <div
+              data-testid="task-description"
+              className={`text-base text-vk-text-normal ${MARKDOWN_CLASS}`}
+            >
+              {renderMiniMarkdown(bead.description, { headingFrom: 3 })}
+            </div>
           ) : undefined
         }
         top={
@@ -140,7 +194,7 @@ export function BeadDetailModal({
           ) : undefined
         }
         actions={actions}
-        footer={footer}
+        footer={footer ?? (discussCtx ? <MayorMessageBox ctx={discussCtx} /> : null)}
       >
         {notFound ? (
           <div className="space-y-2">
@@ -161,14 +215,6 @@ export function BeadDetailModal({
           <p className="text-sm text-vk-text-low">{t('No task.')}</p>
         ) : (
           <>
-            {bead.description && bead.description.length > 0 && (
-              <div
-                data-testid="task-description"
-                className={`text-[15px] text-vk-text-normal ${MARKDOWN_CLASS}`}
-              >
-                {renderMiniMarkdown(bead.description, { headingFrom: 3 })}
-              </div>
-            )}
             <Relationships
               bead={bead}
               items={items}
@@ -187,6 +233,7 @@ export function BeadDetailModal({
             <AgentWork
               bead={bead}
               sessions={board.sessions}
+              pr={pr}
               {...(liveRunnable ? { onWatch: () => setRunOpen(true) } : {})}
             />
             {extra}
@@ -209,62 +256,11 @@ export function BeadDetailModal({
   );
 }
 
-/** Labels the meta line already says another way (the stage chip, «нужен ты»). */
-const SHOWN_ELSEWHERE = /^(milestone:|needs\/operator$)/;
-
-function createdText(iso: string | undefined): string | null {
-  if (iso === undefined) return null;
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return null;
-  const sameYear = at.getFullYear() === new Date().getFullYear();
-  const date = new Intl.DateTimeFormat(getLocale() === 'ru' ? 'ru-RU' : 'en-US', {
-    day: 'numeric',
-    month: 'short',
-    ...(sameYear ? {} : { year: 'numeric' }),
-  }).format(at);
-  return t('created {date}', { date });
-}
-
-/**
- * polish2 16.11 (owner, item 8): the card's facts in ONE line under the title
- * (status, stage, executor, created, labels). It replaces «Подробности».
- */
-function TaskMeta({
-  bead,
-  milestone,
-  needsYou,
-}: {
-  bead: SupervisorBead;
-  milestone: string | null;
-  needsYou: boolean;
-}) {
-  const recipe = bead.metadata?.['gc.kind'] === 'run';
-  const created = createdText(bead.created_at);
-  const labels = (bead.labels ?? []).filter((l) => !SHOWN_ELSEWHERE.test(l));
-  const assignee = bead.assignee && bead.assignee.length > 0 ? bead.assignee : t('nobody');
-  return (
-    <div
-      data-testid="task-meta"
-      className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-vk-text-low"
-    >
-      {needsYou && <Chip tone="brand">{t('needs you')}</Chip>}
-      <Chip>{statusLabel(bead.status)}</Chip>
-      {milestone !== null && <Chip>{milestone}</Chip>}
-      {recipe && (
-        <span className="font-medium text-warn">
-          {t('A formula recipe, not work: do not close it')}
-        </span>
-      )}
-      <span className="[overflow-wrap:anywhere]">{t('Executor: {who}', { who: assignee })}</span>
-      {created !== null && <span className="tnum">{created}</span>}
-      {labels.map((label) => (
-        <span
-          key={label}
-          className="inline-flex max-w-full rounded-full bg-vk-bg-panel px-2 py-0.5 text-[13px] text-vk-text-normal [overflow-wrap:anywhere]"
-        >
-          {label}
-        </span>
-      ))}
-    </div>
-  );
+/** Canvas «Пакет этапа»: the stage-package chip when the task is a stage bead. */
+function stageChip(bead: SupervisorBead): string | null {
+  const kind = bead.metadata?.['devwork.kind']?.trim() ?? '';
+  if (kind === 'stage' || kind === 'stage_package' || (bead.labels ?? []).includes('kind:stage')) {
+    return t('Stage package');
+  }
+  return null;
 }

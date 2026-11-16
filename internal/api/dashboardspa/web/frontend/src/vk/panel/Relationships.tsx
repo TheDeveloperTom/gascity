@@ -28,17 +28,15 @@
  */
 // Source: packages/ui/src/components/IssueRelationshipsSection.tsx and
 // packages/ui/src/components/RelationshipBadge.tsx
-import { ArrowBendUpRightIcon, ProhibitIcon, TreeStructureIcon } from '@phosphor-icons/react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { t } from '../../i18n';
-import { transitiveWaiters } from '../../lib/holds';
 import { blockerIds, buildWaitersIndex, milestoneOf, titleStartsWithTag } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 
 export const RELATIONSHIP_ROWS = 2;
 
-type DisplayType = 'blocks' | 'blocked_by' | 'part_of';
+type DisplayType = 'blocks' | 'blocked_by' | 'part_of' | 'related';
 
 interface Row {
   id: string;
@@ -47,8 +45,38 @@ interface Row {
   title: string;
 }
 
-const ICONS = { blocks: ArrowBendUpRightIcon, blocked_by: ProhibitIcon, part_of: TreeStructureIcon } as const;
-const LABELS = { blocks: 'blocks', blocked_by: 'waits on', part_of: 'part of' } as const;
+// vk-1to1: the canvas icons (Main right panel). «блокирует» and «ждёт» are the
+// red bend arrow; «связана» and «часть» the low two-way arrow.
+function BendArrow() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3 13V9.5A3.5 3.5 0 0 1 6.5 6H13M10 3l3 3-3 3"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SwapArrow() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 5.5h11M11 3l2.5 2.5L11 8M13.5 10.5h-11M5 8l-2.5 2.5L5 13"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const LABELS = { blocks: 'blocks', blocked_by: 'waits on', part_of: 'part of', related: 'related' } as const;
+const RED: ReadonlySet<DisplayType> = new Set(['blocks', 'blocked_by']);
 
 /** Blocker tags (milestone, else id) for the «ждёт: …» summary. */
 export function blockerTags(bead: SupervisorBead, items: readonly SupervisorBead[]): string[] {
@@ -66,21 +94,21 @@ function RelationshipBadge({
   row: Row;
   onClick?: (id: string) => void;
 }) {
-  const Icon = ICONS[row.displayType];
+  const red = RED.has(row.displayType);
   const label = t(LABELS[row.displayType]);
   const body = (
     <>
-      <span className={cn('flex shrink-0', row.displayType === 'part_of' ? 'text-vk-text-low' : 'text-vk-error')}>
-        <Icon size={15} weight="bold" aria-hidden="true" />
+      <span className={cn('flex shrink-0', red ? 'text-vk-error' : 'text-vk-text-low')}>
+        {red ? <BendArrow /> : <SwapArrow />}
       </span>
-      <span className="shrink-0 whitespace-nowrap text-vk-text-low">{label}</span>
+      <span className="shrink-0 whitespace-nowrap text-sm text-vk-text-low">{label}</span>
       {row.tag !== null && (
-        <span className="shrink-0 whitespace-nowrap font-vk-mono text-vk-text-high">{row.tag}</span>
+        <span className="shrink-0 whitespace-nowrap font-vk-mono text-sm text-vk-text-normal">{row.tag}</span>
       )}
-      <span className="min-w-0 truncate text-vk-text-normal">{row.title}</span>
+      <span className="min-w-0 truncate text-base text-vk-text-high">{row.title}</span>
     </>
   );
-  const cls = 'flex min-h-11 md:min-h-[32px] w-full min-w-0 items-center gap-1.5 py-1 text-left text-sm';
+  const cls = 'flex min-h-11 md:min-h-0 w-full min-w-0 items-center gap-1.5 py-1 text-left';
   return onClick ? (
     <button
       type="button"
@@ -117,7 +145,7 @@ function parentOf(bead: SupervisorBead): string | null {
 // the other linked things. The old «Зависимости» and «Связанное» are gone.
 export function Relationships({ bead, items, onOpenBead, children, hasOtherLinks = false }: RelationshipsProps) {
   const [all, setAll] = useState(false);
-  const { rows, extra, holds } = useMemo(() => {
+  const { rows, extra, total } = useMemo(() => {
     const byId = new Map(items.map((b) => [b.id, b]));
     const waitersOf = buildWaitersIndex(items);
     const toRow = (id: string, displayType: DisplayType): Row => {
@@ -133,6 +161,9 @@ export function Relationships({ bead, items, onOpenBead, children, hasOtherLinks
         .filter((id) => id !== parent)
         .map((id) => toRow(id, 'blocked_by')),
       ...(parent === null ? [] : [toRow(parent, 'part_of')]),
+      ...(bead.dependencies ?? [])
+        .filter((d) => d.type === 'related' && d.issue_id === bead.id && d.depends_on_id !== parent)
+        .map((d) => toRow(d.depends_on_id, 'related')),
     ];
     // the parent stays visible even when the waiters fold
     const head = every.slice(0, RELATIONSHIP_ROWS);
@@ -145,17 +176,15 @@ export function Relationships({ bead, items, onOpenBead, children, hasOtherLinks
     return {
       rows: shown,
       extra: Math.max(0, every.length - shown.length),
-      holds: transitiveWaiters(bead.id, waitersOf).length,
+      total: every.length,
     };
   }, [bead, items, all]);
 
   return (
-    <section data-testid="task-relationships" className="flex flex-col gap-0.5">
+    <section data-testid="task-relationships" className="flex flex-col gap-1">
       <div className="flex items-center justify-between py-1">
         <h3 className="text-sm font-medium text-vk-text-high">{t('Relationships')}</h3>
-        {holds > 0 && (
-          <span className="text-sm text-vk-text-low">{t('holds {n}', { n: holds })}</span>
-        )}
+        {total > 0 && <span className="text-sm text-vk-text-low">{total}</span>}
       </div>
       {rows.length === 0 && !hasOtherLinks ? (
         <p className="py-1 text-sm text-vk-text-low">{t('No links.')}</p>
