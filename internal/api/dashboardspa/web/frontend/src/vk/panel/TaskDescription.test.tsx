@@ -122,3 +122,36 @@ describe('TaskDescription: hostile text', () => {
     expect(letters(container.textContent ?? '')).toBe(`x${'y'.repeat(5000)}`);
   });
 });
+
+// REL17 finding 1 (16.11): a long one-line description is broken at sentence
+// ends. A sentence that begins like a list marker («3) …», «7. …», «- …»,
+// «# …») must never begin a paragraph, or the drawer reads it as a list or a
+// heading and the «3)» is lost («1.» appears instead).
+describe('a sentence that looks like a list marker', () => {
+  // Each sentence is longer than a paragraph's target, so the splitter must
+  // break right before every one of them.
+  const long = (head: string) => `${head} ${'слово '.repeat(45).trim()}.`;
+  it('keeps «3) c» in place and draws no ordered list', () => {
+    const text = [long('Сначала сделать вот это'), long('2) второе действие'), long('3) третье действие')].join(' ');
+    const { container } = render(<TaskDescription text={text} />);
+    expect(container.textContent).toContain('3) третье действие');
+    expect(container.textContent).toContain('2) второе действие');
+    expect(container.querySelector('ol')).toBeNull();
+    expect(container.querySelector('ul')).toBeNull();
+  });
+
+  it('keeps «7. Текст», «- пункт» and «# заметка» as running text', () => {
+    const text = [long('Итог такой'), long('7. Текст продолжения'), long('- пункт без списка'), long('# заметка в строке')].join(' ');
+    const { container } = render(<TaskDescription text={text} />);
+    expect(container.textContent).toContain('7. Текст продолжения');
+    expect(container.textContent).toContain('- пункт без списка');
+    expect(container.textContent).toContain('# заметка в строке');
+    expect(container.querySelector('ol, ul, h1, h2, h3, h4, h5, h6')).toBeNull();
+  });
+
+  it('still breaks a long text at ordinary sentence ends', () => {
+    const text = [long('Первое'), long('Второе'), long('Третье')].join(' ');
+    const { container } = render(<TaskDescription text={text} />);
+    expect(container.querySelectorAll('p').length).toBeGreaterThan(1);
+  });
+});

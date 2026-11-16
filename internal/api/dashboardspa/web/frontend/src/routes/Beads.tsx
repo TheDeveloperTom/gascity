@@ -328,7 +328,9 @@ export function BeadsPage() {
   const boardModel = useMemo(
     () =>
       buildBoardModel(
-        { items: rows, routeItems: routeBeads, serviceItems, routesComplete },
+        // REL17 finding 4: the fast paint lacks the closed rows that decide
+        // whether an epic heads a group, so it shows no epic as a card.
+        { items: rows, routeItems: routeBeads, serviceItems, routesComplete, preview: boardPartial },
         rigItems,
         {
           project,
@@ -344,6 +346,7 @@ export function BeadsPage() {
       routeBeads,
       serviceItems,
       routesComplete,
+      boardPartial,
       rigItems,
       project,
       search,

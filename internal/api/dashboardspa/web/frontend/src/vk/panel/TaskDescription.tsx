@@ -60,6 +60,10 @@ export function splitSections(text: string): Section[] | null {
 /** A paragraph longer than this is broken at its sentence ends. */
 const LONG_PARAGRAPH_CHARS = 200;
 const PARAGRAPH_TARGET_CHARS = 220;
+/** A line start the renderer reads as a list item or a heading. */
+const MARKER_START = /^(?:\d+[.)]|[-*+]|#{1,6})\s/;
+/** A «sentence» that is only a list number («7.», «3)»). */
+const BARE_NUMBER = /^\d+[.)]$/;
 
 /**
  * Breaks long single-line paragraphs of old text into short ones at sentence
@@ -75,8 +79,23 @@ export function shortParagraphs(markdown: string): string {
       }
       const out: string[] = [];
       let cur = '';
+      // «… итог. 7. Текст …»: the splitter reads «7.» as a sentence of its
+      // own; it belongs to the sentence it numbers.
+      const parts: string[] = [];
       for (const sentence of sentences(para, { digitStart: true })) {
-        if (cur.length > 0 && cur.length + sentence.length + 1 > PARAGRAPH_TARGET_CHARS) {
+        const last = parts.at(-1);
+        if (last !== undefined && BARE_NUMBER.test(last)) parts[parts.length - 1] = `${last} ${sentence}`;
+        else parts.push(sentence);
+      }
+      for (const sentence of parts) {
+        // A sentence that begins like a list item or a heading («3) …»,
+        // «7. …», «- …», «# …») never begins a paragraph: the renderer would
+        // read it as a list or a heading and change the text (REL17 finding 1).
+        if (
+          cur.length > 0 &&
+          cur.length + sentence.length + 1 > PARAGRAPH_TARGET_CHARS &&
+          !MARKER_START.test(sentence)
+        ) {
           out.push(cur);
           cur = sentence;
         } else {

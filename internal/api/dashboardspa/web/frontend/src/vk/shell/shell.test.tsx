@@ -19,11 +19,15 @@ import { TopNav } from './TopNav';
 
 const mocks = vi.hoisted(() => ({
   count: 0,
+  incomplete: false,
   openCommandBar: vi.fn(),
   hardNavigate: vi.fn(),
 }));
 
-vi.mock('../../lib/needsFromMe', () => ({ useNeedsFromMeCount: () => mocks.count }));
+vi.mock('../../lib/needsFromMe', () => ({
+  useNeedsFromMeCount: () => mocks.count,
+  useNeedsFromMeIncomplete: () => mocks.incomplete,
+}));
 vi.mock('../../lib/commandBar', () => ({
   openCommandBar: mocks.openCommandBar,
   useCommandBarOpen: () => [false, () => {}],
@@ -78,6 +82,7 @@ function renderHeader(path = '/') {
 
 beforeEach(() => {
   mocks.count = 0;
+  mocks.incomplete = false;
   mocks.openCommandBar.mockClear();
   mocks.hardNavigate.mockClear();
   setLocale('ru');
@@ -115,6 +120,17 @@ describe('BottomTabs (phone)', () => {
     expect(labels).toEqual(['Нужно от меня', 'Доска', 'Поиск']);
     expect(within(bar).getByTestId('needs-badge').textContent).toBe('4');
     expect(within(bar).getByRole('link', { name: 'Нужно от меня, 4' })).toBeTruthy();
+  });
+
+  // REL17 finding 3 (16.11): while a rig store cannot be read, the count may
+  // miss that store's questions; the badge says so with a «?».
+  it('marks the count incomplete while a rig store is unread', () => {
+    mocks.count = 4;
+    mocks.incomplete = true;
+    inRouter(<BottomTabs />);
+    const bar = screen.getByRole('navigation', { name: 'Разделы' });
+    expect(within(bar).getByTestId('needs-badge').textContent).toBe('4?');
+    expect(within(bar).getByRole('link', { name: 'Нужно от меня, 4, прочитано не полностью' })).toBeTruthy();
   });
 
   it('no badge at zero', () => {

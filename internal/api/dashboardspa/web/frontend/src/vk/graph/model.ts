@@ -45,6 +45,8 @@ export interface GraphEdge {
 export interface GraphColumn {
   title: string;
   count: number;
+  /** The count may miss beads the page could not read yet (REL17 finding 3). */
+  incomplete?: boolean;
   verdict: string;
   alarm: boolean;
 }

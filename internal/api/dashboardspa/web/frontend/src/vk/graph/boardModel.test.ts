@@ -277,3 +277,48 @@ describe('buildBoardGraph', () => {
     expect(graph.laneOf.t7).toBe('M03');
   });
 });
+
+// REL17 finding 3 (16.11): while a rig store is unread or still loading the
+// graph is partial, and its «От тебя» count may miss that store's questions.
+describe('the «От тебя» column on a partial graph', () => {
+  const beads = () => [
+    epic('dw-m04', 'M04', 'M04'),
+    bead('dw-q', 'Спросить владельца', {
+      labels: ['needs/operator', ...ms('M04')],
+      metadata: { 'decision.question_id': 'q1', 'decision.chat_url': 'https://discord.com/channels/1/2/3' },
+    }),
+    bead('dw-t', 'задача', { labels: ms('M04'), dependencies: [blocks('dw-t', 'dw-q')] }),
+  ];
+  it('is marked incomplete', () => {
+    const graph = buildBoardGraph(beads(), { nowMs: NOW, partial: true });
+    expect(graph.columns[0]?.title).toBe('От тебя');
+    expect(graph.columns[0]?.incomplete).toBe(true);
+  });
+  it('is not marked when every read is in', () => {
+    const graph = buildBoardGraph(beads(), { nowMs: NOW });
+    expect(graph.columns[0]?.title).toBe('От тебя');
+    expect(graph.columns[0]?.incomplete).toBeUndefined();
+  });
+});
+
+// REL17 finding 4 (16.11): the graph said «Открыто 116» on rel17 and 115 live.
+// The extra one is dw-cs2w «M04 — ответ владельца на ВВ-6», a task the board
+// shows as a card. The old «От тебя» rule drew it as a question card; under
+// the approved rule (asked = needs/operator + question id) it is a task, and
+// the graph counts it as one, as the board does.
+describe('a placeholder task the board shows as a card', () => {
+  it('is counted among the open tasks, not drawn as a question', () => {
+    const beads = [
+      epic('dw-m04', 'M04', 'M04'),
+      bead('dw-cs2w', 'M04 — ответ владельца на ВВ-6 (способ оплаты клиентом)', {
+        labels: ms('M04'),
+        dependencies: [blocks('dw-cs2w', 'dw-x')],
+      }),
+      bead('dw-x', 'обычная задача', { labels: ms('M04') }),
+    ];
+    const graph = buildBoardGraph(beads, { nowMs: NOW });
+    const node = graph.nodes.find((n) => n.id === 'dw-cs2w');
+    expect(node?.kind).toBe('task');
+    expect(graph.headline).toContain('Открыто 2 задачи');
+  });
+});

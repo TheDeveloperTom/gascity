@@ -338,6 +338,14 @@ export function ownQuestionIdsOf(model: NeedsModel): ReadonlySet<string> {
  * (lib/topicQuestions peerNeedsCount). Peer cards never count (SYNC-PLAN
  * review focus 2).
  */
+/**
+ * True while a rig store (or the rig list) could not be read: the count may
+ * miss that store's questions, so the badge marks it (REL17 finding 3).
+ */
+export function useNeedsFromMeIncomplete(): boolean {
+  return (useNeedsModel().unread?.length ?? 0) > 0;
+}
+
 export function useNeedsFromMeCount(): number {
   const model = useNeedsModel();
   const { result } = usePeerBoards();

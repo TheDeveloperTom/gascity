@@ -444,7 +444,14 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     } else {
       verdict = c === lastCol && lastCol >= 3 ? 'ждёт всё, что левее' : 'ждут предыдущих';
     }
-    columns.push({ title: columnTitle(c, lastCol), count: list.length, verdict, alarm });
+    columns.push({
+      title: columnTitle(c, lastCol),
+      count: list.length,
+      verdict,
+      alarm,
+      // A partial read may miss a store's questions (REL17 finding 3).
+      ...(c === 0 && opts.partial === true ? { incomplete: true } : {}),
+    });
   }
 
   // Headline and subline over the whole board.

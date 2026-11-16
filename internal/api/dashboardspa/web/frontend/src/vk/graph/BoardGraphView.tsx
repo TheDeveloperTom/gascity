@@ -403,7 +403,13 @@ export function BoardGraphView(props: BoardGraphViewProps) {
                       <div className="vkg-colhead-bar">
                         <span aria-hidden="true" className="vkg-dot" style={{ background: columnColor(i, graph.columns.length) }} />
                         <p>{c.title}</p>
-                        <span className="vkg-colhead-count">{c.count}</span>
+                        <span
+                          className="vkg-colhead-count"
+                          {...(c.incomplete === true ? { title: 'прочитано не полностью' } : {})}
+                        >
+                          {c.count}
+                          {c.incomplete === true ? '?' : ''}
+                        </span>
                       </div>
                       <div className="vkg-verdict" data-alarm={c.alarm ? 'true' : 'false'}>
                         {c.alarm ? <GraphIcon name="clock" size={13} /> : null}

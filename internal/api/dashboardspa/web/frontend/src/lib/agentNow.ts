@@ -89,10 +89,36 @@ function clip(text: string): string {
  * markdown list or heading marker.
  */
 function lastSentence(text: string): string {
-  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
-  const line = (lines[lines.length - 1] ?? '').replace(/^(?:#{1,6}|[-*]|\d+[.)])\s+/, '');
+  const line = lastProseLine(text);
+  // Only code or tables (REL17 finding 2): the old cut of the last characters.
+  if (line === null) return lastChars(text);
   const parts = sentences(line);
   return clip(parts[parts.length - 1] ?? line);
+}
+
+/**
+ * The last line that is prose: not a code fence, not code inside one, not a
+ * table row or separator; without a leading list or heading marker.
+ */
+function lastProseLine(text: string): string | null {
+  let inFence = false;
+  let last: string | null = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (/^(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || line.length === 0 || /^\|.*\|$/.test(line)) continue;
+    const prose = line.replace(/^(?:#{1,6}|[-*]|\d+[.)])\s+/, '');
+    if (prose.length > 0) last = prose;
+  }
+  return last;
+}
+
+function lastChars(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > AGENT_NOW_TEXT_LIMIT ? trimmed.slice(-AGENT_NOW_TEXT_LIMIT) : trimmed;
 }
 
 export function describeAgentNow(messages: readonly SessionStructuredMessage[]): AgentNow | null {

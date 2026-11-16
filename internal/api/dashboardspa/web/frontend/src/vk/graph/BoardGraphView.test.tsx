@@ -428,3 +428,23 @@ describe('column header band', () => {
     expect(COLHEAD_H).toBeGreaterThanOrEqual(8 + 38 + 6 + 2 * 18 + 8);
   });
 });
+
+// REL17 finding 3 (16.11): a partial graph's «От тебя» count may miss the
+// questions of a store that could not be read; the count says so with a «?».
+describe('the «От тебя» column count', () => {
+  const ownerCount = (graph: BoardGraph) => {
+    setup(graph);
+    return screen.getByTestId('board-col-0').querySelector('.vkg-colhead-count') as HTMLElement;
+  };
+  it('reads «1?» with a title when the column is incomplete', () => {
+    const [first, ...rest] = BOARD.columns;
+    const count = ownerCount({ ...BOARD, columns: [{ ...first!, incomplete: true }, ...rest] });
+    expect(count.textContent).toBe('1?');
+    expect(count.getAttribute('title')).toBe('прочитано не полностью');
+  });
+  it('reads the bare number when every read is in', () => {
+    const count = ownerCount(BOARD);
+    expect(count.textContent).toBe('1');
+    expect(count.getAttribute('title')).toBeNull();
+  });
+});

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 import { t } from '../../i18n';
 import { openCommandBar } from '../../lib/commandBar';
-import { useNeedsFromMeCount } from '../../lib/needsFromMe';
+import { useNeedsFromMeCount, useNeedsFromMeIncomplete } from '../../lib/needsFromMe';
 import { cn } from '../cn';
 
 // vk lane 5: the phone bottom tab bar (design Phone-Needs / Phone-Board /
@@ -83,10 +83,13 @@ export function NeedsBadge({
   count,
   className,
   tone = 'red',
+  incomplete = false,
 }: {
   count: number;
   className?: string;
   tone?: 'red' | 'warn';
+  /** The count may miss an unread store's questions: shown as «N?». */
+  incomplete?: boolean;
 }) {
   if (count <= 0) return null;
   return (
@@ -102,13 +105,17 @@ export function NeedsBadge({
       )}
     >
       {count}
+      {incomplete ? '?' : ''}
     </span>
   );
 }
 
 /** One accessible name for the «Нужно от меня» tab, with the count when there is one. */
-export function needsLabel(count: number): string {
-  return count > 0 ? t('Needs from me, {n}', { n: count }) : t('Needs from me');
+export function needsLabel(count: number, incomplete = false): string {
+  if (count <= 0) return t('Needs from me');
+  return incomplete
+    ? t('Needs from me, {n}, not fully read', { n: count })
+    : t('Needs from me, {n}', { n: count });
 }
 
 const TAB =
@@ -141,6 +148,7 @@ const tabTone = (active: boolean) => (active ? 'text-vk-text-high' : 'text-vk-te
 
 export function BottomTabs() {
   const count = useNeedsFromMeCount();
+  const incomplete = useNeedsFromMeIncomplete();
   return (
     <nav
       aria-label={t('Sections')}
@@ -151,7 +159,7 @@ export function BottomTabs() {
           <NavLink
             to="/"
             end
-            aria-label={needsLabel(count)}
+            aria-label={needsLabel(count, incomplete)}
             className={({ isActive }) => cn(TAB, tabTone(isActive))}
           >
             {({ isActive }) => (
@@ -159,7 +167,7 @@ export function BottomTabs() {
                 icon={<NeedsGlyph />}
                 label={t('Needs from me')}
                 active={isActive}
-                badge={<NeedsBadge count={count} className="absolute -top-1 left-4" />}
+                badge={<NeedsBadge count={count} incomplete={incomplete} className="absolute -top-1 left-4" />}
               />
             )}
           </NavLink>

@@ -87,6 +87,28 @@ describe('describeAgentNow', () => {
     );
   });
 
+  // REL17 finding 2 (16.11): a code block or a table at the end showed «```»
+  // or «| 1 | 2 |». Fences, the code inside them and table rows are skipped;
+  // the last prose line is taken; with no prose left, the old cut of the
+  // last characters.
+  it('a code block at the end: the last prose line before it', () => {
+    const text = 'Запустил проверку тестов.\n```bash\nnpm test\n```';
+    const now = describeAgentNow([assistant([{ type: 'text', text }])]);
+    expect(now?.text).toBe('Запустил проверку тестов.');
+  });
+
+  it('a table at the end: the last prose line before it', () => {
+    const text = 'Сводка по прогонам ниже.\n| a | b |\n|---|---|\n| 1 | 2 |';
+    const now = describeAgentNow([assistant([{ type: 'text', text }])]);
+    expect(now?.text).toBe('Сводка по прогонам ниже.');
+  });
+
+  it('only code and tables: the old cut of the last characters', () => {
+    const text = '```\nconst x = 1;\n```';
+    const now = describeAgentNow([assistant([{ type: 'text', text }])]);
+    expect(now?.text).toBe(text);
+  });
+
   it('a long last sentence is cut at a word boundary with an ellipsis', () => {
     const sentence = `Начало мысли ${'слово '.repeat(40)}конец.`;
     const now = describeAgentNow([assistant([{ type: 'text', text: `Коротко. ${sentence}` }])]);
