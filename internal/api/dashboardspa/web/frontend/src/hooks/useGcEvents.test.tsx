@@ -144,6 +144,58 @@ describe('useGcEventRefresh', () => {
     expect(eventSources).toHaveLength(0);
   });
 
+  // H1 16.11: every subscriber used to open its own EventSource, so one board
+  // tab held three identical /events/stream connections (plus peer-boards).
+  // Chrome allows six HTTP/1.1 connections per host, so a second dashboard
+  // tab (or the PWA beside a tab) froze: no request could start. All
+  // subscribers of a city now share one stream.
+  describe('one shared stream per city', () => {
+    it('opens a single EventSource for several subscribers and fans events out to each', () => {
+      const a = vi.fn();
+      const b = vi.fn();
+      renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], a));
+      renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], b));
+      renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.session], vi.fn()));
+
+      expect(eventSources).toHaveLength(1);
+      act(() => eventSources[0]?.open());
+      act(() => eventSources[0]?.emitNamed('event', JSON.stringify({ type: 'bead.updated' })));
+      expect(a).toHaveBeenCalledTimes(1);
+      expect(b).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the stream for the remaining subscriber and closes it after the last one leaves', () => {
+      const first = renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], vi.fn()));
+      const onMatch = vi.fn();
+      const second = renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], onMatch));
+      act(() => eventSources[0]?.open());
+
+      first.unmount();
+      expect(eventSources[0]?.readyState).toBe(FakeEventSource.OPEN);
+      act(() => eventSources[0]?.emitNamed('event', JSON.stringify({ type: 'bead.created' })));
+      expect(onMatch).toHaveBeenCalledTimes(1);
+
+      second.unmount();
+      expect(eventSources[0]?.readyState).toBe(FakeEventSource.CLOSED);
+    });
+
+    it('reconnects the shared stream once for all subscribers after an error', () => {
+      vi.useFakeTimers();
+      const a = renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], vi.fn()));
+      const b = renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], vi.fn()));
+      act(() => eventSources[0]?.error());
+      expect(a.result.current).toBe('closed');
+      expect(b.result.current).toBe('closed');
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(eventSources).toHaveLength(2);
+      act(() => eventSources[1]?.open());
+      expect(a.result.current).toBe('open');
+      expect(b.result.current).toBe('open');
+    });
+  });
+
   describe('reconnect backoff', () => {
     beforeEach(() => {
       vi.useFakeTimers();

@@ -98,11 +98,8 @@ export function useGcEventRefresh(
       return;
     }
 
-    let es: EventSource | null = null;
     let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let connectGraceTimer: ReturnType<typeof setTimeout> | null = null;
-    let retryDelayMs = 1_000;
     let malformedEventReported = false;
 
     const clearConnectGraceTimer = () => {
@@ -140,101 +137,192 @@ export function useGcEventRefresh(
       }
     };
 
-    const connect = () => {
-      const EventSourceCtor = globalThis.EventSource;
-      if (typeof EventSourceCtor !== 'function') {
-        setState('closed');
+    const EventSourceCtor = globalThis.EventSource;
+    const cityName = getActiveCity();
+    if (typeof EventSourceCtor !== 'function' || cityName === null) {
+      setState('closed');
+      return;
+    }
+
+    let currentSource: EventSource | null = null;
+    // gc supervisor sends events with `event: event` (the event NAME is
+    // literally "event"), not the default "message"; the shared stream routes
+    // both to here.
+    const handleData = (msg: MessageEvent<string>) => {
+      if (cancelled) return;
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(msg.data);
+      } catch {
+        setState('degraded');
+        reportMalformedEventOnce('invalid JSON');
         return;
       }
-      const cityName = getActiveCity();
-      if (cityName === null) {
-        setState('closed');
+      if (!isRecord(parsed)) {
+        setState('degraded');
+        reportMalformedEventOnce('missing string event type');
         return;
       }
-      // The browser sends Last-Event-ID automatically on reconnect; the
-      // supervisor event stream accepts that header directly.
-      const source = new EventSourceCtor(supervisorApi().cityEventStreamUrl(cityName));
-      es = source;
-      setState('connecting');
-      connectGraceTimer = setTimeout(() => {
-        if (cancelled || es !== source || source.readyState === EventSourceCtor.CLOSED) return;
-        setState('open');
-      }, CONNECTING_GRACE_MS);
-      es.onopen = () => {
-        if (cancelled) return;
-        clearConnectGraceTimer();
-        setState('open');
-        retryDelayMs = 1_000;
-      };
-      // gc supervisor sends events with `event: event` (the event NAME
-      // is literally "event"), not the default "message". EventSource
-      // routes named events to addEventListener('<name>', ...) — only
-      // unnamed events reach .onmessage. Both handlers point to the same
-      // dispatch so the path is identical regardless of how the server
-      // names them.
-      const handleData = (msg: MessageEvent<string>) => {
-        if (cancelled) return;
-        let parsed: unknown = null;
-        try {
-          parsed = JSON.parse(msg.data);
-        } catch {
-          setState('degraded');
-          reportMalformedEventOnce('invalid JSON');
-          return;
+      const t = parsed.type;
+      if (typeof t !== 'string') {
+        setState('degraded');
+        reportMalformedEventOnce('missing string event type');
+        return;
+      }
+      setState('open');
+      for (const prefix of prefixes) {
+        if (t.startsWith(prefix)) {
+          const event = parsed as GcEventEnvelope;
+          if (matchesRef.current?.(event) ?? true) scheduleMatch();
+          break;
         }
-        if (!isRecord(parsed)) {
-          setState('degraded');
-          reportMalformedEventOnce('missing string event type');
-          return;
-        }
-        const t = parsed.type;
-        if (typeof t !== 'string') {
-          setState('degraded');
-          reportMalformedEventOnce('missing string event type');
-          return;
-        }
-        setState('open');
-        for (const prefix of prefixes) {
-          if (t.startsWith(prefix)) {
-            const event = parsed as GcEventEnvelope;
-            if (matchesRef.current?.(event) ?? true) scheduleMatch();
-            break;
-          }
-        }
-      };
-      es.onmessage = handleData;
-      es.addEventListener('event', handleData as EventListener);
-      es.onerror = () => {
-        if (cancelled) return;
-        clearConnectGraceTimer();
-        setState('closed');
-        es?.close();
-        es = null;
-        // Exponential backoff capped at 30s.
-        retryTimer = setTimeout(() => {
-          retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
-          connect();
-        }, retryDelayMs);
-      };
+      }
     };
 
-    connect();
+    const unsubscribe = subscribeSharedStream(
+      EventSourceCtor,
+      supervisorApi().cityEventStreamUrl(cityName),
+      {
+        connecting: (source) => {
+          if (cancelled) return;
+          currentSource = source;
+          clearConnectGraceTimer();
+          setState('connecting');
+          // A quiet supervisor stream must not show «connecting» forever.
+          connectGraceTimer = setTimeout(() => {
+            if (
+              cancelled ||
+              currentSource !== source ||
+              source.readyState === EventSourceCtor.CLOSED
+            )
+              return;
+            setState('open');
+          }, CONNECTING_GRACE_MS);
+        },
+        open: () => {
+          if (cancelled) return;
+          clearConnectGraceTimer();
+          setState('open');
+        },
+        data: handleData,
+        error: () => {
+          if (cancelled) return;
+          clearConnectGraceTimer();
+          currentSource = null;
+          setState('closed');
+        },
+      },
+    );
 
     return () => {
       cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
       clearConnectGraceTimer();
       if (coalesceTimerRef.current) {
         clearTimeout(coalesceTimerRef.current);
         coalesceTimerRef.current = null;
       }
-      es?.close();
+      unsubscribe();
     };
     // We re-bind only when the prefix set changes — onMatch is captured in a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefixKey]);
 
   return state;
+}
+
+// H1 16.11: one EventSource per stream URL, shared by every subscriber.
+// Each useGcEventRefresh used to open its own, so a board tab held three
+// identical /events/stream connections; with Chrome's six HTTP/1.1
+// connections per host a second dashboard tab (or the PWA beside a tab)
+// could not start a single request. The shared stream reconnects once for
+// everyone with capped exponential backoff and closes after the last
+// subscriber leaves.
+interface StreamSubscriber {
+  connecting: (source: EventSource) => void;
+  open: () => void;
+  data: (msg: MessageEvent<string>) => void;
+  error: () => void;
+}
+
+interface SharedStream {
+  subscribers: Set<StreamSubscriber>;
+  source: EventSource | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  retryDelayMs: number;
+}
+
+const sharedStreams = new Map<string, SharedStream>();
+
+function subscribeSharedStream(
+  EventSourceCtor: typeof EventSource,
+  url: string,
+  subscriber: StreamSubscriber,
+): () => void {
+  let stream = sharedStreams.get(url);
+  if (stream === undefined) {
+    const created: SharedStream = {
+      subscribers: new Set(),
+      source: null,
+      retryTimer: null,
+      retryDelayMs: 1_000,
+    };
+    sharedStreams.set(url, created);
+    stream = created;
+    stream.subscribers.add(subscriber);
+    openSharedStream(EventSourceCtor, url, created);
+  } else {
+    stream.subscribers.add(subscriber);
+    const source = stream.source;
+    if (source === null) subscriber.error();
+    else if (source.readyState === EventSourceCtor.OPEN) subscriber.open();
+    else subscriber.connecting(source);
+  }
+  const joined = stream;
+  return () => {
+    joined.subscribers.delete(subscriber);
+    if (joined.subscribers.size > 0) return;
+    if (joined.retryTimer !== null) clearTimeout(joined.retryTimer);
+    joined.retryTimer = null;
+    joined.source?.close();
+    joined.source = null;
+    if (sharedStreams.get(url) === joined) sharedStreams.delete(url);
+  };
+}
+
+function openSharedStream(
+  EventSourceCtor: typeof EventSource,
+  url: string,
+  stream: SharedStream,
+): void {
+  // The browser sends Last-Event-ID automatically on reconnect; the
+  // supervisor event stream accepts that header directly.
+  const source = new EventSourceCtor(url);
+  stream.source = source;
+  for (const sub of [...stream.subscribers]) sub.connecting(source);
+  source.onopen = () => {
+    if (stream.source !== source) return;
+    stream.retryDelayMs = 1_000;
+    for (const sub of [...stream.subscribers]) sub.open();
+  };
+  const dispatch = (msg: MessageEvent<string>) => {
+    if (stream.source !== source) return;
+    for (const sub of [...stream.subscribers]) sub.data(msg);
+  };
+  source.onmessage = dispatch;
+  source.addEventListener('event', dispatch as EventListener);
+  source.onerror = () => {
+    if (stream.source !== source) return;
+    source.close();
+    stream.source = null;
+    for (const sub of [...stream.subscribers]) sub.error();
+    if (stream.subscribers.size === 0) return;
+    // Exponential backoff capped at 30s.
+    stream.retryTimer = setTimeout(() => {
+      stream.retryTimer = null;
+      stream.retryDelayMs = Math.min(stream.retryDelayMs * 2, 30_000);
+      if (stream.subscribers.size > 0) openSharedStream(EventSourceCtor, url, stream);
+    }, stream.retryDelayMs);
+  };
 }
 
 function reportMalformedEvent(reason: string): void {
