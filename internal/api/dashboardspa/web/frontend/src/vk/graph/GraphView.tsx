@@ -210,7 +210,10 @@ export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewPr
                 </div>
                 <div className="vkg-verdict" data-alarm={c.alarm ? 'true' : 'false'}>
                   {c.alarm ? <GraphIcon name="clock" size={13} /> : null}
-                  <span>{c.verdict}</span>
+                  {/* two lines at most: a third ran into the first card (live M04) */}
+                  <span className="vkg-verdict-text" title={c.verdict}>
+                    {c.verdict}
+                  </span>
                 </div>
               </div>
             ))}
@@ -320,15 +323,10 @@ function PhoneWaves({ model, selectedId, onSelect, onAnswer }: GraphViewProps) {
                   <span style={{ color: 'oklch(var(--warn))', display: 'flex' }}>
                     <GraphIcon name="hand" size={16} />
                   </span>
-                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                    <span className="vkg-row" style={{ alignItems: 'baseline' }}>
-                      <span className="vkg-label" style={{ fontSize: 13, color: 'oklch(var(--warn))' }}>
-                        {n.label}
-                      </span>
-                      <span className="vkg-title" style={{ fontSize: 16 }}>
-                        {n.title}
-                      </span>
-                    </span>
+                  {/* 390 px: label over title; side by side both were cut to «во…» */}
+                  <span className="vkg-qrow-text">
+                    <span className="vkg-label vkg-qrow-label">{n.label}</span>
+                    <span className="vkg-qrow-title">{n.title}</span>
                     <span style={{ fontSize: 13, color: 'oklch(var(--vk-text-low))' }}>держит {n.holds}</span>
                   </span>
                   <button

@@ -17,14 +17,20 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 // onSelect, onAnswer}), so these tests hold for the real files too.
 
 const graphCalls = vi.hoisted(() => [] as Array<{ epicId: string | null; focusIds?: string[] }>);
+const graphBeadIds = vi.hoisted(() => ({ last: [] as string[] }));
 vi.mock('../vk/graph/model', async (orig) => {
   const real = await orig<typeof import('../vk/graph/model')>();
   return {
     ...real,
     buildGraph: (beads: ReadonlyArray<unknown>, opts: { epicId: string | null; focusIds?: string[]; nowMs: number }) => {
       graphCalls.push({ epicId: opts.epicId, ...(opts.focusIds ? { focusIds: opts.focusIds } : {}) });
+      graphBeadIds.last = (beads as SupervisorBead[]).map((b) => b.id);
+      // dw-b also carries its own owner question: a separate «<id>::q» card.
+      const withQuestions = (beads as SupervisorBead[]).flatMap((b) =>
+        b.id === 'dw-b' ? [{ ...b, id: real.questionNodeId(b.id) }, b] : [b],
+      );
       return {
-        nodes: (beads as SupervisorBead[]).map((b, row) => ({
+        nodes: withQuestions.map((b, row) => ({
           id: b.id,
           kind: 'task' as const,
           label: b.id,
@@ -50,10 +56,12 @@ vi.mock('../vk/graph/GraphView', () => ({
     model,
     selectedId,
     onSelect,
+    onAnswer,
   }: {
     model: { nodes: { id: string; title: string }[] };
     selectedId: string | null;
     onSelect: (id: string) => void;
+    onAnswer: (id: string) => void;
   }) => (
     <div data-testid="graph-view" data-selected={selectedId ?? ''}>
       {model.nodes.map((n) => (
@@ -61,6 +69,13 @@ vi.mock('../vk/graph/GraphView', () => ({
           {`node ${n.id}`}
         </button>
       ))}
+      {model.nodes
+        .filter((n) => n.id.endsWith('::q'))
+        .map((n) => (
+          <button key={`a-${n.id}`} type="button" onClick={() => onAnswer(n.id)}>
+            {`answer ${n.id}`}
+          </button>
+        ))}
     </div>
   ),
 }));
@@ -89,6 +104,10 @@ const C = bead('dw-c', {
   dependencies: [{ issue_id: 'dw-c', depends_on_id: 'dw-b', type: 'blocks' }],
 });
 
+// Only the rig-scoped read returns this one (live 16.11: the model lane saw 2
+// M04 beads unscoped and all of them with rig=devwork).
+const R = bead('dw-r', { title: 'M04 #5 — Из рига', labels: ['milestone:M04'] });
+
 function json(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
@@ -113,6 +132,8 @@ beforeEach(() => {
       if (url.pathname === '/v0/city/test-city/beads') {
         const status = url.searchParams.get('status');
         if (status === 'closed' || status === 'in_progress') return json({ items: [], total: 0 });
+        // The rig's own work store holds a task the unscoped window lacks.
+        if (url.searchParams.get('rig') === 'devwork') return json({ items: [...items, R], total: items.length + 1 });
         return json({ items, total: items.length });
       }
       const one = /^\/v0\/city\/test-city\/bead\/(.+)$/.exec(url.pathname);
@@ -190,6 +211,40 @@ describe('BeadsPage «Граф» tab', () => {
     expect(param('bead')).toBe('dw-b');
     expect(param('view')).toBe('graph');
     expect(screen.getByTestId('graph-view').getAttribute('data-selected')).toBe('dw-b');
+  });
+
+  it('the switch sits in the filter row, right after «Эпик:»', async () => {
+    renderPage('/beads?epic=M04');
+    const group = await screen.findByRole('group', { name: 'View' });
+    expect(group.nextElementSibling).toBe(screen.getByRole('searchbox'));
+  });
+
+  it('on the graph the drawer sits beside it (no scrim, not modal); on the board it stays modal', async () => {
+    renderPage('/beads?epic=M04&view=graph&bead=dw-b');
+    const dialog = await screen.findByRole('dialog', { name: 'Open task' });
+    expect(dialog.getAttribute('aria-modal')).toBe('false');
+    expect(dialog.parentElement?.className ?? '').not.toContain('bg-scrim');
+    cleanup();
+    renderPage('/beads?epic=M04&bead=dw-b');
+    const modal = await screen.findByRole('dialog', { name: 'Open task' });
+    expect(modal.getAttribute('aria-modal')).toBe('true');
+  });
+
+  it('a question card («<id>::q») opens its owner task, by click and by «Ответить»', async () => {
+    renderPage('/beads?epic=M04&view=graph');
+    fireEvent.click(await screen.findByRole('button', { name: 'node dw-b::q' }));
+    expect(param('bead')).toBe('dw-b');
+    fireEvent.click(screen.getByRole('button', { name: 'node dw-a' }));
+    expect(param('bead')).toBe('dw-a');
+    fireEvent.click(screen.getByRole('button', { name: 'answer dw-b::q' }));
+    expect(param('bead')).toBe('dw-b');
+  });
+
+  it('the graph also gets the rig-scoped reads, not only the unscoped window', async () => {
+    renderPage('/beads?epic=M04&view=graph');
+    await screen.findByTestId('graph-view');
+    await vi.waitFor(() => expect(graphBeadIds.last).toContain('dw-r'));
+    expect(graphBeadIds.last.filter((id) => id === 'dw-a')).toHaveLength(1);
   });
 
   it('?focus=<id> draws that node’s chain, with the switch shown', async () => {

@@ -42,6 +42,8 @@ interface BoardFilterBarProps {
   newTaskUrl?: string | null;
   /** «M05–M13»: milestones with an epic bead but no tasks yet («плана ещё нет»). */
   plannedEmpty?: string | null;
+  /** Drawn right after the «Эпик:» select (the page's «Доска | Граф» switch). */
+  afterEpic?: ReactNode;
 }
 
 const NO_EPICS: readonly EpicSummary[] = [];
@@ -345,6 +347,7 @@ export function BoardFilterBar({
   onOwnerFilter,
   newTaskUrl,
   plannedEmpty,
+  afterEpic,
 }: BoardFilterBarProps) {
   // VK 1:1 (16.11): the left rail chooses the project and the canvas row has
   // no test checkbox, so neither renders here (props kept for callers).
@@ -363,6 +366,7 @@ export function BoardFilterBar({
         plannedEmpty={plannedEmpty}
         {...(onEpic ? { onChange: onEpic } : {})}
       />
+      {afterEpic}
       {/* VK 1:1: the canvas search is a plain 32 px field, 220 px wide. */}
       <input
         type="search"

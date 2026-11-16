@@ -173,7 +173,7 @@ interface Draft {
 function draftOf(bead: GraphBead, byId: Map<string, GraphBead>, outside: boolean, blockers: string[]): Draft {
   const parent = bead.parent ? byId.get(bead.parent) : undefined;
   const epicTitle = parent !== undefined && parent.issue_type === 'epic' ? parent.title : null;
-  const derived = cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle });
+  const derived = cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle, id: bead.id });
   if (isQuestionBead(bead)) {
     const vv = VV.exec(derived.label ?? '') ?? VV.exec(bead.title);
     const short = vv !== null ? vv[0] : shorten(derived.title);

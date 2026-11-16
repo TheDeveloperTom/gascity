@@ -97,7 +97,12 @@ export function labelOf(
   bead: SupervisorBead,
   beadById: (id: string) => SupervisorBead | undefined,
 ): { label: string | null; title: string } {
-  return cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle: epicTitleOf(bead, beadById) });
+  return cardLabel({
+    title: bead.title,
+    milestone: milestoneOf(bead),
+    epicTitle: epicTitleOf(bead, beadById),
+    id: bead.id,
+  });
 }
 
 /** A related task's chip text: its short label, else its short title — never its id. */

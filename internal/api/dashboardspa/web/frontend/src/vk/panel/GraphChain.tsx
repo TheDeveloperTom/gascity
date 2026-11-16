@@ -2,6 +2,8 @@ import { useId, useMemo } from 'react';
 import { t, tn } from '../../i18n';
 import { blockerIds, buildWaitersIndex } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
+import { milestoneOf } from '../../lib/waitReasons';
+import { cardLabel } from '../board/cardLabel';
 import { taskShortLabel } from './drawerFacts';
 
 // Graph sprint 16.11 (Graph-Jump.dc.html, V5-Click.dc.html): on the graph the
@@ -19,9 +21,10 @@ interface ChainRow {
 function rowOf(id: string, byId: ReadonlyMap<string, SupervisorBead>): ChainRow {
   const bead = byId.get(id);
   if (bead === undefined) return { id, label: id, title: id, status: null };
-  const label = taskShortLabel(bead);
-  // the title without its own label prefix («M04 #3 — Пересчёт» → «Пересчёт»)
-  const title = (bead.title ?? id).replace(/^\s*M\d+[a-z]?(?:\s+#\d+\w*)?\s*[:—–-]\s*/u, '') || id;
+  // The card's own label and title (cardLabel), as on the board and the graph.
+  const card = cardLabel({ title: bead.title ?? id, milestone: milestoneOf(bead), id: bead.id });
+  const label = card.label ?? taskShortLabel(bead);
+  const title = card.title.length > 0 ? card.title : id;
   return { id, label, title, status: bead.status ?? null };
 }
 

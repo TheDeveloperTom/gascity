@@ -122,6 +122,14 @@
   line-height: 18px;
   color: oklch(var(--vk-text-low));
 }
+.vkg-verdict-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+}
 .vkg-verdict[data-alarm='true'] {
   background: var(--vkc-error-bg);
   color: oklch(var(--vk-error));
@@ -374,6 +382,29 @@
 }
 
 /* ---- phone ---- */
+.vkg-qrow-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vkg-qrow-label {
+  font-size: 13px;
+  color: oklch(var(--warn));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vkg-qrow-title {
+  font-size: 16px;
+  color: oklch(var(--vk-text-high));
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
 .vkg-phone-head {
   display: flex;
   flex-direction: column;

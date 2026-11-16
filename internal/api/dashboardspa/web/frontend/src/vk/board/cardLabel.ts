@@ -8,6 +8,8 @@ export interface CardLabelInput {
   milestone?: string | null;
   /** The parent epic's title, when the parent is an epic. */
   epicTitle?: string | null;
+  /** The bead id: a child id «dw-….3» supplies the sub-number of «#3» → «#3.3». */
+  id?: string | null;
 }
 
 export interface CardLabel {
@@ -18,7 +20,7 @@ export interface CardLabel {
 }
 
 const MS = String.raw`M\d{2}[a-z]?`;
-const NUM = String.raw`(?:#\d+[A-Za-z]?|ВВ-\d+)`;
+const NUM = String.raw`(?:#\d+(?:\.\d+)?[A-Za-z]?|ВВ-\d+)`;
 const SEP = String.raw`\s*[:—–]\s*`;
 
 // «M03 #2 / Task 6: …», «M04 — …», «M04 Task 5E — …», «M04 / 0b — …», «M01: …»
@@ -33,6 +35,15 @@ const ID_HEAD = /^[a-z]{2,4}-[a-z0-9]+(?:\.\d+)*(?:\s+часть\s+\d+)?\s*[:—
 // «Город: …», «Мэр: …» — one capitalised word before a colon.
 const WORD_HEAD = /^(\p{Lu}[\p{L}]{1,11}):\s+/u;
 const VV = /ВВ-\d+/u;
+
+const ID_SUB = /\.(\d+)$/u;
+
+/** «#3» + id «dw-….3» → «#3.3»; a title sub-number («#3.2») or a ВВ stays as is. */
+function withSubNumber(num: string, id: string | null): string {
+  if (!/^#\d+$/u.test(num) || id === null) return num;
+  const sub = ID_SUB.exec(id);
+  return sub === null ? num : `${num}.${sub[1] as string}`;
+}
 
 function capitalise(text: string): string {
   const first = text.charAt(0);
@@ -49,7 +60,7 @@ export function shortEpicName(epicTitle: string): string | null {
   return words.slice(0, 2).join(' ');
 }
 
-export function cardLabel({ title, milestone = null, epicTitle = null }: CardLabelInput): CardLabel {
+export function cardLabel({ title, milestone = null, epicTitle = null, id = null }: CardLabelInput): CardLabel {
   let text = title.trim().replace(/^Land\s+/u, '');
   let stripped = false;
   const idHead = ID_HEAD.exec(text);
@@ -63,7 +74,11 @@ export function cardLabel({ title, milestone = null, epicTitle = null }: CardLab
     const ms = head[1] as string;
     const num = head[2];
     const rest = capitalise(text.slice(head[0].length));
-    if (num !== undefined) return { label: `${ms} ${num}`, title: rest };
+    if (num !== undefined) {
+      // «M03 #2 / Task 6» already names the task; only a bare «M04 #3» takes the id's «.3».
+      const named = /\/|\bTask\b/u.test(head[0]);
+      return { label: `${ms} ${named ? num : withSubNumber(num, id)}`, title: rest };
+    }
     if (/^приёмка/iu.test(rest)) return { label: `${ms} приёмка`, title: rest };
     // «ответ владельца на ВВ-6 (…)» names the question; «(… после ВВ-1)» only mentions one.
     const vv = VV.exec(rest.replace(/\([^)]*\)/gu, ''));
@@ -80,7 +95,11 @@ export function cardLabel({ title, milestone = null, epicTitle = null }: CardLab
     // or inline mention stays in the title (it reads as prose).
     const cleaned =
       sep !== null ? text.slice(0, mid.index) + after.slice(sep[0].length) : text;
-    return { label: `${mid[1]} ${mid[2]}`, title: stripped ? capitalise(cleaned) : cleaned };
+    return {
+      // A mid-title token names another task, so this bead's id says nothing about it.
+      label: `${mid[1]} ${mid[2] as string}`,
+      title: stripped ? capitalise(cleaned) : cleaned,
+    };
   }
 
   const out = stripped ? capitalise(text) : text;

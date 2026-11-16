@@ -73,6 +73,11 @@ export interface TaskDrawerProps {
    */
   aboveTabs?: boolean;
   /**
+   * Graph sprint 16.11 (V5-Click): the drawer sits beside the graph, with no
+   * scrim and not modal, so the lit chain stays visible and cards stay clickable.
+   */
+  beside?: boolean;
+  /**
    * Pinned to the drawer's bottom edge, outside the scrolling body (vk-final:
    * the card's comment box, vibe-kanban style). The body scrolls above it.
    */
@@ -133,6 +138,7 @@ export function TaskDrawer({
   description,
   children,
   aboveTabs = false,
+  beside = false,
   footer = null,
 }: TaskDrawerProps) {
   useEffect(() => {
@@ -149,15 +155,19 @@ export function TaskDrawer({
 
   return (
     <div
-      className={cn('fixed inset-0 z-50 bg-scrim/50', aboveTabs && 'bottom-[calc(3.5rem+var(--saib))] md:bottom-0')}
-      onClick={onClose}
+      className={cn(
+        'fixed inset-0 z-50',
+        beside ? 'pointer-events-none' : 'bg-scrim/50',
+        aboveTabs && 'bottom-[calc(3.5rem+var(--saib))] md:bottom-0',
+      )}
+      onClick={beside ? undefined : onClose}
     >
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal={beside ? 'false' : 'true'}
         aria-label={t('Open task')}
         className={cn(
-          'fixed inset-0 flex flex-col bg-vk-bg-primary font-vk-sans text-vk-text-normal shadow-overlay md:inset-y-0 md:left-auto md:right-0 md:w-[580px] md:max-w-full md:border-l md:border-vk-border',
+          'pointer-events-auto fixed inset-0 flex flex-col bg-vk-bg-primary font-vk-sans text-vk-text-normal shadow-overlay md:inset-y-0 md:left-auto md:right-0 md:w-[580px] md:max-w-full md:border-l md:border-vk-border',
           aboveTabs && 'bottom-[calc(3.5rem+var(--saib))] md:bottom-0',
         )}
         onClick={(e) => e.stopPropagation()}

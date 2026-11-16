@@ -189,3 +189,22 @@ describe('BoardFilterBar (vk)', () => {
     expect(collectMissing()).toEqual([]);
   });
 });
+
+describe('BoardFilterBar view slot (graph integration 16.11)', () => {
+  afterEach(cleanup);
+
+  it('draws the «Доска | Граф» switch right after the «Эпик:» select, in the same row', () => {
+    setLocale('ru');
+    renderBar({
+      epics: EPICS,
+      epic: 'M04',
+      onEpic: vi.fn(),
+      search: '',
+      afterEpic: <div role="group" aria-label="view-switch" />,
+    });
+    const group = screen.getByRole('group', { name: 'view-switch' });
+    const search = screen.getByRole('searchbox');
+    expect(group.parentElement).toBe(search.parentElement);
+    expect(group.nextElementSibling).toBe(search);
+  });
+});

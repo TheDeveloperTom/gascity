@@ -160,3 +160,33 @@ describe('phone (Graph-Phone)', () => {
     expect(onSelect).toHaveBeenCalledWith('s3');
   });
 });
+
+describe('GraphView column verdicts (integration 16.11, eyes on live M04)', () => {
+  afterEach(cleanup);
+
+  it('a long verdict is clamped to two lines (it ran into the first card) and keeps its full text as a title', () => {
+    const long = 'в работе 1 из 3 · 1 ждёт твоего ответа · 1 никто не взял · и ещё очень длинный хвост';
+    const model = { ...M04, columns: M04.columns.map((c, i) => (i === 1 ? { ...c, verdict: long } : c)) };
+    render(<GraphView model={model} selectedId={null} onSelect={vi.fn()} onAnswer={vi.fn()} />);
+    const col = screen.getByTestId(`graph-col-${M04.columns[1]?.title ?? ''}`);
+    const text = within(col).getByText(long);
+    expect(text.classList.contains('vkg-verdict-text')).toBe(true);
+    expect(text.getAttribute('title')).toBe(long);
+  });
+});
+
+describe('GraphView phone question rows (integration 16.11, eyes at 390 px)', () => {
+  afterEach(cleanup);
+
+  it('stacks the «вопрос · …» label above the title instead of squeezing both into one line', () => {
+    render(<GraphView model={M04} selectedId={null} onSelect={vi.fn()} onAnswer={vi.fn()} />);
+    const phone = screen.getByTestId('graph-phone');
+    const row = phone.querySelector('.vkg-qrow') as HTMLElement;
+    const label = row.querySelector('.vkg-qrow-label') as HTMLElement;
+    const title = row.querySelector('.vkg-qrow-title') as HTMLElement;
+    expect(label).not.toBeNull();
+    expect(title).not.toBeNull();
+    expect(label.parentElement).toBe(title.parentElement);
+    expect(label.parentElement?.classList.contains('vkg-qrow-text')).toBe(true);
+  });
+});

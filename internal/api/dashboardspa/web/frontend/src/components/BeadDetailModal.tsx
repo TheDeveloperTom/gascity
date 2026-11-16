@@ -179,6 +179,7 @@ export function BeadDetailModal({
       <TaskDrawer
         open={open}
         onClose={onClose}
+        beside={graphChain !== null}
         crumb={crumb}
         statusRow={
           bead ? (

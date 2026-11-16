@@ -21,7 +21,7 @@ import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
 import { taskShortLabel } from '../vk/panel/drawerFacts';
-import { buildGraph } from '../vk/graph/model';
+import { beadIdOf, buildGraph } from '../vk/graph/model';
 import { GraphView } from '../vk/graph/GraphView';
 import type { BoardCard } from '../lib/boardModel';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
@@ -452,16 +452,54 @@ export function BeadsPage() {
   const nowMs = useNow();
   const graphAvailable = epic !== ALL_EPICS || focusParam !== null;
   const showGraph = viewGraphParam && graphAvailable;
+  // Graph integration 16.11: the unscoped window can miss a rig's tasks (the
+  // model lane saw 2 of the M04 beads unscoped, all of them with rig=devwork),
+  // so the graph also reads each rig's own open work store, merged by id.
+  const graphRigNames = useMemo(
+    () => [...new Set(rigItems.map((rig) => rig.name).filter((name) => name.length > 0))].sort(),
+    [rigItems],
+  );
+  const graphRigs = useCachedData(
+    `beads:board:${cityCacheKey}:graph-rigs:${showGraph ? graphRigNames.join(',') : 'off'}`,
+    () =>
+      showGraph && graphRigNames.length > 0
+        ? Promise.all(
+            graphRigNames.map((rig) =>
+              listSupervisorBeads({ rigFilter: rig })
+                .then((list) => list.items)
+                .catch(() => [] as SupervisorBead[]),
+            ),
+          ).then((legs) => legs.flat())
+        : Promise.resolve([] as SupervisorBead[]),
+  );
+  const refreshGraphRigs = graphRigs.refresh;
+  useGcEventRefresh(
+    [GC_EVENT_PREFIX.bead],
+    () => {
+      if (showGraph) void refreshGraphRigs();
+    },
+    { coalesceMs: BOARD_REFRESH_COALESCE_MS },
+  );
+  const graphRows = useMemo(() => {
+    const seen = new Set<string>();
+    const out: SupervisorBead[] = [];
+    for (const bead of [...allRows, ...(graphRigs.data ?? []), ...serviceItems]) {
+      if (seen.has(bead.id)) continue;
+      seen.add(bead.id);
+      out.push(bead);
+    }
+    return out;
+  }, [allRows, graphRigs.data, serviceItems]);
   const graphModel = useMemo(
     () =>
       showGraph
-        ? buildGraph([...allRows, ...serviceItems], {
+        ? buildGraph(graphRows, {
             epicId: focusParam !== null ? null : epic,
             ...(focusParam !== null ? { focusIds: [focusParam] } : {}),
             nowMs,
           })
         : null,
-    [showGraph, allRows, serviceItems, epic, focusParam, nowMs],
+    [showGraph, graphRows, epic, focusParam, nowMs],
   );
   const sessionsForNotes = useMemo(
     () =>
@@ -607,8 +645,8 @@ export function BeadsPage() {
           onOwnerFilter={setOwnerFilter}
           newTaskUrl={mayorChannelUrl()}
           plannedEmpty={plannedEmpty}
+          afterEpic={graphAvailable ? <ViewSwitch graph={showGraph} onView={(v) => setView(v)} /> : undefined}
         />
-        {graphAvailable && <ViewSwitch graph={showGraph} onView={(v) => setView(v)} />}
         {peerSources.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {peerSources.map((peer) => {
@@ -664,8 +702,8 @@ export function BeadsPage() {
           <GraphView
             model={graphModel}
             selectedId={selectedId}
-            onSelect={setSelectedId}
-            onAnswer={setSelectedId}
+            onSelect={(id) => setSelectedId(beadIdOf(id))}
+            onAnswer={(id) => setSelectedId(beadIdOf(id))}
           />
         </section>
       ) : boardModel.matched === 0 &&
@@ -873,7 +911,7 @@ function ViewSwitch({ graph, onView }: { graph: boolean; onView: (view: 'board' 
     <div
       role="group"
       aria-label={t('View')}
-      className="mt-3 inline-flex items-center gap-0.5 rounded-[3px] border border-vk-border bg-vk-bg-primary p-0.5 font-vk-sans"
+      className="inline-flex items-center gap-0.5 rounded-[3px] border border-vk-border bg-vk-bg-primary p-0.5 font-vk-sans"
     >
       {button(!graph, 'board', t('Board'))}
       {button(graph, 'graph', t('Graph'))}

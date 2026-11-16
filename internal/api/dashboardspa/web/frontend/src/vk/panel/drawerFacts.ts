@@ -1,5 +1,6 @@
 import { t } from '../../i18n';
 import { milestoneOf } from '../../lib/waitReasons';
+import { cardLabel } from '../board/cardLabel';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 
 // The open-task panel's short facts (vk-1to1 drawer lane, canvas Main right
@@ -27,7 +28,12 @@ function ordinal(bead: SupervisorBead): string | null {
 export function taskShortLabel(bead: SupervisorBead): string {
   const tag = milestoneOf(bead);
   const n = ordinal(bead);
-  if (tag !== null) return n === null ? tag : `${tag} #${n}`;
+  if (tag !== null) {
+    if (n === null) return tag;
+    // Same label as the card and the graph: a child «dw-….3» of «M04 #3» is «M04 #3.3».
+    const card = cardLabel({ title: bead.title ?? '', milestone: tag, id: bead.id }).label;
+    return card !== null && card.startsWith(`${tag} #${n}`) ? card : `${tag} #${n}`;
+  }
   const id = typeof bead.id === 'string' ? bead.id : '';
   const dash = id.lastIndexOf('-');
   return dash >= 0 && dash < id.length - 1 ? id.slice(dash + 1) : id;

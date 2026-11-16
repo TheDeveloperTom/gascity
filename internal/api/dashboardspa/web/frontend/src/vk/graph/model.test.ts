@@ -41,6 +41,7 @@ const ID = {
   ql1: 'dw-ssmbcp',
   qv6: 'dw-cs2w',
 };
+// Titles as on the live board: children say «#3»/«#5», the id suffix (.3) gives «#3.3».
 const SEVEN = [ID.s1, ID.s4, ID.s6, ID.s7, ID.s8, ID.e5, ID.a1];
 
 function m04(): GraphBead[] {
@@ -53,12 +54,12 @@ function m04(): GraphBead[] {
     bead(ID.s9, 'M04 — Разделить страны', { needs: [ID.qv3] }),
     bead(ID.m3, 'M04 #3 — Пересчёт при правках', { status: 'in_progress', assignee: 'devwork/worker-1', needs: [ID.qv4] }),
     bead(ID.t6, 'M03 #6 — Допуск по своему ящику', { labels: ['milestone:M03'], needs: [ID.ql1] }),
-    bead(ID.s3, 'M04 #33 — Не затирать оценку', { needs: [ID.m3], dependencies: [blocks(ID.s3, ID.t6)] }),
-    bead(ID.s1, 'M04 #31 — Смена вакансии', { needs: [ID.s3] }),
-    bead(ID.s4, 'M04 #34 — Оценка ждущей подачи', { needs: [ID.s3] }),
-    bead(ID.s6, 'M04 #56 — Ручные записи оценки', { needs: [ID.s3] }),
-    bead(ID.s7, 'M04 #57 — Удаление заглушек', { needs: [ID.s3] }),
-    bead(ID.s8, 'M04 #58 — Чтение из снимка', { needs: [ID.s3] }),
+    bead(ID.s3, 'M04 #3 — Не затирать оценку', { needs: [ID.m3], dependencies: [blocks(ID.s3, ID.t6)] }),
+    bead(ID.s1, 'M04 #3 — Смена вакансии', { needs: [ID.s3] }),
+    bead(ID.s4, 'M04 #3 — Оценка ждущей подачи', { needs: [ID.s3] }),
+    bead(ID.s6, 'M04 #5 — Ручные записи оценки', { needs: [ID.s3] }),
+    bead(ID.s7, 'M04 #5 — Удаление заглушек', { needs: [ID.s3] }),
+    bead(ID.s8, 'M04 #5 — Чтение из снимка', { needs: [ID.s3] }),
     bead(ID.e5, 'M04 Task 5E — Мост досье для подбора', { needs: [ID.s3] }),
     // a redundant edge (a1 → m3 is implied through s3) must be pruned
     bead(ID.a1, 'M04 #1 — Перенести расчёт', { needs: [ID.s3, ID.m3] }),
@@ -130,7 +131,7 @@ describe('buildGraph on the M04 chain', () => {
   });
 
   it('labels with cardLabel and sets states and reasons in Russian', () => {
-    expect(node(m, ID.s3).label).toBe('M04 #33');
+    expect(node(m, ID.s3).label).toBe('M04 #3.3');
     expect(node(m, ID.s3).title).toBe('Не затирать оценку');
     expect(node(m, ID.qv4).label).toBe('вопрос · ВВ-4');
     expect(node(m, ID.ql1).label).toBe('вопрос · Окно L1 и ключ Clerk');
@@ -141,8 +142,8 @@ describe('buildGraph on the M04 chain', () => {
     expect(node(m, ID.m3).assignee).toBe('devwork/worker-1');
     expect(node(m, ID.t6).state).toBe('waits_owner');
     expect(node(m, ID.s3).state).toBe('waits_task');
-    expect(node(m, ID.s3).reason).toBe('ждёт: M04 #3, M03 #6');
-    expect(node(m, ID.s1).reason).toBe('ждёт: M04 #33');
+    expect(node(m, ID.s3).reason).toBe('ждёт: M04 #3, M03 #6.2');
+    expect(node(m, ID.s1).reason).toBe('ждёт: M04 #3.3');
   });
 
   it('builds column headers with verdicts', () => {
@@ -150,14 +151,14 @@ describe('buildGraph on the M04 chain', () => {
     expect(m.columns.map((c) => c.count)).toEqual([4, 3, 1, 7, 1, 1]);
     expect(m.columns[0]?.verdict).toBe('4 вопроса · больше всех держит ВВ-4');
     expect(m.columns[1]?.verdict).toBe('в работе 1 из 3 · 2 ждут твоих ответов');
-    expect(m.columns[2]?.verdict).toBe('ждёт M04 #3 и M03 #6');
-    expect(m.columns[3]?.verdict).toBe('7 пойдут параллельно после M04 #33');
+    expect(m.columns[2]?.verdict).toBe('ждёт M04 #3 и M03 #6.2');
+    expect(m.columns[3]?.verdict).toBe('7 пойдут параллельно после M04 #3.3');
     expect(m.columns[4]?.verdict).toBe('ждёт M04 #1');
     expect(m.columns[5]?.verdict).toBe('приёмка ждёт всё, что левее');
   });
 
   it('writes the headline and subline', () => {
-    expect(m.headline).toBe('M04: 5 из 17 закрыто. Всё дальше стоит за M04 #33: она ждёт M04 #3 и M03 #6.');
+    expect(m.headline).toBe('M04: 5 из 17 закрыто. Всё дальше стоит за M04 #3.3: она ждёт M04 #3 и M03 #6.2.');
     expect(m.subline).toBe(
       'Без причины не стоит ничего: всё, что сейчас не в работе, ждёт твоих ответов — они слева, в колонке «От тебя».',
     );
@@ -187,7 +188,7 @@ describe('chainOf and whatIfBanner', () => {
   });
 
   it('a task banner says what it waits for and what it opens', () => {
-    expect(whatIfBanner(m, ID.s3)).toBe('M04 #33 ждёт 2: M04 #3 в работе, M03 #6 ждёт тебя · откроет 7 сразу, 9 всего');
+    expect(whatIfBanner(m, ID.s3)).toBe('M04 #3.3 ждёт 2: M04 #3 в работе, M03 #6.2 ждёт тебя · откроет 7 сразу, 9 всего');
     expect(whatIfBanner(m, ID.acc)).toMatch(/^M04 приёмка ждёт 9: .* · откроет 0 сразу, 0 всего$/);
   });
 });
@@ -264,5 +265,21 @@ describe('buildGraph edges of the live data', () => {
     ];
     const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
     expect(m.nodes).toHaveLength(2);
+  });
+});
+
+describe('labels keep the child sub-number (integration 16.11)', () => {
+  it('live titles «M04 #3 — …» on child ids .3/.1 get «M04 #3.3»/«M04 #3.1», not one shared «M04 #3»', () => {
+    const beads = m04().map((b) =>
+      b.id === ID.s3
+        ? { ...b, title: 'M04 #3 — ответ по старому профилю не перезаписывает оценку' }
+        : b.id === ID.s1
+          ? { ...b, title: 'M04 #3 — инвалидация при изменении вакансии' }
+          : b,
+    );
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
+    expect(node(m, ID.s3).label).toBe('M04 #3.3');
+    expect(node(m, ID.s1).label).toBe('M04 #3.1');
+    expect(node(m, ID.m3).label).toBe('M04 #3');
   });
 });
