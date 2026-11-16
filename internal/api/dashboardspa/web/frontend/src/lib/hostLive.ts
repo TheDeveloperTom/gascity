@@ -1,8 +1,10 @@
-import type { LiveHealth, MemoryPressure } from 'gas-city-dashboard-shared';
+import type { HostReading, MemoryPressure } from 'gas-city-dashboard-shared';
 
 // The Health page's realtime history (owner 16.11): every poll of
 // GET /api/health/live becomes one LiveSample, kept in a fixed-size ring so
-// the page can draw the last 15–30 minutes without the history growing.
+// the page can draw the last 15–30 minutes without the history growing. On
+// first load the ring is seeded from GET /api/health/history, which the
+// engine samples in the background, so the charts open already full.
 
 /** Poll cadence and history length. 600 samples × 3 s = 30 minutes. */
 export const LIVE_POLL_MS = 3_000;
@@ -64,7 +66,7 @@ export class RingBuffer<T> {
   }
 }
 
-export function sampleFromLive(live: LiveHealth): LiveSample {
+export function sampleFromLive(live: HostReading): LiveSample {
   const at = Date.parse(live.sampled_at);
   const mem = live.memory.status === 'available' ? live.memory.value : null;
   const disk = live.disk.status === 'available' ? live.disk.value : null;
@@ -116,6 +118,28 @@ export function recordLiveSample(sample: LiveSample): void {
   const last = history.toArray().at(-1);
   if (last !== undefined && last.at === sample.at) return;
   history.push(sample);
+  version += 1;
+  for (const listener of listeners) listener();
+}
+
+/**
+ * Merges the engine's background history into the ring. A server sample
+ * lands only where this tab has no poll within LIVE_GAP_MS, so it fills the
+ * stretch before the page opened (or while it was away) without doubling a
+ * stretch the tab already drew at its own cadence.
+ */
+export function seedLiveHistory(samples: readonly LiveSample[]): void {
+  const local = history.toArray();
+  const localAts = local.map((s) => s.at);
+  const covered = (at: number) => localAts.some((l) => Math.abs(l - at) <= LIVE_GAP_MS);
+  const merged = [...local, ...samples.filter((s) => !covered(s.at))].sort((a, b) => a.at - b.at);
+  history.clear();
+  let last: number | undefined;
+  for (const s of merged.slice(-history.capacity)) {
+    if (s.at === last) continue;
+    history.push(s);
+    last = s.at;
+  }
   version += 1;
   for (const listener of listeners) listener();
 }

@@ -75,6 +75,8 @@ type Plane struct {
 	localTools *localToolsCache
 	// live samples GET /api/health/live; a field so tests script the host.
 	live *liveSampler
+	// history keeps the last 30 minutes of host numbers (health_history.go).
+	history *hostHistory
 	// healthSnapshot is a per-plane seam so sampler failures can be exercised
 	// without mutating package-global state or the host running the test.
 	healthSnapshot func(context.Context) (systemHealth, error)
@@ -92,6 +94,7 @@ func New(deps Deps) *Plane {
 		mux:            http.NewServeMux(),
 		localTools:     &localToolsCache{},
 		live:           defaultLiveSampler(),
+		history:        defaultHostHistory(),
 		healthSnapshot: currentSystemHealth,
 	}
 	p.samplers = newSamplerManager(deps, p.exec)
@@ -113,6 +116,7 @@ func (p *Plane) Start(ctx context.Context) {
 	ctx, p.stop = context.WithCancel(ctx)
 	p.samplers.enable(ctx, &p.wg)
 	p.runTailers.enable(ctx, &p.wg)
+	p.startHostHistory(ctx)
 }
 
 // Stop signals the samplers to halt and waits for them to drain.
@@ -187,6 +191,7 @@ func (p *Plane) registerRoutes() {
 	p.registerClientLog()
 	p.registerHealth()
 	p.registerLiveHealth()
+	p.registerHostHistory()
 	p.registerSamplers()
 	p.registerRunSummary()
 	p.registerRunDetail()
