@@ -1,11 +1,14 @@
 package dashboardspa
 
 import (
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 const (
@@ -340,5 +343,47 @@ func TestOwnerSeamRefusesCurrentOnly(t *testing.T) {
 	if src != nil || reason != "root-perms" {
 		src.Close()
 		t.Fatalf("resolve with an owner refusing only current = (dir source %v, %q), want (nil, root-perms)", src != nil, reason)
+	}
+}
+
+// A FIFO swapped in between the Lstat and the Open must not hang the
+// request: the open is non-blocking and the fstat type check rejects it.
+func TestOpenReadOnlyFIFODoesNotBlock(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "current")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close() //nolint:errcheck // test
+	done := make(chan error, 1)
+	go func() {
+		f, err := openReadOnly(r, "current")
+		if f != nil {
+			_ = f.Close()
+		}
+		done <- err
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		// Unblock the stuck reader so the goroutine ends, then fail.
+		if w, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+			_ = w.Close()
+		}
+		t.Fatal("openReadOnly blocked on a FIFO")
+	}
+	// A regular file still opens and reads normally.
+	mustWrite(t, filepath.Join(dir, "f"), "hello")
+	f, err := openReadOnly(r, "f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close() //nolint:errcheck // test
+	if b, err := io.ReadAll(f); err != nil || string(b) != "hello" {
+		t.Fatalf("read = %q, %v", b, err)
 	}
 }

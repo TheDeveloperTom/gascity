@@ -157,7 +157,7 @@ func readCurrent(root *os.Root, owner func(fs.FileInfo) bool) (string, string) {
 	if err != nil || !fi.Mode().IsRegular() {
 		return "", reasonBadCurrent
 	}
-	f, err := root.Open(currentFile)
+	f, err := openReadOnly(root, currentFile)
 	if err != nil {
 		return "", reasonBadCurrent
 	}
@@ -225,7 +225,7 @@ func loadIndex(dir, sha string, vroot *os.Root, owner func(fs.FileInfo) bool) ([
 	if hit {
 		return e.index, e.csp, true
 	}
-	f, err := vroot.Open("index.html")
+	f, err := openReadOnly(vroot, "index.html")
 	if err != nil {
 		return nil, "", false
 	}
@@ -267,7 +267,7 @@ func openServed(vroot *os.Root, path string, owner func(fs.FileInfo) bool) (*os.
 	if err != nil || !fi.Mode().IsRegular() || !owner(fi) {
 		return nil, nil, false
 	}
-	f, err := vroot.Open(path)
+	f, err := openReadOnly(vroot, path)
 	if err != nil {
 		return nil, nil, false
 	}
@@ -277,4 +277,12 @@ func openServed(vroot *os.Root, path string, owner func(fs.FileInfo) bool) (*os.
 		return nil, nil, false
 	}
 	return f, ofi, true
+}
+
+// openReadOnly opens name for reading without blocking: a FIFO swapped in
+// between a caller's Lstat and this open would otherwise hang the request
+// until a writer appears. Callers fstat the handle and require a regular file,
+// so a FIFO is then rejected. O_NONBLOCK has no effect on regular-file reads.
+func openReadOnly(r *os.Root, name string) (*os.File, error) {
+	return r.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 }
