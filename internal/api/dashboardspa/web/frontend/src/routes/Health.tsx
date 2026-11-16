@@ -25,8 +25,9 @@ import { useVisibleRefresh } from '../hooks/useVisibleRefresh';
 import { t } from '../i18n';
 import {
   buildHeadline,
-  cpuPctOf,
-  cpuTone,
+  busyPctOf,
+  cpuQueueLine,
+  cpuToneOf,
   diskTone,
   formatBytes,
   formatPct,
@@ -292,35 +293,30 @@ function points(samples: LiveSample[], pick: (s: LiveSample) => number | null) {
   return samples.map((s) => ({ at: s.at, v: pick(s) }));
 }
 
+// Coordinator 16.11: the CPU figure and axis never pass 100 %. The figure is
+// busy % across all cores; the run queue is a plain line under it.
 function CpuPanel({ live, samples, now, windowMs }: PanelProps) {
-  const cpu = live === null ? null : cpuPctOf(live);
-  const busy = live?.cpu.busy_pct.status === 'available' ? live.cpu.busy_pct.value : null;
+  const busy = live === null ? null : busyPctOf(live);
+  const queue = live === null ? null : cpuQueueLine(live);
   const series: ChartSeries[] = [
     {
-      id: 'load',
-      label: t('load, 1 min'),
+      id: 'busy',
+      label: t('busy'),
       color: 'var(--viz-1)',
       kind: 'area',
-      points: points(samples, (s) => s.loadPct),
-    },
-    {
-      id: 'busy',
-      label: t('busy now'),
-      color: 'var(--viz-2)',
-      kind: 'line',
       points: points(samples, (s) => s.busyPct),
     },
   ];
   return (
     <Panel
       title={t('CPU')}
-      value={cpu === null ? '—' : pct(cpu)}
-      tone={cpu === null ? null : cpuTone(cpu)}
+      value={busy === null ? '—' : pct(busy)}
+      tone={live === null ? null : cpuToneOf(live)}
       detail={
         live === null ? null : (
           <>
-            <p>{t('load on {n} cores, 1-minute average', { n: live.cpu.cores })}</p>
-            {busy !== null && <p>{t('busy right now: {pct}', { pct: pct(busy) })}</p>}
+            <p>{t('busy right now, share of all {n} cores', { n: live.cpu.cores })}</p>
+            {queue !== null && <p>{queue}</p>}
           </>
         )
       }
@@ -331,10 +327,9 @@ function CpuPanel({ live, samples, now, windowMs }: PanelProps) {
         now={now}
         windowMs={windowMs}
         formatValue={pct}
-        yCap={200}
-        threshold={{ value: HOST_THRESHOLDS.cpuWarnPct, label: t('busy') }}
+        yMin={100}
+        yCap={100}
       />
-      <Legend series={series} />
     </Panel>
   );
 }
@@ -445,23 +440,6 @@ function DiskPanel({ live, samples, now, windowMs }: PanelProps) {
         {...(warnLine !== undefined && warnLine.value > 0 ? { threshold: warnLine } : {})}
       />
     </Panel>
-  );
-}
-
-function Legend({ series }: { series: ChartSeries[] }) {
-  return (
-    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-      {series.map((s) => (
-        <li key={s.id} className="flex items-center gap-1.5 text-label text-fg-muted">
-          <span
-            aria-hidden="true"
-            className="h-0.5 w-3.5 rounded-full"
-            style={{ background: s.color }}
-          />
-          {s.label}
-        </li>
-      ))}
-    </ul>
   );
 }
 

@@ -14,8 +14,6 @@ export interface LiveSample {
   at: number;
   /** Share of all cores busy since the previous sample, 0–100. */
   busyPct: number | null;
-  /** 1-minute load as a percent of the cores (can pass 100). */
-  loadPct: number | null;
   memUsedBytes: number | null;
   memTotalBytes: number | null;
   swapUsedBytes: number | null;
@@ -66,12 +64,6 @@ export class RingBuffer<T> {
   }
 }
 
-export function loadPctOf(live: LiveHealth): number | null {
-  if (live.cpu.load.status !== 'available' || !(live.cpu.cores > 0)) return null;
-  const v = (100 * live.cpu.load.value.load_avg_1) / live.cpu.cores;
-  return Number.isFinite(v) && v >= 0 ? v : null;
-}
-
 export function sampleFromLive(live: LiveHealth): LiveSample {
   const at = Date.parse(live.sampled_at);
   const mem = live.memory.status === 'available' ? live.memory.value : null;
@@ -79,7 +71,6 @@ export function sampleFromLive(live: LiveHealth): LiveSample {
   return {
     at: Number.isFinite(at) ? at : Date.now(),
     busyPct: live.cpu.busy_pct.status === 'available' ? live.cpu.busy_pct.value : null,
-    loadPct: loadPctOf(live),
     memUsedBytes: mem?.used_bytes ?? null,
     memTotalBytes: mem?.total_bytes ?? null,
     swapUsedBytes: mem?.swap_used_bytes ?? null,

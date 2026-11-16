@@ -88,7 +88,7 @@ describe('HealthPage', () => {
     renderPage();
     const headline = await screen.findByRole('heading', { level: 1 });
     expect(headline.textContent).toContain(
-      'Мак загружен на 38 %, памяти хватает, на диске 40 ГБ свободно.',
+      'Процессор занят на 31\u00a0%; памяти хватает; на диске свободно 40\u00a0ГБ.',
     );
     expect(headline.closest('[data-host-tone]')?.getAttribute('data-host-tone')).toBe('ok');
   });
@@ -105,6 +105,36 @@ describe('HealthPage', () => {
     const headline = await screen.findByRole('heading', { level: 1 });
     await screen.findByText(/на диске мало места/);
     expect(headline.closest('[data-host-tone]')?.getAttribute('data-host-tone')).toBe('warn');
+  });
+
+  it('shows the CPU as busy % and the queue as a multiple of the cores, never above 100 %', async () => {
+    live = {
+      ...live,
+      sampled_at: new Date().toISOString(),
+      cpu: {
+        cores: 10,
+        busy_pct: { status: 'available', value: 100 },
+        load: { status: 'available', value: { load_avg_1: 36, load_avg_5: 30, load_avg_15: 20 } },
+      },
+    };
+    renderPage();
+    const cpu = await screen.findByRole('region', { name: 'Процессор' });
+    await within(cpu).findByText(/^100\s%$/, { selector: 'p' });
+    expect(
+      within(cpu).getByText('очередь задач: в 3,6 раза больше, чем ядер (36 на 10)'),
+    ).toBeTruthy();
+    const headline = screen.getByRole('heading', { level: 1 });
+    expect(headline.textContent).toContain('задачи ждут в очереди (в 3,6 раза больше ядер)');
+    // Coordinator 16.11: no CPU figure above 100 % anywhere on the page.
+    // Each text node on its own: textContent glues «×6» and «14 %» together.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const texts: string[] = [];
+    for (let n = walker.nextNode(); n !== null; n = walker.nextNode())
+      texts.push(n.textContent ?? '');
+    expect(texts.filter((text) => /\d\s?%/.test(text))).not.toHaveLength(0);
+    expect(texts.join('\n')).not.toMatch(/(1(0[1-9]|[1-9][0-9])|[2-9][0-9]{2}|[0-9]{4,})\s?%/);
+    // The CPU chart reads busy % on a 0–100 axis.
+    expect(screen.getByRole('img', { name: /^Процессор: занят 100\s%$/ })).toBeTruthy();
   });
 
   it('draws the CPU, memory and disk charts', async () => {
