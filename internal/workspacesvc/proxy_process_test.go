@@ -159,6 +159,76 @@ func TestManagerReloadProxyProcessStartsAndProxies(t *testing.T) {
 	}
 }
 
+// TestProxyProcessForwardsOriginFetchSiteAndTailscaleIdentity pins the /svc
+// pass-through the city's peer-boards write gate relies on (WEB-WRITES-PLAN
+// F1/F2): Origin, Sec-Fetch-Site, Tailscale-User-Login and X-GC-Request reach
+// the service unchanged; Host becomes gc-service and X-Forwarded-* is dropped,
+// so the service cannot learn the original Host and needs its own host list.
+func TestProxyProcessForwardsOriginFetchSiteAndTailscaleIdentity(t *testing.T) {
+	t.Setenv("GC_SERVICE_HELPER", "1")
+	setHelperPassthrough(t)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("Executable: %v", err)
+	}
+	rt := &testRuntime{
+		cityPath: t.TempDir(),
+		cityName: "test-city",
+		cfg: &config.City{
+			Services: []config.Service{{
+				Name: "bridge",
+				Kind: "proxy_process",
+				Process: config.ServiceProcessConfig{
+					Command:    []string{exe, "-test.run=^TestProxyProcessHelper$", "--"},
+					HealthPath: "/healthz",
+				},
+			}},
+		},
+		sp:    runtime.NewFake(),
+		store: beads.NewMemStore(),
+	}
+	mgr := NewManager(rt)
+	if err := mgr.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	defer mgr.Close() //nolint:errcheck // best-effort cleanup
+	if status, _ := mgr.Get("bridge"); status.LocalState != "ready" {
+		t.Fatalf("LocalState = %q, want ready (reason=%q)", status.LocalState, status.Reason)
+	}
+
+	const origin = "https://macbook-air-artem.tailfa6540.ts.net"
+	req := httptest.NewRequest(http.MethodPost, origin+"/svc/bridge/headers", strings.NewReader(`{}`))
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("Tailscale-User-Login", "artem@example.com")
+	req.Header.Set("X-GC-Request", "1")
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	rec := httptest.NewRecorder()
+	if ok := mgr.ServeHTTP(rec, req); !ok {
+		t.Fatal("ServeHTTP returned false, want true")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode echo: %v; body=%s", err, rec.Body.String())
+	}
+	want := map[string]string{
+		"Host":                 "gc-service",
+		"Origin":               origin,
+		"Sec-Fetch-Site":       "same-origin",
+		"Tailscale-User-Login": "artem@example.com",
+		"X-GC-Request":         "1",
+		"X-Forwarded-Host":     "",
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("service saw %s = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
 func TestProxyProcessHelper(t *testing.T) {
 	if os.Getenv("GC_SERVICE_HELPER") != "1" {
 		t.Skip("helper process")
@@ -197,6 +267,18 @@ func TestProxyProcessHelper(t *testing.T) {
 			"GC_SERVICE_PUBLIC_URL":               os.Getenv("GC_SERVICE_PUBLIC_URL"),
 			"GC_SERVICE_VISIBILITY":               os.Getenv("GC_SERVICE_VISIBILITY"),
 			"GC_PUBLISHED_SERVICES_DIR":           os.Getenv("GC_PUBLISHED_SERVICES_DIR"),
+		})
+	})
+	// /headers echoes what the service sees of the browser request, for
+	// TestProxyProcessForwardsOriginFetchSiteAndTailscaleIdentity.
+	mux.HandleFunc("/headers", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"Host":                 r.Host,
+			"Origin":               r.Header.Get("Origin"),
+			"Sec-Fetch-Site":       r.Header.Get("Sec-Fetch-Site"),
+			"Tailscale-User-Login": r.Header.Get("Tailscale-User-Login"),
+			"X-GC-Request":         r.Header.Get("X-GC-Request"),
+			"X-Forwarded-Host":     r.Header.Get("X-Forwarded-Host"),
 		})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
