@@ -28,6 +28,7 @@ diff_test(
 go_library(
     name = "dashboardspa",
     srcs = [
+        "dir.go",
         "embed.go",
         "handler.go",
     ],
@@ -42,6 +43,7 @@ go_library(
 go_test(
     name = "dashboardspa_test",
     srcs = [
+        "dir_test.go",
         "handler_test.go",
         "testenv_import_test.go",
     ],
