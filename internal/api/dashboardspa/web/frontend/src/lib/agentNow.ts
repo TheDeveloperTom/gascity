@@ -3,6 +3,7 @@ import type {
   SessionStructuredMessage,
 } from 'gas-city-dashboard-shared/gc-supervisor';
 import { t } from '../i18n';
+import { sentences } from './structureDescription';
 
 export { sessionForBead } from '../attention/beadsNeedingAttention';
 
@@ -10,8 +11,8 @@ export { sessionForBead } from '../attention/beadsNeedingAttention';
 // latest structured message. A Bash call says its own description (the
 // engine keeps it since dashboard v3; until it is reinstalled a call reads
 // «выполняет команду» and the command sits behind «подробнее»), Edit and
-// Write name the file, otherwise the latest assistant text is cut to 120
-// characters, and thinking alone reads «думает».
+// Write name the file, otherwise the last sentence of the latest assistant
+// text (cut at a word to 120 characters), and thinking alone reads «думает».
 
 export interface AgentNow {
   text: string;
@@ -73,8 +74,25 @@ function toolNow(block: Extract<SessionStructuredBlock, { type: 'tool_use' }>): 
   };
 }
 
-function lastChars(text: string): string {
-  return text.length > AGENT_NOW_TEXT_LIMIT ? text.slice(-AGENT_NOW_TEXT_LIMIT) : text;
+/** Cut at the last word boundary within the limit, with an ellipsis. */
+function clip(text: string): string {
+  if (text.length <= AGENT_NOW_TEXT_LIMIT) return text;
+  const head = text.slice(0, AGENT_NOW_TEXT_LIMIT);
+  const space = head.search(/\s\S*$/);
+  const cut = space > 0 ? head.slice(0, space) : head;
+  return `${cut.replace(/[\s,;:—–-]+$/u, '')}…`;
+}
+
+/**
+ * The last complete sentence of the last non-empty line (16.11 owner: keeping
+ * the last 120 characters started the line mid-sentence), without a leading
+ * markdown list or heading marker.
+ */
+function lastSentence(text: string): string {
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  const line = (lines[lines.length - 1] ?? '').replace(/^(?:#{1,6}|[-*]|\d+[.)])\s+/, '');
+  const parts = sentences(line);
+  return clip(parts[parts.length - 1] ?? line);
 }
 
 export function describeAgentNow(messages: readonly SessionStructuredMessage[]): AgentNow | null {
@@ -89,7 +107,7 @@ export function describeAgentNow(messages: readonly SessionStructuredMessage[]):
       if (block.type === 'tool_use') return { ...toolNow(block), sinceIso };
       if (block.type === 'text') {
         const text = str(block.text);
-        if (text.length > 0) return { text: lastChars(text), sinceIso, raw: null };
+        if (text.length > 0) return { text: lastSentence(text), sinceIso, raw: null };
       }
       if (block.type === 'thinking') sawThinking = true;
     }

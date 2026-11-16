@@ -44,12 +44,16 @@ function parenDepths(text: string): number[] {
   return depths;
 }
 
-/** Sentences, split after .!?… followed by whitespace and a capital letter, outside parentheses. */
-function sentences(text: string): string[] {
+/**
+ * Sentences, split after .!?… followed by whitespace and a capital letter,
+ * outside parentheses. `digitStart` also splits before a digit («… дней. 16.11
+ * панель: …»), for the drawer where a sentence often opens with a date.
+ */
+export function sentences(text: string, options: { digitStart?: boolean } = {}): string[] {
   const depths = parenDepths(text);
   const out: string[] = [];
   let start = 0;
-  const re = /[.!?…](\s+)(?=\p{Lu})/gu;
+  const re = options.digitStart === true ? /[.!?…](\s+)(?=[\p{Lu}\d])/gu : /[.!?…](\s+)(?=\p{Lu})/gu;
   for (const m of text.matchAll(re)) {
     const end = (m.index ?? 0) + 1;
     if (depths[m.index ?? 0] !== 0) continue;
