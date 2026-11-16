@@ -38,11 +38,12 @@ describe('selfIdentityOf', () => {
     expect(AT_ARTEM.name).toBe('Артём');
   });
 
-  it('no result or no own_login: the fallback (today’s behaviour)', () => {
+  it('no result or no own_login: neutral «?», never a guessed person', () => {
     expect(selfIdentityOf(null)).toEqual(FALLBACK_IDENTITY);
+    expect(FALLBACK_IDENTITY.initial).toBe('?');
     const unknown = selfIdentityOf(boards(null, null, { login: 'RicciRi', person: RICHARD }));
     expect(unknown.login).toBeNull();
-    expect(unknown.initial).toBe('А');
+    expect(unknown.initial).toBe('?');
   });
 
   it('own_login without own_person (an older city service): the login’s letter', () => {
@@ -76,9 +77,11 @@ describe('cardAssignee with the city identity', () => {
     expect(cardAssignee(null, true, AT_RICHARD)?.tone).toBe('executor');
   });
 
-  it('unknown identity: today’s fixed mapping', () => {
-    expect(cardAssignee('TheDeveloperTom', false, FALLBACK_IDENTITY)?.tone).toBe('owner');
-    expect(cardAssignee('RicciRi', false, FALLBACK_IDENTITY)).toEqual({ tone: 'peer', letter: 'Р', who: null });
-    expect(cardAssignee('human', false, FALLBACK_IDENTITY)?.letter).toBe('А');
+  it('unknown identity: no owner or peer guess for a person; agents keep «И»', () => {
+    for (const person of ['TheDeveloperTom', 'RicciRi', 'Артём', 'Ричард', 'human', 'owner']) {
+      expect(cardAssignee(person, false, FALLBACK_IDENTITY)).toBeNull();
+    }
+    expect(cardAssignee('devwork/worker', false, FALLBACK_IDENTITY)).toEqual({ tone: 'executor', letter: 'И', who: null });
+    expect(cardAssignee(null, true, FALLBACK_IDENTITY)?.tone).toBe('executor');
   });
 });

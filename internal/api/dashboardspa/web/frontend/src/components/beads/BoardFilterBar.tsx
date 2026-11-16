@@ -96,15 +96,15 @@ function OwnerChips({
   const enabled = ownerChoicesEnabled(sources);
   const available = (owner: string) => sources.some((s) => s.owner === owner && s.available);
   // vk-final: one chip per peer board, labelled with the person's genitive
-  // («Ричарда»). Before any peer board arrives, a disabled «Ричарда» says
-  // where it will come from.
+  // («Ричарда»). Before any peer board arrives, a disabled neutral «Соседа»
+  // (never a guessed person: the viewer may be either city).
   const peers = sources.filter((s) => s.owner !== 'me');
   const chips: Array<{ key: OwnerFilter; label: string; on: boolean }> = [
     { key: 'all', label: t('Owner: all'), on: true },
     { key: 'me', label: t('Owner: mine'), on: enabled && available('me') },
     ...(peers.length > 0
       ? peers.map((s) => ({ key: s.owner, label: s.label, on: enabled && s.available }))
-      : [{ key: 'peer:' as const, label: t("Owner: Richard's"), on: false }]),
+      : [{ key: 'peer:' as const, label: t("Owner: neighbour's"), on: false }]),
   ];
   const active = enabled ? value : 'all';
   return (
@@ -121,7 +121,7 @@ function OwnerChips({
             type="button"
             aria-pressed={pressed}
             disabled={!chip.on}
-            title={chip.on ? undefined : t("Appears after sync with Richard's city")}
+            title={chip.on ? undefined : t("Appears after sync with the neighbour's city")}
             onClick={() => onChange?.(chip.key)}
             className={cn(
               ROW,

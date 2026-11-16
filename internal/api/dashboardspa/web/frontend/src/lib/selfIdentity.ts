@@ -28,8 +28,8 @@ export interface SelfIdentity {
   peers: readonly Person[];
 }
 
-/** Today's look, for a city that does not state its login yet. */
-export const FALLBACK_IDENTITY: SelfIdentity = { login: null, name: null, initial: 'А', peers: [] };
+/** Unknown viewer (the login did not read): neutral, never a guess at a person. */
+export const FALLBACK_IDENTITY: SelfIdentity = { login: null, name: null, initial: '?', peers: [] };
 
 export function selfIdentityOf(result: PeerBoardsResult | null): SelfIdentity {
   if (result === null) return FALLBACK_IDENTITY;

@@ -94,7 +94,7 @@ export function ProjectRail({ identity }: { identity?: SelfIdentity } = {}) {
       <div className="flex-1" />
       <span
         aria-label={t('You')}
-        title={me.name ?? t('You')}
+        title={me.login === null ? t('Who you are: not read') : (me.name ?? t('You'))}
         className="flex h-8 w-8 items-center justify-center rounded-full bg-vk-bg-panel text-[13px] font-medium text-vk-text-normal"
       >
         {me.initial}

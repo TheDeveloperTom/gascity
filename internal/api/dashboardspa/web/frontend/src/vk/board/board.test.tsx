@@ -11,6 +11,23 @@ import { KanbanCard } from './KanbanCard';
 import { PhoneBoard } from './PhoneBoard';
 
 vi.mock('../../lib/openExternal', () => ({ openExternal: vi.fn() }));
+
+// owner 16.11: the card avatar follows the city's identity. These tests set
+// it per test (our city), the rest keep the real hook (unknown → neutral).
+const identityOverride = vi.hoisted(() => ({ value: null as null | import('../../lib/selfIdentity').SelfIdentity }));
+vi.mock('../../lib/selfIdentity', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/selfIdentity')>();
+  return { ...actual, useSelfIdentity: () => identityOverride.value ?? actual.useSelfIdentity() };
+});
+const OUR_CITY = {
+  login: 'TheDeveloperTom',
+  name: 'Артём',
+  initial: 'А',
+  peers: [{ login: 'RicciRi', name: 'Ричард', initial: 'Р', genitive: 'Ричарда' }],
+};
+afterEach(() => {
+  identityOverride.value = null;
+});
 import { openExternal } from '../../lib/openExternal';
 
 // vk lane 1: the VK board (Main / Board-M04 / Cards / Phone-Board frames).
@@ -236,6 +253,7 @@ describe('VK board', () => {
   });
 
   it('the assignee avatar: «А» for the owner, blue «И» for the executor at work', () => {
+    identityOverride.value = OUR_CITY;
     renderBoard(
       [
         bead('dw-own', 'open', { title: 'mine', assignee: 'TheDeveloperTom' }),
@@ -253,6 +271,7 @@ describe('VK board', () => {
 
   // Fix I2 (REVIEW 16.11): the avatar reads bead.assignee, not the stage.
   it('the avatar is the real assignee: owner «А», agent «И», Richard «Р», none when unassigned', () => {
+    identityOverride.value = OUR_CITY;
     renderBoard(
       [
         bead('dw-none', 'open', { title: 'nobody' }),

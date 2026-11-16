@@ -33,7 +33,9 @@ function renderBar(extra: Partial<ComponentProps<typeof BoardFilterBar>> = {}) {
   return props;
 }
 
-const SYNC_TITLE = 'Появится после синхронизации с городом Ричарда';
+// owner 16.11: before a peer board arrives the viewer may be either city, so
+// the placeholder names nobody (no «Ричарда» on Richard's own page).
+const SYNC_TITLE = 'Появится после синхронизации с городом соседа';
 
 describe('BoardFilterBar (vk)', () => {
   beforeEach(() => {
@@ -42,11 +44,12 @@ describe('BoardFilterBar (vk)', () => {
   });
   afterEach(cleanup);
 
-  it('«Мои» and «Ричарда» are disabled with one source', () => {
+  it('«Мои» and a neutral «Соседа» are disabled with one source', () => {
     renderBar({ sources: [ME], ownerFilter: 'all', onOwnerFilter: vi.fn() });
     const all = screen.getByRole('button', { name: 'Все' });
     expect(all.getAttribute('aria-pressed')).toBe('true');
-    for (const name of ['Мои', 'Ричарда']) {
+    expect(screen.queryByRole('button', { name: 'Ричарда' })).toBeNull();
+    for (const name of ['Мои', 'Соседа']) {
       const chip = screen.getByRole('button', { name }) as HTMLButtonElement;
       expect(chip.disabled).toBe(true);
       expect(chip.title).toBe(SYNC_TITLE);

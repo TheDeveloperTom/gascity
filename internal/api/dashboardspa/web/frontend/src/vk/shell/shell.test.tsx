@@ -235,7 +235,7 @@ describe('ProjectRail (canvas left rail)', () => {
     ]);
   });
 
-  it("shows the city's own person: «Р» in Richard's city, «А» by default", () => {
+  it("shows the city's own person: «Р» in Richard's city, a neutral «?» when unknown", () => {
     inRouter(
       <ProjectRail identity={{ login: 'RicciRi', name: 'Ричард', initial: 'Р', peers: [] }} />,
       '/beads',
@@ -245,7 +245,9 @@ describe('ProjectRail (canvas left rail)', () => {
     expect(me.getAttribute('title')).toBe('Ричард');
     cleanup();
     inRouter(<ProjectRail />, '/beads');
-    expect(screen.getByLabelText('Ты').textContent).toBe('А');
+    const unknown = screen.getByLabelText('Ты');
+    expect(unknown.textContent).toBe('?');
+    expect(unknown.getAttribute('title')).toBe('кто ты — не прочиталось');
   });
 
   it('highlights the current project tile with active-bg / active-fg', () => {

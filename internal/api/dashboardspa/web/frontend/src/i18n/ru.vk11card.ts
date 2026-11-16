@@ -7,4 +7,7 @@ export const RU_VK11CARD: Readonly<Record<string, string | RuPlural>> = {
   'Assignee: you': 'Исполнитель: ты',
   'Assignee: {who}': 'Исполнитель: {who}',
   'Assignee: Richard': 'Исполнитель: Ричард',
+  'Who you are: not read': 'кто ты — не прочиталось',
+  "Owner: neighbour's": 'Соседа',
+  "Appears after sync with the neighbour's city": 'Появится после синхронизации с городом соседа',
 };

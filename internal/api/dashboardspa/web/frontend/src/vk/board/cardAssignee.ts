@@ -5,7 +5,7 @@
 //
 // owner 16.11: «me» and «the peer» come from the city's identity
 // (lib/selfIdentity), so Richard's city sees his cards as his own. Without
-// an identity (the city does not state its login) the old fixed mapping holds.
+// an identity (the login did not read) a person gets no avatar, never a guess.
 
 import type { SelfIdentity } from '../../lib/selfIdentity';
 
@@ -19,8 +19,11 @@ export interface CardAssignee {
 }
 
 const GENERIC_ME: ReadonlySet<string> = new Set(['owner', 'human']);
-const OWNER_ASSIGNEES: ReadonlySet<string> = new Set(['thedevelopertom', 'artem', 'артём', 'артем', ...GENERIC_ME]);
-const RICHARD_ASSIGNEES: ReadonlySet<string> = new Set(['ricciri', 'richard', 'ричард']);
+// Assignees that name a person, not an agent: shown with no avatar while the
+// viewer is unknown (no guess whether it is me or the peer).
+const PEOPLE_NAMES: ReadonlySet<string> = new Set([
+  'thedevelopertom', 'artem', 'артём', 'артем', 'ricciri', 'richard', 'ричард', ...GENERIC_ME,
+]);
 
 const EXECUTOR: CardAssignee = { tone: 'executor', letter: 'И', who: null };
 
@@ -39,8 +42,8 @@ export function cardAssignee(
   if (name.length === 0) return working ? EXECUTOR : null;
   const key = name.toLowerCase();
   if (identity.login === null) {
-    if (OWNER_ASSIGNEES.has(key)) return { tone: 'owner', letter: identity.initial, who: null };
-    if (RICHARD_ASSIGNEES.has(key)) return { tone: 'peer', letter: 'Р', who: null };
+    // Unknown viewer: no owner/peer guess for a person; agents keep «И».
+    if (PEOPLE_NAMES.has(key)) return null;
     return EXECUTOR;
   }
   const mine =

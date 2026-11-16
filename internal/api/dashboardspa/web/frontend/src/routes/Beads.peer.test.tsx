@@ -571,7 +571,7 @@ describe('BeadsPage with Richard’s board', () => {
     renderPage();
     await screen.findByText('Моя карточка с тем же id');
     const group = screen.getByRole('group', { name: 'Чьи задачи' });
-    expect((within(group).getByRole('button', { name: 'Ричарда' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(group).getByRole('button', { name: 'Соседа' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
