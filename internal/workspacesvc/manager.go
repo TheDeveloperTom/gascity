@@ -477,20 +477,28 @@ func (m *Manager) AuthorizeAndServeHTTP(name string, w http.ResponseWriter, r *h
 	if !ok {
 		return false
 	}
+	// Resolve the instance under the read lock, then serve WITHOUT it: a proxied
+	// request may be a long-lived stream (SSE), and holding m.mu across it starves
+	// every writer (Tick/Restart/Reload) and, behind the waiting writer, every new
+	// reader (List/Get/routing).
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	e, ok := m.entries[name]
 	if !ok {
+		m.mu.RUnlock()
 		return false
 	}
-	if authorize != nil && !authorize(e.status) {
+	status := e.status
+	inst := e.inst
+	closed := m.closed
+	m.mu.RUnlock()
+
+	if authorize != nil && !authorize(status) {
 		return true
 	}
-	if m.closed || e.inst == nil {
+	if closed || inst == nil {
 		return false
 	}
-	return e.inst.HandleHTTP(w, r, subpath)
+	return inst.HandleHTTP(w, r, subpath)
 }
 
 // ServeHTTP routes /svc/{name}/... requests to the matching service instance.
