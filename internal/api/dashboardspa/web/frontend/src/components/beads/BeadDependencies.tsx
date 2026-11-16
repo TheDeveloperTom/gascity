@@ -106,7 +106,7 @@ function DepLine({ relation, targetId, targetTitle, onOpenBead }: DepLineProps) 
         <button
           type="button"
           onClick={() => onOpenBead(targetId)}
-          className="rounded-sm text-left text-fg hover:text-primary hover:underline focus-mark"
+          className="min-h-11 rounded-sm text-left text-fg hover:text-primary hover:underline focus-mark md:min-h-0"
           title={t('Open {id}', { id: targetId })}
         >
           {label}

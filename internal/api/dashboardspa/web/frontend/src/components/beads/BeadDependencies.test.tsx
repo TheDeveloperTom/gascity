@@ -104,3 +104,13 @@ describe('BeadDependencies in Russian', () => {
     expect(collectMissing()).toEqual([]);
   });
 });
+
+describe('BeadDependencies on a phone', () => {
+  // H1 16.11: a dependency row was 41 px tall at 390 px (tap targets ≥ 44 px).
+  it('each dependency row is a 44 px tap target', () => {
+    const node = nodeFor('B', [bead('A', 'closed'), bead('B', 'open', { needs: ['A'] })]);
+    render(<BeadDependencies node={node} onOpenBead={vi.fn()} />);
+    const row = screen.getByRole('button', { name: /A/ });
+    expect(row.className.split(/\s+/)).toContain('min-h-11');
+  });
+});
