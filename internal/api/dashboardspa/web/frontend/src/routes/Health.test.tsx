@@ -13,7 +13,7 @@ import { invalidate } from '../api/cache';
 import { AttentionProvider } from '../attention/context';
 import { createAttentionContributors, type HealthAttentionFacts } from '../attention/registry';
 import { collectMissing, resetMissing, setLocale } from '../i18n';
-import { resetLiveHistory } from '../lib/hostLive';
+import { recordLiveSample, resetLiveHistory } from '../lib/hostLive';
 import { liveFixture } from '../test/fixtures/liveHealth';
 
 // Owner 16.11: Health answers «что с маком происходит при текущей нагрузке»:
@@ -138,6 +138,39 @@ describe('HealthPage', () => {
     expect(screen.getByRole('img', { name: /^Процессор: занят 100\s%$/ })).toBeTruthy();
   });
 
+  // Re-review R1-1: a reading whose CPU counters did not move is not a blank card.
+  it('keeps the last CPU reading, marked, when a fresh one is missing', async () => {
+    recordLiveSample({
+      at: Date.now() - 3_000,
+      busyPct: 42,
+      memUsedBytes: null,
+      memTotalBytes: null,
+      swapUsedBytes: null,
+      pressure: null,
+      diskFreeBytes: null,
+      diskTotalBytes: null,
+    });
+    live = {
+      ...live,
+      sampled_at: new Date().toISOString(),
+      cpu: { ...live.cpu, busy_pct: { status: 'unavailable', reason: 'invalid_sample' } },
+    };
+    renderPage();
+    const cpu = await screen.findByRole('region', { name: 'Процессор' });
+    expect(await within(cpu).findByText(/^42\s%$/, { selector: 'p' })).toBeTruthy();
+    expect(within(cpu).getByText('нет свежего замера, повторю через 3 с')).toBeTruthy();
+  });
+
+  it('says it will retry rather than showing a blank CPU card', async () => {
+    live = {
+      ...live,
+      cpu: { ...live.cpu, busy_pct: { status: 'unavailable', reason: 'invalid_sample' } },
+    };
+    renderPage();
+    const cpu = await screen.findByRole('region', { name: 'Процессор' });
+    expect(await within(cpu).findByText('нет данных, повторю')).toBeTruthy();
+  });
+
   it('draws the CPU, memory and disk charts', async () => {
     renderPage();
     expect(await screen.findByRole('img', { name: /^Процессор/ })).toBeTruthy();
@@ -158,7 +191,9 @@ describe('HealthPage', () => {
     live = { ...live, cpu: { ...live.cpu, busy_pct: { status: 'available', value: 100 } } };
     renderPage();
     const region = await screen.findByRole('region', { name: 'Кто ест Мак' });
-    const row = (await within(region).findByText('Система и прочее (не видно по процессам)')).closest('li');
+    const row = (
+      await within(region).findByText('Система и прочее (не видно по процессам)')
+    ).closest('li');
     expect(row?.textContent).toContain('84\u00a0%');
     expect(row?.textContent).toContain('ядро macOS и процессы, мелькнувшие между замерами');
   });
@@ -171,7 +206,9 @@ describe('HealthPage', () => {
     };
     renderPage();
     expect(
-      await screen.findByText(/процессы системы и других пользователей без прав администратора не видны/),
+      await screen.findByText(
+        /процессы системы и других пользователей без прав администратора не видны/,
+      ),
     ).toBeTruthy();
   });
 

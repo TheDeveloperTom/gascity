@@ -314,7 +314,11 @@ function CpuPanel({
   windowMs,
   sustained,
 }: PanelProps & { sustained: number | null }) {
-  const busy = live === null ? null : busyPctOf(live);
+  const fresh = live === null ? null : busyPctOf(live);
+  // Re-review R1-1: when a reading's CPU counters did not move, keep the
+  // last known value, marked, rather than a blank card.
+  const lastKnown = [...samples].reverse().find((s) => s.busyPct !== null)?.busyPct ?? null;
+  const busy = fresh ?? lastKnown;
   const queue = live === null ? null : cpuQueueLine(live);
   const series: ChartSeries[] = [
     {
@@ -328,12 +332,16 @@ function CpuPanel({
   return (
     <Panel
       title={t('CPU')}
-      value={busy === null ? '—' : pct(busy)}
+      value={busy === null ? (live === null ? '—' : t('no data, retrying')) : pct(busy)}
       tone={live === null ? null : cpuToneOf(live, sustained)}
       detail={
         live === null ? null : (
           <>
-            <p>{t('busy right now, share of all {n} cores', { n: live.cpu.cores })}</p>
+            {fresh === null && busy !== null ? (
+              <p>{t('no fresh reading, retrying in {s} s', { s: LIVE_POLL_MS / 1000 })}</p>
+            ) : (
+              <p>{t('busy right now, share of all {n} cores', { n: live.cpu.cores })}</p>
+            )}
             {queue !== null && <p>{queue}</p>}
           </>
         )

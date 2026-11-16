@@ -59,6 +59,8 @@ export const RU_HEALTH: Readonly<Record<string, string | RuPlural>> = {
   'swap in use: {swap}': 'в файле подкачки: {swap}',
   '{free} free': '{free} свободно',
   '{free} left': 'осталось {free}',
+  'no data, retrying': 'нет данных, повторю',
+  'no fresh reading, retrying in {s} s': 'нет свежего замера, повторю через {s} с',
   'busy right now, share of all {n} cores': 'занят прямо сейчас, доля всех {n} ядер',
   '{pct} of {total} used': 'занято {pct} из {total}',
 
