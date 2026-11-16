@@ -50,6 +50,23 @@ describe('«Нужно от меня» shelves', () => {
     setLocale('en');
   });
 
+  // H1 16.11: the live page shifted 0.3–0.6 CLS on load. «Работает» and «Тихо»
+  // rendered under a «Нужно от меня» that was still reading the board; the
+  // stuck list then arrived and pushed both down. Until the board is read,
+  // only the first shelf (with its «Читаю доску…») is on the page.
+  it('while the board is still read, shows only the first shelf so nothing below it jumps', () => {
+    const model = needsFromBoard(undefined, [], [], NOW_MS, true, []);
+    expect(model.state).toBe('loading');
+    render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Читаю доску…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Работает/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Тихо/ })).toBeNull();
+  });
+
   it('shows three shelves, the first counting the same needs as the badge', () => {
     const { model } = show();
     expect(screen.getByRole('button', { name: `Нужно от меня ${model.count}` })).toBeTruthy();

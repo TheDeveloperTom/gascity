@@ -119,7 +119,10 @@ function TopicQuestions({ items }: { items: readonly PendingTopicQuestion[] }) {
           <li key={question.questionId} className="flex min-w-0 flex-col gap-1">
             <TopicQuestionCard question={question} />
             {href !== null && (
-              <Link to={href} className="focus-mark self-start text-sm text-vk-text-low underline underline-offset-2">
+              <Link
+                to={href}
+                className="focus-mark inline-flex min-h-11 items-center self-start text-sm text-vk-text-low underline underline-offset-2 md:min-h-0"
+              >
                 {t('Open the topic view')}
               </Link>
             )}
@@ -190,6 +193,10 @@ export function NeedsShelves({
         )}
       </Shelf>
 
+      {/* H1 16.11: nothing renders under a shelf that is still reading the
+          board, or the stuck list pushes it down when it lands (layout shift). */}
+      {model.state !== 'loading' && (
+      <>
       <Shelf
         title={t('At work')}
         {...(stages.state === 'ready' ? { count: stages.inFlight.length } : {})}
@@ -225,6 +232,8 @@ export function NeedsShelves({
           />
         )}
       </Shelf>
+      </>
+      )}
     </div>
   );
 }

@@ -123,6 +123,13 @@ describe('one owner question, three views', () => {
     expect(within(q).getByRole('link', { name: 'Ответить в Discord' }).getAttribute('href')).toBe(QUESTION_JUMP);
   });
 
+  // H1 16.11: «Открыть обсуждение» under a question was a 20 px line on a phone.
+  it('«Открыть обсуждение» under a question is a 44 px tap target on a phone', () => {
+    renderShelves(boards());
+    const link = screen.getAllByRole('link', { name: 'Открыть обсуждение' })[0]!;
+    expect(link.className.split(/\s+/)).toContain('min-h-11');
+  });
+
   it('a question our bead already lists (same question id) is not counted again', () => {
     const result = boards();
     expect(peerNeedsCount(result, new Set(['q-ours']), NOW)).toBe(1);

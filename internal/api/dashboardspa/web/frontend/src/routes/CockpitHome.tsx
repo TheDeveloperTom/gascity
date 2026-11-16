@@ -254,6 +254,9 @@ export function CockpitHomePage() {
         />
       </div>
 
+      {/* H1 16.11: below the shelves only once the board is read (no layout shift). */}
+      {needs.state !== 'loading' && (
+      <>
       <CityStrip
         agents={cityAgents}
         tasks={taskStages}
@@ -415,6 +418,8 @@ export function CockpitHomePage() {
           </section>
         </div>
       </details>
+      </>
+      )}
     </section>
   );
 }
