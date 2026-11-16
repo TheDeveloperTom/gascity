@@ -137,4 +137,17 @@ export const RU_POLISH2: Readonly<Record<string, string | RuPlural>> = {
   'This task is a recipe, not work to do: every {name} instance is made from it. Its «in progress» status means «available for instantiation» — do not act on it, nudge it or close it.':
     'Это рецепт, а не работа: из него делается каждый экземпляр {name}. Статус «в работе» значит «можно запускать»; не трогай, не подталкивай и не закрывай её.',
   'One run of the {name} recipe.': 'Один прогон рецепта {name}.',
+
+  // Card drawer, one screen (item 8).
+  'part of': 'часть',
+  nobody: 'нет',
+  'Executor: {who}': 'Исполнитель: {who}',
+  'created {date}': 'создана {date}',
+  Sessions: 'Сессии',
+  'Pull requests': 'Пул-реквесты',
+  Issues: 'Задачи GitHub',
+  'Formula runs': 'Прогоны',
+  'Order runs': 'Прогоны по расписанию',
+  Description: 'Описание',
+  Recipe: 'Рецепт',
 };

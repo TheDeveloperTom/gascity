@@ -145,7 +145,7 @@ export function BeadBody({ bead }: { bead: SupervisorBead }) {
       )}
 
       <section>
-        <h3 className={SUBHEAD}>{kind === 'template' ? 'Recipe' : 'Description'}</h3>
+        <h3 className={SUBHEAD}>{kind === 'template' ? t('Recipe') : t('Description')}</h3>
         {bead.description && bead.description.length > 0 ? (
           <pre className="max-w-[70ch] whitespace-pre-wrap font-sans text-reading text-fg [overflow-wrap:anywhere]">
             {bead.description}

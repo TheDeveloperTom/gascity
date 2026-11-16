@@ -164,7 +164,7 @@ describe('i18n', () => {
     expect(t('status.open')).toBe('Open');
     expect(t('status.in_progress')).toBe('In progress');
     setLocale('ru');
-    expect(t('status.open')).toBe('Ждёт');
+    expect(t('status.open')).toBe('Открыта');
     expect(t('kind.never_seen_kind')).toBe('Never seen kind');
   });
 

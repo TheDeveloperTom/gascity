@@ -22,6 +22,8 @@ vi.mock('../../lib/mayorLink', () => ({
   mayorChannelUrl: vi.fn(() => 'https://discord.com/channels/1/2'),
 }));
 
+import { DISPATCH_CARD } from './dispatchCardFixture';
+
 const mockDetail = useBeadDetail as unknown as Mock;
 const mockBoard = useBoardData as unknown as Mock;
 const mockAgentNow = useAgentNow as unknown as Mock;
@@ -188,10 +190,10 @@ describe('question card', () => {
     expect(mockOpen).toHaveBeenCalledWith(CHAT);
   });
 
-  it('the header status chip reads «Ждёт», never a raw key, in Russian and in English', () => {
+  it('the status reads «Открыта», never a raw key, in Russian and in English', () => {
     show(question);
     const dialog = screen.getByRole('dialog');
-    expect(dialog.textContent).toContain('Ждёт');
+    expect(dialog.textContent).toContain('Открыта');
     expect(dialog.textContent).not.toMatch(/status\./);
     cleanup();
     setLocale('en');
@@ -237,3 +239,65 @@ describe('relationships', () => {
   });
 });
 
+// polish2 16.11 item 8 (owner screenshots of dw-11d21b41c8f56781): the drawer
+// is one screen: title, one meta line, the description once as Markdown, one
+// «Связи» section. No «Подробности», no raw `**`/`###`, no English.
+describe('the drawer is one screen (item 8)', () => {
+  const PARENT = bead({ id: 'dw-eba63b7db1e9a14e', title: 'M03 #2 / Task 6: допуск по собственному ящику' });
+  const BLOCKER = bead({ id: 'dw-76d30a7621ef3a49', title: 'm03-d2-provider-binding — привязка провайдера' });
+  const items = [DISPATCH_CARD, PARENT, BLOCKER];
+
+  it('renders the description once, as Markdown: bold, a heading, line breaks; no raw markers', () => {
+    show(DISPATCH_CARD, items);
+    const dialog = screen.getByRole('dialog');
+    const text = dialog.textContent ?? '';
+    expect(text.split('Что меняем и зачем').length - 1).toBe(1);
+    expect(text).not.toContain('**');
+    expect(text).not.toContain('###');
+    const md = screen.getByTestId('task-description');
+    expect(within(md).getAllByText(/:$/, { selector: 'strong' }).length).toBe(6);
+    expect(within(md).getByRole('heading', { name: 'Исходные сведения и технические ссылки' })).toBeTruthy();
+    // each source line keeps its own line
+    expect(md.querySelectorAll('br').length).toBeGreaterThanOrEqual(5);
+    // a visible heading and bold (Tailwind preflight resets both)
+    expect(md.className).toContain('[&_h3]:font-semibold');
+    expect(md.className).toContain('[&_strong]:font-semibold');
+  });
+
+  it('has no «Подробности» block and no English section names', () => {
+    show(DISPATCH_CARD, items);
+    const text = screen.getByRole('dialog').textContent ?? '';
+    for (const gone of ['Подробности', 'Details', 'Description', 'Описание', 'Зависимости', 'Dependencies', 'Связанное', 'Related']) {
+      expect(text, gone).not.toContain(gone);
+    }
+    expect(screen.queryByRole('group')).toBeNull();
+  });
+
+  it('one meta line under the title: «Открыта», the stage, «Исполнитель: нет», the date, the labels', () => {
+    show(DISPATCH_CARD, items);
+    const meta = screen.getByTestId('task-meta');
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading.nextElementSibling).toBe(meta);
+    const text = meta.textContent ?? '';
+    expect(text).toContain('Открыта');
+    expect(text).toContain('M03');
+    expect(text).toContain('Исполнитель: нет');
+    expect(text).toMatch(/создана 28 окт/);
+    expect(text).not.toMatch(/\bopen\b|\btask\b|·$/);
+    // the description comes right after the meta line, before the relations
+    const md = screen.getByTestId('task-description');
+    const rel = screen.getByTestId('task-relationships');
+    expect(meta.compareDocumentPosition(md) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(md.compareDocumentPosition(rel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('relations are ONE «Связи» section: waits on, part of', () => {
+    show(DISPATCH_CARD, items);
+    expect(screen.getAllByRole('heading', { name: 'Связи' })).toHaveLength(1);
+    const rel = screen.getByTestId('task-relationships');
+    expect(within(rel).getByText('ждёт')).toBeTruthy();
+    expect(within(rel).getByText('m03-d2-provider-binding — привязка провайдера')).toBeTruthy();
+    expect(within(rel).getByText('часть')).toBeTruthy();
+    expect(within(rel).getByText('M03 #2 / Task 6: допуск по собственному ящику')).toBeTruthy();
+  });
+});

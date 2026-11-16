@@ -47,6 +47,8 @@ export interface TaskDrawerProps {
   /** Top block (the open question), above the title. */
   top?: ReactNode;
   title: ReactNode;
+  /** One compact line right under the title (polish2 item 8: status, stage, executor, date, labels). */
+  meta?: ReactNode;
   /** Action row: under the title from `md`, a sticky bottom bar below it. */
   actions?: ReactNode;
   children?: ReactNode;
@@ -68,6 +70,7 @@ export function TaskDrawer({
   chips,
   top,
   title,
+  meta,
   actions,
   children,
   aboveTabs = false,
@@ -122,6 +125,7 @@ export function TaskDrawer({
           <h2 className="text-xl font-semibold text-vk-text-high [overflow-wrap:anywhere]">
             {title}
           </h2>
+          {meta}
           {actions && (
             <div
               data-testid="task-drawer-actions"

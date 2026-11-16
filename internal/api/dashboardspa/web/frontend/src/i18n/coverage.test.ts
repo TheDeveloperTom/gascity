@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { collectMissing, resetMissing, setLocale, t, tn } from './index';
 
