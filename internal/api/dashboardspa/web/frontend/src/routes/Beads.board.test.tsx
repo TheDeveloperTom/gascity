@@ -31,6 +31,9 @@ function bead(id: string, extra: Partial<SupervisorBead> = {}): SupervisorBead {
 
 const DP = bead('dp-dh6', { title: 'Приёмка города: часть B' });
 const IY = bead('dw-iy9a', { title: 'M04 — приёмка этапа', labels: ['milestone:M04'] });
+// vk11 card (canvas): the card shows the short mono label «M04 приёмка» and the
+// title without that prefix, so the card's one button is named «Приёмка этапа».
+const IY_CARD = 'Приёмка этапа';
 const ORDER = bead('gcg-ord1', {
   title: 'order:archyl-drift-stage',
   labels: ['order-run:archyl-drift-stage', 'order-tracking'],
@@ -125,7 +128,7 @@ function LocationProbe() {
 function renderPage(contributors: AttentionContributor[] = [], entry = '/beads') {
   return render(
     <LocaleProvider>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter initialEntries={[allProjects(entry)]}>
         <LocationProbe />
         <NowProvider intervalMs={1_000_000}>
           <OperatorConfigProvider
@@ -169,52 +172,66 @@ describe('BeadsPage one board', () => {
     expect(screen.queryByLabelText(/rig filter/i)).toBeNull();
   });
 
-  it('the project filter needs no refetch', async () => {
-    renderPage();
-    await screen.findByText('Приёмка города: часть B');
-    const before = beadQueries.length;
-    fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
-    fireEvent.click(screen.getByRole('option', { name: /^City \(service\)/ }));
-    expect(screen.getByText('Приёмка города: часть B')).toBeTruthy();
-    expect(screen.queryByText('M04 — приёмка этапа')).toBeNull();
-    expect(beadQueries.length).toBe(before);
+  // VK 1:1 (16.11): the left rail chooses the project (`?project=`); the
+  // board opens on the devwork product, never «Все», and the title is its name.
+  it('opens on the devwork product: its cards only, its name as the title', async () => {
+    // An empty `?project=` is no choice (the rail has not picked one yet).
+    renderPage([], '/beads?project=');
+    await screen.findByRole('button', { name: IY_CARD });
+    const iy = document.querySelector('[data-bead-id="dw-iy9a"]') as HTMLElement;
+    expect(iy.querySelector('[data-card-label]')?.textContent).toBe('M04 приёмка');
+    expect(screen.queryByText('Приёмка города: часть B')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'devwork product' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'More' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Refresh/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Project:/ })).toBeNull();
   });
 
-  it('the project menu lists the real rigs and the city, with counts', async () => {
-    renderPage();
-    await screen.findByText('Приёмка города: часть B');
-    fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
-    const names = within(screen.getByRole('listbox', { name: 'Choose a project' }))
-      .getAllByRole('option')
-      .map((b) => b.textContent);
-    expect(names).toEqual(['All2', 'devwork product1', 'City (service)1']);
-    for (const name of names) expect(name).not.toContain('/r/');
-  });
-
-  it('?project=city preselects the project', async () => {
+  it('?project=city shows the city and names it «Сам город», with no refetch', async () => {
     renderPage([], '/beads?project=city');
     await screen.findByText('Приёмка города: часть B');
-    expect(screen.queryByText('M04 — приёмка этапа')).toBeNull();
-    expect(screen.getByRole('button', { name: /Project:/ }).textContent).toBe('Project: City (service)');
+    expect(screen.queryByRole('button', { name: IY_CARD })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'The city itself' })).toBeTruthy();
   });
 
-  it('every card carries its project tag when two projects exist', async () => {
+  // VK 1:1: engine bookkeeping rows are not cards (lib/boardNoise).
+  it('plan-review rounds, PR repairs, gate reworks and stall alarms are not cards', async () => {
+    windowItems = [
+      IY,
+      bead('dw-rv1', { title: 'Ревью плана M04 — круг 2' }),
+      bead('dw-rp1', { title: 'Repair PR #489: CI красный' }),
+      bead('dw-gf1', { title: 'Доработка по провалу ворот Refinery, раунд 1: M04 #3' }),
+      bead('dw-st1', { title: 'стоит: dw-m53l7 (M00 #1) с 18:44 UTC', metadata: { 'devwork.stopped_card': 'dw-m53l7' } }),
+    ];
+    renderPage([], '/beads?project=devwork');
+    await screen.findByRole('button', { name: IY_CARD });
+    // By id, not by text: the canvas card strips a «M04 #3»-style prefix from
+    // its title, so a text query could miss a card that is still drawn.
+    for (const id of ['dw-rv1', 'dw-rp1', 'dw-gf1', 'dw-st1']) {
+      expect(document.querySelector(`[data-bead-id="${id}"]`)).toBeNull();
+    }
+    expect(document.querySelector('[data-bead-id="dw-iy9a"]')).not.toBeNull();
+  });
+
+  // vk11 card (canvas Cards/Main): «Все проекты» shows both projects' cards,
+  // and no card carries a project tag any more.
+  it('with two projects both show, and no card carries a project tag', async () => {
     renderPage();
     await screen.findByText('Приёмка города: часть B');
     const card = (id: string) => document.querySelector(`[data-bead-id="${id}"]`) as HTMLElement;
-    expect(within(card('dw-iy9a')).getByText('devwork product')).toBeTruthy();
-    expect(within(card('dp-dh6')).getByText('City (service)')).toBeTruthy();
+    expect(card('dw-iy9a')).not.toBeNull();
+    expect(card('dp-dh6')).not.toBeNull();
+    expect(within(card('dw-iy9a')).queryByText('devwork product')).toBeNull();
+    expect(within(card('dp-dh6')).queryByText('City (service)')).toBeNull();
   });
 
-  it('test cards stay hidden until asked', async () => {
+  // VK 1:1: the canvas filter row has no test checkbox; test cards stay hidden.
+  it('test cards stay hidden and the row has no test checkbox', async () => {
     closedItems = [DRILL];
     renderPage();
     await screen.findByText('Приёмка города: часть B');
-    const box = await screen.findByRole('checkbox', { name: 'Show test tasks (1)' });
-    expect((box as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByText(DRILL.title)).toBeNull();
-    fireEvent.click(box);
-    expect(await screen.findByText(DRILL.title)).toBeTruthy();
   });
 
   it('Show all history widens the fetch', async () => {
@@ -242,10 +259,16 @@ describe('BeadsPage one board', () => {
   it('a big Waiting shows every card and survives a locale change', async () => {
     windowItems = manyWaiting();
     renderPage();
-    expect(await screen.findByText('M04 card 0')).toBeTruthy();
+    // canvas card: «M04 card 0» renders as label «M04» + title «Card 0»
+    // («M03 card 0» too), so the cards are told apart by id and label.
+    const card = (id: string) => document.querySelector(`[data-bead-id="${id}"]`) as HTMLElement;
+    expect(await screen.findAllByRole('button', { name: 'Card 0' })).toHaveLength(2);
+    expect(document.querySelectorAll('[data-bead-id^="dw-3"], [data-bead-id^="dw-4"]')).toHaveLength(13);
+    expect(card('dw-40').querySelector('[data-card-label]')?.textContent).toBe('M04');
     act(() => setLocale('ru'));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Задачи' })).toBeTruthy();
-    expect(screen.getByText('M04 card 0')).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Все проекты' })).toBeTruthy();
+    expect(within(card('dw-40')).getByRole('button', { name: 'Card 0' })).toBeTruthy();
+    expect(document.querySelectorAll('[data-bead-id^="dw-3"], [data-bead-id^="dw-4"]')).toHaveLength(13);
   });
 
   it('the idle notice from live-shaped data', async () => {
@@ -265,7 +288,10 @@ describe('BeadsPage one board', () => {
     resetMissing();
     renderPage();
     await screen.findByText('Приёмка города: часть B');
-    expect(screen.getByRole('heading', { level: 1, name: 'Задачи' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Все проекты' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ещё' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Добавить в «Ждёт»' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Обновить' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Новая задача' })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: 'Найти задачу' })).toBeTruthy();
     expect(collectMissing()).toEqual([]);
@@ -299,8 +325,8 @@ describe('BeadsPage selection in the URL', () => {
 
   it('selecting a card writes ?bead=<id>; closing removes it', async () => {
     renderPage();
-    await screen.findByText('M04 — приёмка этапа');
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('button', { name: IY_CARD });
+    fireEvent.click(titleButton(IY_CARD));
     await waitFor(() => expect(new URLSearchParams(probe.search).get('bead')).toBe('dw-iy9a'));
     expect(await screen.findByRole('dialog')).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -312,9 +338,9 @@ describe('BeadsPage selection in the URL', () => {
   // it came from, so the next Back is not a dead step.
   it('closing a card opened from the board returns to the same history entry', async () => {
     renderPage();
-    await screen.findByText('M04 — приёмка этапа');
+    await screen.findByRole('button', { name: IY_CARD });
     const before = probe.key;
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    fireEvent.click(titleButton(IY_CARD));
     await screen.findByRole('dialog');
     expect(probe.key).not.toBe(before);
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -325,9 +351,9 @@ describe('BeadsPage selection in the URL', () => {
 
   it('after switching cards, closing still lands where the first card was opened from', async () => {
     renderPage();
-    await screen.findByText('M04 — приёмка этапа');
+    await screen.findByRole('button', { name: IY_CARD });
     const before = probe.key;
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    fireEvent.click(titleButton(IY_CARD));
     await screen.findByRole('dialog');
     fireEvent.click(titleButton('Приёмка города: часть B'));
     await waitFor(() => expect(new URLSearchParams(probe.search).get('bead')).toBe('dp-dh6'));
@@ -351,11 +377,11 @@ describe('BeadsPage selection in the URL', () => {
 
   it('re-selecting the open card adds no history entry', async () => {
     renderPage();
-    await screen.findByText('M04 — приёмка этапа');
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('button', { name: IY_CARD });
+    fireEvent.click(titleButton(IY_CARD));
     await screen.findByRole('dialog');
     const opened = probe.key;
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    fireEvent.click(titleButton(IY_CARD));
     expect(probe.key).toBe(opened);
   });
 
@@ -369,8 +395,8 @@ describe('BeadsPage selection in the URL', () => {
 
   it('Back after opening a card closes it; Forward opens it again', async () => {
     renderPage();
-    await screen.findByText('M04 — приёмка этапа');
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('button', { name: IY_CARD });
+    fireEvent.click(titleButton(IY_CARD));
     expect(await screen.findByRole('dialog')).toBeTruthy();
     act(() => {
       void probe.navigate!(-1);
@@ -384,31 +410,38 @@ describe('BeadsPage selection in the URL', () => {
     expect(new URLSearchParams(probe.search).get('bead')).toBe('dw-iy9a');
   });
 
-  it('the selected card is marked aria-current with a visible ring and tint; others are not', async () => {
+  // vk11 card (canvas Main): the open task keeps its background and gets the
+  // --sel (brand) border; the old ring + brand tint is gone.
+  it('the selected card is marked aria-current with the brand border; others are not', async () => {
     renderPage();
-    await screen.findByText('M04 — приёмка этапа');
-    fireEvent.click(titleButton('M04 — приёмка этапа'));
+    await screen.findByRole('button', { name: IY_CARD });
+    fireEvent.click(titleButton(IY_CARD));
     await screen.findByRole('dialog');
     const card = (id: string) => document.querySelector(`[data-bead-id="${id}"]`) as HTMLElement;
     expect(card('dw-iy9a').getAttribute('aria-current')).toBe('true');
-    expect(card('dw-iy9a').className).toContain('ring-2');
-    expect(card('dw-iy9a').className).toContain('bg-vk-brand/10');
+    expect(card('dw-iy9a').className).toContain('border-vk-brand');
+    expect(card('dw-iy9a').className).not.toContain('bg-vk-brand/10');
+    expect(card('dp-dh6').className).not.toContain('border-vk-brand');
     expect(card('dp-dh6').hasAttribute('aria-current')).toBe(false);
   });
 });
 
 describe('BeadsPage project names (polish2 16.11)', () => {
-  it('Russian: «Все», «Продукт devwork», «Город (служебное)», «Проект:», «Найти задачу…»', async () => {
+  // VK 1:1 (16.11): the project's name is the page title (Main.dc.html).
+  it('Russian titles: «Продукт devwork», «Сам город»; search «Найти задачу…»', async () => {
     setLocale('ru');
-    renderPage();
-    await screen.findByText('Приёмка города: часть B');
-    const button = screen.getByRole('button', { name: /Проект:/ });
-    expect(button.textContent).toBe('Проект: Все');
-    fireEvent.click(button);
-    const names = within(screen.getByRole('listbox', { name: 'Выбрать проект' }))
-      .getAllByRole('option')
-      .map((b) => b.textContent);
-    expect(names).toEqual(['Все2', 'Продукт devwork1', 'Город (служебное)1']);
+    renderPage([], '/beads?project=devwork');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Продукт devwork' })).toBeTruthy();
     expect(screen.getByPlaceholderText('Найти задачу…')).toBeTruthy();
+    cleanup();
+    renderPage([], '/beads?project=city');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Сам город' })).toBeTruthy();
   });
 });
+
+// VK 1:1 (16.11): the board opens on the devwork product; these tests read the
+// whole board, so they ask for every project unless the entry names one.
+function allProjects(entry: string): string {
+  if (/[?&]project=/.test(entry)) return entry;
+  return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
+}

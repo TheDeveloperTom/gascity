@@ -135,7 +135,7 @@ describe('BeadsPage', () => {
   it('renders the kanban board by default with no board/list compatibility switch', async () => {
     renderPage();
 
-    await screen.findByRole('heading', { name: /^beads$/i });
+    await screen.findByRole('heading', { level: 1, name: 'All projects' });
     // B5 supersedes BE-11: one board region, never a section per id prefix.
     const board = await screen.findByRole('region', { name: 'Board' });
 
@@ -219,24 +219,18 @@ describe('BeadsPage', () => {
 
   // B7 supersedes the rig select (BE-09): the project control is client-side
   // and names rigs by their API name, never by their path.
-  it('the project control lists the real rigs and the city', async () => {
+  // VK 1:1 (16.11): the left rail chooses the project, so the filter row
+  // has no project menu; `?project=<rig>` shows that rig's cards only.
+  it('?project=<rig> shows that rig only, titled with its name', async () => {
     extraBeads = [
       { ...sampleBead(), id: 'ea-1', title: 'East work' },
       { ...sampleBead(), id: 'we-1', title: 'West work' },
     ];
-    renderPage();
-
+    renderPage('/beads?project=east');
     await screen.findByText('East work');
-    // vk-final: the project chips became the «Project:» menu.
-    fireEvent.click(screen.getByRole('button', { name: /Project:/ }));
-    const names = within(screen.getByRole('listbox', { name: 'Choose a project' }))
-      .getAllByRole('option')
-      .map((option) => option.textContent ?? '');
-    expect(names).toEqual(['All3', 'east product1', 'west product1', 'City (service)1']);
-    for (const name of names) {
-      expect(name).not.toContain('/home/ds');
-      expect(name).not.toContain('gascity-main');
-    }
+    expect(screen.queryByText('West work')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'east product' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Project:/ })).toBeNull();
   });
 
   // vk integration: the create-and-sling form left the page with its header
@@ -251,9 +245,11 @@ describe('BeadsPage', () => {
     ];
     renderPage('/beads?epic=M04');
 
-    await screen.findByText('M04 work');
-    expect(screen.queryByText('Other work')).toBeNull();
-    expect(screen.queryByText('Sample bead')).toBeNull();
+    // canvas card: «M04 work» shows label «M04» and title «Work».
+    await screen.findByRole('button', { name: 'Work' });
+    expect(document.querySelector('[data-bead-id="ea-1"]')).not.toBeNull();
+    expect(document.querySelector('[data-bead-id="ea-2"]')).toBeNull();
+    expect(document.querySelector('[data-bead-id="gascity-0001"]')).toBeNull();
   });
 
   it('deep-links to and selects a bead from the bead query param', async () => {
@@ -298,7 +294,7 @@ describe('BeadsPage', () => {
 
 function renderPage(path = '/beads') {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[allProjects(path)]}>
       <NowProvider intervalMs={1_000_000}>
         <OperatorConfigProvider
           operator={{
@@ -377,4 +373,11 @@ async function requestJson(input: RequestInfo | URL, init?: RequestInit): Promis
   const body = init?.body;
   if (typeof body !== 'string') return undefined;
   return JSON.parse(body) as unknown;
+}
+
+// VK 1:1 (16.11): the board opens on the devwork product; these tests read the
+// whole board, so they ask for every project unless the entry names one.
+function allProjects(entry: string): string {
+  if (/[?&]project=/.test(entry)) return entry;
+  return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
 }

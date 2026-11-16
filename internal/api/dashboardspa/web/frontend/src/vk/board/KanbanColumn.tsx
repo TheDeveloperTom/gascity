@@ -36,10 +36,20 @@ import { STAGES } from '../../lib/stageBoard';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 
-/** Every card bead of the model by id (blocker / waiter names on a card). */
-export function useBeadLookup(model: BoardModel): (id: string) => SupervisorBead | undefined {
+const NO_BEADS: readonly SupervisorBead[] = [];
+
+/**
+ * Every card bead of the model by id (blocker / waiter names on a card), plus
+ * `extra` beads that are not cards — the epics from BoardData.items, so a card
+ * can name its epic («Один тип»; vk11/card). A card's own bead wins.
+ */
+export function useBeadLookup(
+  model: BoardModel,
+  extra: readonly SupervisorBead[] = NO_BEADS,
+): (id: string) => SupervisorBead | undefined {
   return useMemo(() => {
     const byId = new Map<string, SupervisorBead>();
+    for (const bead of extra) byId.set(bead.id, bead);
     for (const stage of STAGES) {
       // My cards only: a peer card's id may name a different bead of mine.
       for (const card of model.columns[stage.id]) {
@@ -47,7 +57,12 @@ export function useBeadLookup(model: BoardModel): (id: string) => SupervisorBead
       }
     }
     return (id: string) => byId.get(id);
-  }, [model]);
+  }, [model, extra]);
+}
+
+/** The epic beads of a board read (BoardData.items), for useBeadLookup. */
+export function epicBeadsOf(items: readonly SupervisorBead[]): SupervisorBead[] {
+  return items.filter((bead) => bead.issue_type === 'epic');
 }
 
 export type VkColumnId = 'waiting' | 'working' | 'review' | 'merged';
@@ -57,34 +72,56 @@ export interface VkColumn {
   label: string;
   color: string;
   cards: readonly BoardCard[];
-  /** Merged only: cards closed before the 7-day window (behind «Показать старые»). */
+  /** Merged only: the rest, behind «Показать старые» (newer first). */
   older: readonly BoardCard[];
+  /** The header count: every card of the column (merged: the 7-day window). */
+  count: number;
 }
+
+/** Main.dc.html: «Влито · за 7 дней» shows the newest three merges. */
+export const MERGED_SHOWN = 3;
 
 /** Ждёт / В работе / Ревью (review + pr) / «Влито · за 7 дней». */
 export function boardColumns(model: BoardModel, nowMs: number): VkColumn[] {
   const recent = mergedWithin(model, nowMs);
   const recentKeys = new Set(recent.map((card) => card.key));
-  const older = model.columns.merged.filter((card) => !recentKeys.has(card.key));
+  const beforeWindow = model.columns.merged.filter((card) => !recentKeys.has(card.key));
+  const review = [...model.columns.review, ...model.columns.pr];
   return [
-    { id: 'waiting', label: t('Waiting'), color: '#3B82F6', cards: model.columns.waiting, older: [] },
-    { id: 'working', label: t('Working'), color: '#F59E0B', cards: model.columns.working, older: [] },
     {
-      id: 'review',
-      label: t('Review'),
-      color: '#8B5CF6',
-      cards: [...model.columns.review, ...model.columns.pr],
+      id: 'waiting',
+      label: t('Waiting'),
+      color: '#3B82F6',
+      cards: model.columns.waiting,
       older: [],
+      count: model.columns.waiting.length,
     },
-    { id: 'merged', label: t('Merged · last 7 days'), color: '#22C55E', cards: recent, older },
+    {
+      id: 'working',
+      label: t('Working'),
+      color: '#F59E0B',
+      cards: model.columns.working,
+      older: [],
+      count: model.columns.working.length,
+    },
+    { id: 'review', label: t('Review'), color: '#8B5CF6', cards: review, older: [], count: review.length },
+    {
+      id: 'merged',
+      label: t('Merged · last 7 days'),
+      color: '#22C55E',
+      cards: recent.slice(0, MERGED_SHOWN),
+      older: [...recent.slice(MERGED_SHOWN), ...beforeWindow],
+      count: recent.length,
+    },
   ];
 }
 
 export const KanbanProvider = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div
     className={cn(
-      // vk-final: the four columns share the full width (no 1600 px cap).
-      'flex min-w-0 flex-col md:grid md:min-h-full md:w-full md:min-w-[800px] md:grid-cols-4 md:items-stretch md:divide-x md:divide-vk-border md:border-x md:border-vk-border',
+      // VK 1:1 (Main.dc.html): an inline grid of columns 200–400 px wide,
+      // hairlines between them and at both ends, no boxes.
+      'flex min-w-0 flex-col md:inline-grid md:min-h-full md:grid-flow-col md:auto-cols-[minmax(200px,400px)] md:items-stretch md:divide-x md:divide-vk-border md:border-x md:border-vk-border',
       className,
     )}
   >
@@ -97,23 +134,36 @@ export const KanbanHeader = ({
   color,
   count,
   className,
+  onAdd,
 }: {
   name: string;
   color: string;
   count: number;
   className?: string;
+  /** The «+» button (Main.dc.html); absent = the button shows but does nothing. */
+  onAdd?: () => void;
 }) => (
   <div
     className={cn(
-      'sticky top-0 z-20 flex shrink-0 items-center gap-2 border-y border-vk-border bg-vk-bg-secondary p-2',
+      'sticky top-0 z-20 flex shrink-0 items-center justify-between gap-2 border-y border-vk-border bg-vk-bg-secondary p-2',
       className,
     )}
   >
-    <span className="flex flex-1 items-center gap-2">
+    <span className="flex items-center gap-2">
       <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-      <h3 className="m-0 text-sm font-normal text-vk-text-normal">{name}</h3>
+      <h3 className="m-0 text-sm font-normal text-vk-text-high">{name}</h3>
       <span className="text-sm text-vk-text-low tnum">{count}</span>
     </span>
+    <button
+      type="button"
+      aria-label={t('Add to «{column}»', { column: name })}
+      onClick={onAdd}
+      className="flex h-5 w-5 items-center justify-center p-0 text-vk-text-low focus-mark hover:text-vk-text-high"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+    </button>
   </div>
 );
 
@@ -127,23 +177,32 @@ export interface KanbanColumnProps {
   footer?: ReactNode;
   /** Phone: only the chosen column shows (CSS only); desktop shows all four. */
   phoneActive?: boolean;
+  /** The header «+» (new task for this column). */
+  onAdd?: () => void;
 }
 
-export function KanbanColumn({ column, children, footer = null, phoneActive = true }: KanbanColumnProps) {
+export function KanbanColumn({
+  column,
+  children,
+  footer = null,
+  phoneActive = true,
+  onAdd,
+}: KanbanColumnProps) {
   return (
     <section
       aria-label={column.label}
       data-column={column.id}
       className={cn(
-        'min-w-0 flex-col border-x border-vk-border font-vk-sans md:border-x-0',
+        'min-w-0 flex-col border-x border-vk-border font-vk-sans md:min-h-[720px] md:border-x-0',
         phoneActive ? 'flex' : 'hidden md:flex',
       )}
     >
       <KanbanHeader
         name={column.label}
         color={column.color}
-        count={column.cards.length}
+        count={column.count}
         className="hidden md:flex"
+        {...(onAdd === undefined ? {} : { onAdd })}
       />
       <KanbanCards>{children}</KanbanCards>
       {footer}

@@ -8,6 +8,7 @@ import { useAttentionModel } from '../attention/context';
 import { inProgressCardNote } from '../attention/beadsNeedingAttention';
 import { resourceAttentionSeverity } from '../attention/routeHighlight';
 import { BeadBoard } from '../components/beads/BeadBoard';
+import { epicBeadsOf } from '../vk/board/KanbanColumn';
 import { BoardFilterBar } from '../components/beads/BoardFilterBar';
 import { IdleNotice } from '../components/beads/IdleNotice';
 import { boardSourcesOf, type OwnerFilter, type PeerBoardSource } from '../lib/boardOwner';
@@ -31,11 +32,11 @@ import { BeadDetailModal } from '../components/BeadDetailModal';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { PageAlerts } from '../components/PageAlerts';
-import { PageHeader } from '../components/PageHeader';
 import { useNow } from '../contexts/NowContext';
 import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { buildBeadGraph } from '../lib/beadGraph';
-import { ALL_PROJECTS, buildBoardModel } from '../lib/boardModel';
+import { ALL_PROJECTS, buildBoardModel, CITY_PROJECT_KEY, rigProjectLabel } from '../lib/boardModel';
+import { isBoardNoise } from '../lib/boardNoise';
 import {
   BOARD_RECENT_CLOSED_LIMIT,
   BOARD_REFRESH_COALESCE_MS,
@@ -81,8 +82,10 @@ export function BeadsPage() {
   // data effect). It drives BOTH the fetch (includeClosed) and the cache key.
   const [showAllHistory, setShowAllHistory] = useState(false);
   // vk-final: `?project=<key>` preselects the project and follows the menu.
+  // VK 1:1 (16.11): the project is chosen by the left rail (`?project=`); with
+  // none chosen the board opens on the devwork product, never «Все».
   const projectParam = normalizeSelectedBeadParam(searchParams.get('project'));
-  const [project, setProjectState] = useState<string>(projectParam ?? ALL_PROJECTS);
+  const [projectState, setProjectState] = useState<string | null>(projectParam);
   const setProject = useCallback(
     (key: string) => {
       setProjectState(key);
@@ -187,9 +190,16 @@ export function BeadsPage() {
   }, [showAllHistory, refreshBoard]);
   // Rows are tasks only; route roots and steps travel beside them and fold
   // into their task's card, and service beads only name blockers (B2).
-  const rows = useMemo(() => data?.items ?? EMPTY_BEADS, [data]);
+  // VK 1:1: engine bookkeeping rows (plan-review rounds, PR repairs, stall
+  // alarms; lib/boardNoise) never become cards; they stay aside as service
+  // beads so a blocker can still be named.
+  const allRows = useMemo(() => data?.items ?? EMPTY_BEADS, [data]);
+  const rows = useMemo(() => allRows.filter((bead) => !isBoardNoise(bead)), [allRows]);
   const routeBeads = useMemo(() => data?.routeItems ?? EMPTY_BEADS, [data]);
-  const serviceItems = useMemo(() => data?.serviceItems ?? EMPTY_BEADS, [data]);
+  const serviceItems = useMemo(
+    () => [...(data?.serviceItems ?? EMPTY_BEADS), ...allRows.filter(isBoardNoise)],
+    [data, allRows],
+  );
   // A truncated window may hide a live run, so only a complete one lets the
   // board read "no live run" as "its run stopped" (review I6).
   const routesComplete = data?.routesComplete ?? false;
@@ -225,6 +235,7 @@ export function BeadsPage() {
   useEffect(() => {
     if (projectParam !== null) setProjectState(projectParam);
   }, [projectParam]);
+  const project = projectState ?? defaultBoardProject(rigItems);
 
   const runClose = useCallback(
     async (bead: SupervisorBead) => {
@@ -369,6 +380,8 @@ export function BeadsPage() {
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
     [rows, showAllHistory],
   );
+  // vk11/card: a card names its epic, so the lookup also holds the epic beads.
+  const epicBeads = useMemo(() => epicBeadsOf(allRows), [allRows]);
   const plannedEmpty = useMemo(() => milestoneRangeLabel(plannedEmptyMilestones(rows)), [rows]);
   const boardSessions = board.sessions;
 
@@ -447,6 +460,15 @@ export function BeadsPage() {
     [actionInFlight, readOnly],
   );
 
+  // A column «+» starts a task the way «Новая задача» does: in the Mayor's channel.
+  const openNewTask = useCallback(() => {
+    const url = mayorChannelUrl();
+    if (typeof url === 'string' && url.length > 0) window.open(url, '_blank', 'noopener,noreferrer');
+  }, []);
+  // Main.dc.html: on a wide screen an open task sits beside the board (the
+  // drawer is 560 px at the right), so the board makes room instead of hiding.
+  const drawerOpen = selectedId !== null && (selectedPeer !== null || ownSelectedId !== null);
+
   const isTruncated =
     typeof upstreamTotal === 'number' &&
     typeof upstreamFetched === 'number' &&
@@ -454,18 +476,27 @@ export function BeadsPage() {
   const totalCards = boardModel.projects[0]?.count ?? 0;
 
   return (
-    <section>
-      <PageHeader
-        title={t('Beads')}
-        meta={
-          <>
-            {readOnly && <ReadOnlyBadge />}
-            <Button size="sm" onClick={() => void refresh()} disabled={loading}>
-              {loading && !hasLoadedBoard ? t('Loading') : loading ? t('Refreshing') : t('Refresh')}
-            </Button>
-          </>
-        }
-      />
+    <section
+      data-drawer-open={drawerOpen ? 'true' : undefined}
+      className={drawerOpen ? 'min-w-0 xl:mr-[560px]' : 'min-w-0'}
+    >
+      {/* VK 1:1 (Main.dc.html): the page title is the project's name with a
+          «···» menu; no «Обновить» (the board refreshes on events). */}
+      <div className="flex items-center gap-1 pb-2 pt-4 font-vk-sans">
+        <h1 className="m-0 text-2xl font-medium text-vk-text-high">{boardTitle(project)}</h1>
+        <button
+          type="button"
+          aria-label={t('More')}
+          className="flex h-7 w-7 items-center justify-center rounded-sm text-vk-text-low focus-mark hover:text-vk-text-high"
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+            <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+          </svg>
+        </button>
+        {readOnly && <ReadOnlyBadge />}
+      </div>
 
       <PageAlerts messages={[error, sessions.error, rigs.error]} />
 
@@ -603,6 +634,8 @@ export function BeadsPage() {
             commentCountOf={commentCountOf}
             showAllHistory={showAllHistory}
             onToggleHistory={() => setShowAllHistory((prev) => !prev)}
+            onAddTask={openNewTask}
+            epicBeads={epicBeads}
           />
         </section>
       )}
@@ -747,6 +780,20 @@ export function BeadsPage() {
       </Modal>
     </section>
   );
+}
+
+/** The project the board opens on: the devwork product rig, else the first rig. */
+export function defaultBoardProject(rigs: readonly { name: string; prefix?: string }[]): string {
+  const withPrefix = rigs.filter((rig) => (rig.prefix?.trim() ?? '').length > 0);
+  const devwork = withPrefix.find((rig) => rig.name === 'devwork');
+  return devwork?.name ?? withPrefix[0]?.name ?? ALL_PROJECTS;
+}
+
+/** «Продукт devwork» for a rig, «Сам город» for the city. */
+function boardTitle(project: string): string {
+  if (project === CITY_PROJECT_KEY) return t('The city itself');
+  if (project === ALL_PROJECTS) return t('All projects');
+  return rigProjectLabel(project);
 }
 
 function isPeerKey(key: string): boolean {

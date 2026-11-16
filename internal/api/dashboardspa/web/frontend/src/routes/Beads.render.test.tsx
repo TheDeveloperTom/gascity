@@ -37,7 +37,7 @@ describe('BeadsPage supervisor reads', () => {
   it('shows only real current work without requesting the slow closed-history supervisor path', async () => {
     renderPage();
 
-    await screen.findByText('direct supervisor bead');
+    await screen.findByRole('button', { name: 'direct supervisor bead' });
 
     expect(screen.queryByText('supervisor noise bead')).toBeNull();
     expect(fetchCalls.some((call) => call.path === '/api/city/test-city/beads')).toBe(false);
@@ -61,7 +61,7 @@ describe('BeadsPage supervisor reads', () => {
 
     expect(screen.queryByText('legacy city bead')).toBeNull();
     expect(screen.getAllByText('Loading beads.').length).toBeGreaterThan(0);
-    expect(await screen.findByText('direct supervisor bead')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'direct supervisor bead' })).toBeTruthy();
   });
 
   it('resolves a bead query param even when the bead is outside the list window', async () => {
@@ -97,7 +97,7 @@ describe('BeadsPage supervisor reads', () => {
   it('surfaces a read-only affordance in read-only mode', async () => {
     renderPage('/beads', [], { readOnly: true });
 
-    await screen.findByText('direct supervisor bead');
+    await screen.findByRole('button', { name: 'direct supervisor bead' });
 
     expect(screen.queryByRole('button', { name: 'New bead' })).toBeNull();
     // The affordance carries words, not just a dimmed control (DESIGN.md §States).
@@ -130,7 +130,7 @@ describe('BeadsPage supervisor reads', () => {
   it('has exactly one New task control, the Mayor-channel one, when writable', async () => {
     renderPage('/beads');
 
-    await screen.findByText('direct supervisor bead');
+    await screen.findByRole('button', { name: 'direct supervisor bead' });
 
     expect(screen.queryByRole('button', { name: 'New bead' })).toBeNull();
     // No VITE_MAYOR_DISCORD_URL in tests: the one control is disabled and says why.
@@ -152,7 +152,7 @@ describe('BeadsPage supervisor reads', () => {
       ]),
     ]);
 
-    const boardRow = (await screen.findByText('direct supervisor bead')).closest('article');
+    const boardRow = (await screen.findByRole('button', { name: 'direct supervisor bead' })).closest('article');
     expect(boardRow?.getAttribute('data-attention-severity')).toBe('attention');
   });
 });
@@ -163,7 +163,7 @@ function renderPage(
   options: { readOnly?: boolean } = {},
 ) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[allProjects(path)]}>
       <NowProvider intervalMs={1_000_000}>
         <ReadOnlyProvider readOnly={options.readOnly ?? false}>
           <AttentionProvider contributors={contributors}>
@@ -339,4 +339,11 @@ function contributor(
     domain,
     getItems: () => items,
   };
+}
+
+// VK 1:1 (16.11): the board opens on the devwork product; these tests read the
+// whole board, so they ask for every project unless the entry names one.
+function allProjects(entry: string): string {
+  if (/[?&]project=/.test(entry)) return entry;
+  return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
 }

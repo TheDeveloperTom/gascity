@@ -21,4 +21,9 @@ export const RU_BOARD: Readonly<Record<string, string | RuPlural>> = {
   'priority medium': 'средний',
   'priority low': 'низкий',
   'Nothing here': 'Здесь пусто',
+  // VK 1:1 (16.11): page title fallback and the column «+» button.
+  'All projects': 'Все проекты',
+  'Find a task': 'Найти задачу',
+  '{matched} of {total}': '{matched} из {total}',
+  'Add to «{column}»': 'Добавить в «{column}»',
 };

@@ -81,7 +81,6 @@ describe('BoardFilterBar (vk)', () => {
   // inside the viewport.
   it.each([
     ['Эпик', /Эпик:/, { epics: EPICS, epic: 'all', onEpic: vi.fn() }],
-    ['Проект', /Проект:/, { projects: [{ key: 'all', label: 'Все', count: 5 }, { key: 'devwork', label: 'devwork', count: 3 }, { key: 'city', label: 'Город', count: 2 }] }],
   ] as const)('the %s menu stays inside a phone-wide viewport', (_name, button, extra) => {
     // A phone's layout viewport is 390 px, but when a menu overflows, mobile
     // Chrome zooms out and window.innerWidth grows to fit it (measured: the
@@ -158,41 +157,27 @@ describe('BoardFilterBar (vk)', () => {
     expect(screen.queryByText('Новая задача')).toBeNull();
   });
 
-  // vk-final part 2: the project chips became «Проект: Все ▾» beside «Эпик».
+  // VK 1:1 (16.11): the left rail chooses the project and the canvas row
+  // (Main.dc.html) has no project menu and no test checkbox.
   const PROJECTS = [
     { key: 'all', label: 'Все', count: 229 },
     { key: 'devwork', label: 'devwork', count: 225 },
     { key: 'city', label: 'Город', count: 4 },
   ];
 
-  it('the project control is a «Проект: Все ▾» menu with counts inside', () => {
-    const onProject = vi.fn();
-    renderBar({ projects: PROJECTS, onProject, epics: EPICS });
-    expect(screen.queryByRole('group', { name: 'Проект' })).toBeNull();
-    const button = screen.getByRole('button', { name: /Проект:/ });
-    expect(button.textContent).toBe('Проект: Все');
-    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
-    // it sits right after the epic control
-    const epicButton = screen.getByRole('button', { name: /Эпик:/ });
-    expect(epicButton.parentElement?.nextElementSibling?.contains(button)).toBe(true);
-    fireEvent.click(button);
-    const list = screen.getByRole('listbox', { name: 'Выбрать проект' });
-    const options = Array.from(list.querySelectorAll('[role="option"]')).map((o) => o.textContent);
-    expect(options).toEqual(['Все229', 'devwork225', 'Город4']);
-    fireEvent.click(screen.getByRole('option', { name: /devwork/ }));
-    expect(onProject).toHaveBeenCalledWith('devwork');
-    expect(screen.queryByRole('listbox')).toBeNull();
-    expect(collectMissing()).toEqual([]);
-  });
-
-  it('the project button names the chosen project', () => {
-    renderBar({ projects: PROJECTS, project: 'city' });
-    expect(screen.getByRole('button', { name: /Проект:/ }).textContent).toBe('Проект: Город');
-  });
-
-  it('no project control with one project', () => {
-    renderBar({ projects: PROJECTS.slice(0, 2) });
+  it('no project menu and no test checkbox, even with several projects and test cards', () => {
+    renderBar({ projects: PROJECTS, testCount: 3 });
     expect(screen.queryByRole('button', { name: /Проект:/ })).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('the row is the canvas: «Все Мои Ричарда», «Эпик: Все», search, «Новая задача»', () => {
+    renderBar({ newTaskUrl: 'https://discord.example/channel' });
+    const row = screen.getByRole('group', { name: 'Чьи задачи' }).parentElement as HTMLElement;
+    const order = Array.from(row.children).map((el) => el.getAttribute('aria-label') ?? el.textContent);
+    expect(order).toEqual(['Чьи задачи', 'Эпик: Все', 'Найти задачу', 'Новая задача']);
+    const field = screen.getByRole('searchbox', { name: 'Найти задачу' });
+    expect(field.className.split(/\s+/)).toEqual(expect.arrayContaining(['md:h-8', 'md:w-[220px]', 'bg-vk-bg-secondary']));
   });
 
   it('search is «Найти задачу…»', () => {

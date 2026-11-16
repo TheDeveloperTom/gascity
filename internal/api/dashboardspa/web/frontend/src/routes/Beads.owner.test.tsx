@@ -64,7 +64,7 @@ afterEach(() => {
 
 function renderPage(items: AttentionItem[]) {
   return render(
-    <MemoryRouter initialEntries={['/beads']}>
+    <MemoryRouter initialEntries={[allProjects('/beads')]}>
       <NowProvider intervalMs={1_000_000}>
         <OperatorConfigProvider
           operator={{ operatorAlias: 'owner', operatorWireAlias: 'human', decisionLabel: 'x' }}
@@ -92,3 +92,10 @@ describe('BeadsPage owner slice (vk-final: no Needs-you plate on the board)', ()
     expect(link.getAttribute('href')).toBe('/health');
   });
 });
+
+// VK 1:1 (16.11): the board opens on the devwork product; these tests read the
+// whole board, so they ask for every project unless the entry names one.
+function allProjects(entry: string): string {
+  if (/[?&]project=/.test(entry)) return entry;
+  return `${entry}${entry.includes('?') ? '&' : '?'}project=all`;
+}
