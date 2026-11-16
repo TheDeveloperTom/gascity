@@ -32,7 +32,7 @@ export function DiscussButton({ ctx, className, label }: DiscussButtonProps) {
       <button
         type="button"
         className={cn(
-          'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-sm font-medium text-vk-text-low transition-colors hover:bg-vk-bg-panel hover:text-vk-text-high disabled:cursor-not-allowed disabled:opacity-60 focus-mark md:h-8',
+          'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-sm font-medium text-vk-text-normal transition-colors hover:bg-vk-bg-panel hover:text-vk-text-high disabled:cursor-not-allowed disabled:opacity-60 focus-mark md:h-8',
           className,
         )}
         disabled={channel === null}

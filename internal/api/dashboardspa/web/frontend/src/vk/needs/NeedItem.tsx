@@ -200,7 +200,7 @@ export function NeedItem({ need }: { need: Need }) {
         {/* quiet until the row is hovered or focused: the row is the action */}
         <DiscussButton
           ctx={ctx}
-          className="sm:opacity-70 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+          className="enabled:text-vk-brand-secondary"
         />
       </div>
       </div>

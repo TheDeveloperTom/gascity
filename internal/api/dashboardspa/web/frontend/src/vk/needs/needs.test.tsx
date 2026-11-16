@@ -230,4 +230,10 @@ describe('«Нужно от меня» shelves', () => {
     );
     expect((container.firstElementChild as HTMLElement).className).not.toContain('xl:grid-cols-2');
   });
+
+  it('«Обсудить в Discord» on a row is not faded when enabled', () => {
+    show();
+    const btn = within(itemOf(QUESTION_ID)).getByRole('button', { name: 'Обсудить в Discord' });
+    expect(btn.className).not.toMatch(/(^|\s)sm:opacity-70(\s|$)/);
+  });
 });
