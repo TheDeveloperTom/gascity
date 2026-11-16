@@ -72,7 +72,10 @@ function useKeepMenuOnScreen(open: boolean, listRef: RefObject<HTMLDivElement | 
     if (!open || list === null) return;
     list.style.transform = '';
     const rect = list.getBoundingClientRect();
-    const over = rect.right - (window.innerWidth - MENU_GUTTER_PX);
+    // The layout viewport, not window.innerWidth: mobile Chrome zooms out to
+    // fit an overflowing menu, and innerWidth then grows with it.
+    const viewport = document.documentElement.clientWidth || window.innerWidth;
+    const over = rect.right - (viewport - MENU_GUTTER_PX);
     const shift = Math.min(Math.max(over, 0), Math.max(rect.left - MENU_GUTTER_PX, 0));
     if (shift > 0) list.style.transform = `translateX(-${Math.round(shift)}px)`;
   }, [open, listRef]);

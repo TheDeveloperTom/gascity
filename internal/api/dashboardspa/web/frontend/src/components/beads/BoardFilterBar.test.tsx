@@ -83,8 +83,12 @@ describe('BoardFilterBar (vk)', () => {
     ['Эпик', /Эпик:/, { epics: EPICS, epic: 'all', onEpic: vi.fn() }],
     ['Проект', /Проект:/, { projects: [{ key: 'all', label: 'Все', count: 5 }, { key: 'devwork', label: 'devwork', count: 3 }, { key: 'city', label: 'Город', count: 2 }] }],
   ] as const)('the %s menu stays inside a phone-wide viewport', (_name, button, extra) => {
+    // A phone's layout viewport is 390 px, but when a menu overflows, mobile
+    // Chrome zooms out and window.innerWidth grows to fit it (measured: the
+    // live sweep at 390 px still ended at 507 px with an innerWidth check).
     const width = window.innerWidth;
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 523 });
+    Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 390 });
     const rect = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
       if (this.getAttribute('role') === 'listbox') {
@@ -100,6 +104,7 @@ describe('BoardFilterBar (vk)', () => {
     } finally {
       HTMLElement.prototype.getBoundingClientRect = rect;
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+      delete (document.documentElement as { clientWidth?: number }).clientWidth;
     }
   });
 
