@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setActiveCity } from '../api/cityBase';
 import { resetPeerBoardsForTests, usePeerBoards } from '../hooks/usePeerBoards';
 import { setLocale } from '../i18n';
 import { parsePeerBoards } from '../supervisor/peerBoardReads';
@@ -62,18 +63,20 @@ describe('the Mayor link', () => {
     expect(mayorChannelUrl()).toBe(CHANNEL);
   });
 
-  it('«Обсудить в Discord» opens the Mayor channel in the normal build, posting nothing', () => {
+  it('«Обсудить в Discord» opens the Mayor channel in the normal build, then tells the Mayor (B10)', () => {
     setCityMayorUrl(CHANNEL);
+    setActiveCity('test-city');
     const open = vi.fn();
     vi.stubGlobal('open', open);
-    const fetchSpy = vi.fn();
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(JSON.stringify({ url: CHANNEL }), { status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
     render(<DiscussButton ctx={{ kind: 'task', beadId: 'dw-1', title: 't', summary: 's' }} />);
     const button = screen.getByRole('button', { name: /Обсудить в Discord/ }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
     expect(open).toHaveBeenCalledWith(CHANNEL, '_blank', 'noopener,noreferrer');
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('/v0/city/test-city/svc/peer-boards/v1/discuss');
   });
 
   it('no link anywhere: the button is disabled and says why', () => {

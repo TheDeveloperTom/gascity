@@ -1,7 +1,8 @@
 // «Обсудить с Мэром» / «Обсудить в Discord» (owner 16.11): the dashboard is
 // a plain web app, so a discussion opens the owner's Mayor channel (#мэр) in
-// Discord; nothing is posted from here. The link is lib/mayorLink's runtime
-// value from the city, else the build-time fallback.
+// Discord; the button (vk/DiscussButton) also tells the Mayor through
+// supervisor/discussWrites (B10). The link is lib/mayorLink's runtime value
+// from the city, else the build-time fallback.
 
 import { mayorChannelUrl } from './mayorLink';
 

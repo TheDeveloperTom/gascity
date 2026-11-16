@@ -19,6 +19,8 @@ export const RU_VK4: Readonly<Record<string, string | RuPlural>> = {
   'Find a task…': 'Найти задачу…',
   'New task': 'Новая задача',
   'The Mayor channel is not configured': 'Канал Мэра не настроен',
+  'Writes are disabled here': 'Запись здесь выключена',
+  'Could not notify the Mayor': 'Не удалось уведомить Мэра',
   // ⌘K
   'Find and go': 'Найти и перейти',
   'Find a task, epic or action': 'Найти задачу, эпик или действие',
