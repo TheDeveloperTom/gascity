@@ -20,6 +20,9 @@ import { questionsForCard } from '../lib/topicQuestions';
 import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
+import { taskShortLabel } from '../vk/panel/drawerFacts';
+import { buildGraph } from '../vk/graph/model';
+import { GraphView } from '../vk/graph/GraphView';
 import type { BoardCard } from '../lib/boardModel';
 import { mayorChannelUrl } from '../lib/discussWithMayor';
 import {
@@ -133,9 +136,13 @@ export function BeadsPage() {
   // 0 means «not steppable»: the chain started at a card reached by link (a
   // reload, a shared URL, «Нужно от меня»), so closing must replace, never go
   // back (re-review: going back reopened that card).
-  const depth = (location.state as { beadDepth?: number } | null)?.beadDepth ?? 0;
-  const setSelectedId = useCallback(
-    (id: string | null) => {
+  const navState = location.state as { beadDepth?: number; prevBead?: string } | null;
+  const depth = navState?.beadDepth ?? 0;
+  // Graph sprint: the card the owner jumped here from along the chain (drawer
+  // rows), for the «← <previous>» crumb. Only a chain jump records it.
+  const prevBead = navState?.prevBead ?? null;
+  const selectBead = useCallback(
+    (id: string | null, prev: string | null) => {
       if (id === selectedId) return;
       if (id === null && depth > 0) {
         void navigate(-depth);
@@ -150,10 +157,39 @@ export function BeadsPage() {
         },
         id === null
           ? { replace: true }
-          : { state: { beadDepth: selectedId === null || depth > 0 ? depth + 1 : 0 } },
+          : {
+              state: {
+                beadDepth: selectedId === null || depth > 0 ? depth + 1 : 0,
+                ...(prev !== null ? { prevBead: prev } : {}),
+              },
+            },
       );
     },
     [setSearchParams, selectedId, depth, navigate],
+  );
+  const setSelectedId = useCallback((id: string | null) => selectBead(id, null), [selectBead]);
+  const jumpToBead = useCallback((id: string) => selectBead(id, selectedId), [selectBead, selectedId]);
+  // Graph sprint: «Доска | Граф» (`?view=graph`), offered once an epic is
+  // chosen or a chain is focused (`?focus=<id>` from «держит N задач»).
+  const viewGraphParam = searchParams.get('view') === 'graph';
+  const focusParam = normalizeSelectedBeadParam(searchParams.get('focus'));
+  const setView = useCallback(
+    (view: 'board' | 'graph', focus?: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (view === 'graph') next.set('view', 'graph');
+          else {
+            next.delete('view');
+            next.delete('focus');
+          }
+          if (focus !== undefined) next.set('focus', focus);
+          return next;
+        },
+        { replace: true, state: location.state },
+      );
+    },
+    [setSearchParams, location.state],
   );
   const [closing, setClosing] = useState<SupervisorBead | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
@@ -414,6 +450,19 @@ export function BeadsPage() {
   // selector skips session-dependent stall checks instead of calling every
   // assigned card "no live session" against an empty roster.
   const nowMs = useNow();
+  const graphAvailable = epic !== ALL_EPICS || focusParam !== null;
+  const showGraph = viewGraphParam && graphAvailable;
+  const graphModel = useMemo(
+    () =>
+      showGraph
+        ? buildGraph([...allRows, ...serviceItems], {
+            epicId: focusParam !== null ? null : epic,
+            ...(focusParam !== null ? { focusIds: [focusParam] } : {}),
+            nowMs,
+          })
+        : null,
+    [showGraph, allRows, serviceItems, epic, focusParam, nowMs],
+  );
   const sessionsForNotes = useMemo(
     () =>
       sessions.data === undefined || sessions.data.partial === true
@@ -559,6 +608,7 @@ export function BeadsPage() {
           newTaskUrl={mayorChannelUrl()}
           plannedEmpty={plannedEmpty}
         />
+        {graphAvailable && <ViewSwitch graph={showGraph} onView={(v) => setView(v)} />}
         {peerSources.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {peerSources.map((peer) => {
@@ -609,6 +659,15 @@ export function BeadsPage() {
 
       {(!hasLoadedBoard && loading) || !peerSettled ? (
         <p className="text-body text-fg-muted">{t('Loading beads.')}</p>
+      ) : showGraph && graphModel !== null ? (
+        <section aria-label={t('Graph')} className="min-w-0">
+          <GraphView
+            model={graphModel}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onAnswer={setSelectedId}
+          />
+        </section>
       ) : boardModel.matched === 0 &&
         (search.trim().length > 0 ||
           project !== ALL_PROJECTS ||
@@ -734,8 +793,18 @@ export function BeadsPage() {
             footer={ownCard.rig !== null ? composer : null}
             depNode={selectedNode}
             sessions={sessionItems}
-            onOpenBead={setSelectedId}
+            onOpenBead={jumpToBead}
             renderActions={renderBeadActions}
+            onShowOnGraph={() => {
+              if (ownSelectedId === null) return;
+              setView('graph', epic === ALL_EPICS || focusParam !== null ? ownSelectedId : undefined);
+            }}
+            graphChain={showGraph ? { cameFrom: prevBead } : null}
+            backCrumb={
+              prevBead !== null && prevBead !== ownSelectedId
+                ? { label: crumbLabel(prevBead, allRows), onBack: () => jumpToBead(prevBead) }
+                : null
+            }
           />
         )}
       </CardConversation>
@@ -780,6 +849,42 @@ export function BeadsPage() {
       </Modal>
     </section>
   );
+}
+
+/** «Доска | Граф» (graph sprint 16.11): a two-button segmented control. */
+function ViewSwitch({ graph, onView }: { graph: boolean; onView: (view: 'board' | 'graph') => void }) {
+  const button = (on: boolean, view: 'board' | 'graph', label: string) => (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={() => {
+        if (!on) onView(view);
+      }}
+      className={
+        on
+          ? 'inline-flex h-11 items-center rounded-[2px] bg-vk-bg-panel px-3 text-[15px] text-vk-text-high focus-mark md:h-7'
+          : 'inline-flex h-11 items-center rounded-[2px] px-3 text-[15px] text-vk-text-low hover:text-vk-text-high focus-mark md:h-7'
+      }
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      role="group"
+      aria-label={t('View')}
+      className="mt-3 inline-flex items-center gap-0.5 rounded-[3px] border border-vk-border bg-vk-bg-primary p-0.5 font-vk-sans"
+    >
+      {button(!graph, 'board', t('Board'))}
+      {button(graph, 'graph', t('Graph'))}
+    </div>
+  );
+}
+
+/** The crumb's short label for a bead id («M04 #3»), never the raw id when known. */
+function crumbLabel(id: string, rows: readonly SupervisorBead[]): string {
+  const bead = rows.find((b) => b.id === id);
+  return bead === undefined ? id : taskShortLabel(bead);
 }
 
 /** The project the board opens on: the devwork product rig, else the first rig. */
