@@ -149,7 +149,7 @@ func TestIndexRemovedThenRestored(t *testing.T) {
 	if rec.Body.String() != string(embeddedIndex(t)) {
 		t.Error("removed: body is not the embedded index")
 	}
-	mustWrite(t, p, idx, 0o644)
+	mustWrite(t, p, idx)
 	rec = do(t, h, http.MethodGet, "/")
 	if got := rec.Header().Get(uiHeader); got != "dir "+testSHA || rec.Body.String() != idx {
 		t.Errorf("restored: header = %q, body dir index = %v", got, rec.Body.String() == idx)
@@ -284,7 +284,7 @@ func TestReservedPrefixesUnchanged(t *testing.T) {
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("GET %s: status = %d, want 404", p, rec.Code)
 		}
-		if _, ok := rec.Header()[uiHeader]; ok {
+		if len(rec.Header().Values(uiHeader)) > 0 {
 			t.Errorf("GET %s: carries %s", p, uiHeader)
 		}
 		if rec.Header().Get("Content-Security-Policy") != "" {
@@ -334,16 +334,16 @@ func TestWritableServedFileIsMissing(t *testing.T) {
 
 func TestBadDirNeverErrors(t *testing.T) {
 	states := map[string]func(t *testing.T) string{
-		"relative":    func(t *testing.T) string { return "rel/path" },
+		"relative":    func(*testing.T) string { return "rel/path" },
 		"missing":     func(t *testing.T) string { return filepath.Join(t.TempDir(), "nope") },
-		"a-file":      func(t *testing.T) string { p := filepath.Join(t.TempDir(), "f"); mustWrite(t, p, "x", 0o644); return p },
+		"a-file":      func(t *testing.T) string { p := filepath.Join(t.TempDir(), "f"); mustWrite(t, p, "x"); return p },
 		"no-versions": func(t *testing.T) string { return t.TempDir() },
 		"perms": func(t *testing.T) string {
 			r := newUIRoot(t)
 			_ = os.Chmod(r, 0o777)
 			return r
 		},
-		"no-current":  func(t *testing.T) string { return newUIRoot(t) },
+		"no-current":  newUIRoot,
 		"bad-current": func(t *testing.T) string { r := newUIRoot(t); setCurrent(t, r, "zz"); return r },
 		"version-missing": func(t *testing.T) string {
 			r := newUIRoot(t)

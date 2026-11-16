@@ -19,8 +19,9 @@ func indexWithScript(body string) string {
 		`<body><div id="root"></div></body></html>`
 }
 
-// mustWrite writes a file with an exact mode (umask-independent).
-func mustWrite(t *testing.T, path, content string, mode os.FileMode) {
+// mustWrite writes a 0644 file (umask-independent).
+func mustWrite(t *testing.T, path, content string) {
+	const mode os.FileMode = 0o644
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -53,11 +54,11 @@ func newUIRoot(t *testing.T) string {
 func addVersion(t *testing.T, root, sha, index string) string {
 	t.Helper()
 	v := filepath.Join(root, "versions", sha)
-	mustWrite(t, filepath.Join(v, "index.html"), index, 0o644)
-	mustWrite(t, filepath.Join(v, "gc-ui-release.json"), `{"ui_sha":"`+sha+`"}`, 0o644)
-	mustWrite(t, filepath.Join(v, "sw.js"), "// sw "+sha, 0o644)
-	mustWrite(t, filepath.Join(v, "manifest.webmanifest"), `{"display": "standalone"}`, 0o644)
-	mustWrite(t, filepath.Join(v, "assets", "app-"+sha[:8]+".js"), "console.log('"+sha+"')", 0o644)
+	mustWrite(t, filepath.Join(v, "index.html"), index)
+	mustWrite(t, filepath.Join(v, "gc-ui-release.json"), `{"ui_sha":"`+sha+`"}`)
+	mustWrite(t, filepath.Join(v, "sw.js"), "// sw "+sha)
+	mustWrite(t, filepath.Join(v, "manifest.webmanifest"), `{"display": "standalone"}`)
+	mustWrite(t, filepath.Join(v, "assets", "app-"+sha[:8]+".js"), "console.log('"+sha+"')")
 	for _, d := range []string{v, filepath.Join(v, "assets")} {
 		if err := os.Chmod(d, 0o755); err != nil {
 			t.Fatal(err)
@@ -69,7 +70,7 @@ func addVersion(t *testing.T, root, sha, index string) string {
 func setCurrent(t *testing.T, root, content string) {
 	t.Helper()
 	tmp := filepath.Join(root, "current.tmp")
-	mustWrite(t, tmp, content, 0o644)
+	mustWrite(t, tmp, content)
 	if err := os.Rename(tmp, filepath.Join(root, "current")); err != nil {
 		t.Fatal(err)
 	}
@@ -98,8 +99,8 @@ func TestResolveSource(t *testing.T) {
 		return root
 	}
 	cases := []tc{
-		{"unset", func(t *testing.T) string { return "" }, "", false},
-		{"relative", func(t *testing.T) string { return "rel/dashboard-ui" }, "root-missing", false},
+		{"unset", func(*testing.T) string { return "" }, "", false},
+		{"relative", func(*testing.T) string { return "rel/dashboard-ui" }, "root-missing", false},
 		{"root-missing", func(t *testing.T) string { return filepath.Join(t.TempDir(), "nope") }, "root-missing", false},
 		{"versions-missing", func(t *testing.T) string {
 			root := filepath.Join(t.TempDir(), "dashboard-ui")
@@ -122,7 +123,7 @@ func TestResolveSource(t *testing.T) {
 			}
 			return root
 		}, "root-perms", false},
-		{"no-current", func(t *testing.T) string { return newUIRoot(t) }, "no-current", false},
+		{"no-current", newUIRoot, "no-current", false},
 		{"current-embedded", func(t *testing.T) string {
 			root := newUIRoot(t)
 			setCurrent(t, root, "embedded\n")
@@ -169,12 +170,12 @@ func TestResolveSource(t *testing.T) {
 		}, "no-index", false},
 		{"no-index-empty", func(t *testing.T) string {
 			root := valid(t)
-			mustWrite(t, filepath.Join(root, "versions", testSHA, "index.html"), "", 0o644)
+			mustWrite(t, filepath.Join(root, "versions", testSHA, "index.html"), "")
 			return root
 		}, "no-index", false},
 		{"no-index-too-big", func(t *testing.T) string {
 			root := valid(t)
-			mustWrite(t, filepath.Join(root, "versions", testSHA, "index.html"), strings.Repeat("x", 1<<20+1), 0o644)
+			mustWrite(t, filepath.Join(root, "versions", testSHA, "index.html"), strings.Repeat("x", 1<<20+1))
 			return root
 		}, "no-index", false},
 		{"incomplete", func(t *testing.T) string {
@@ -268,8 +269,8 @@ func TestTmpAndTrashNamesIgnored(t *testing.T) {
 	root := newUIRoot(t)
 	for _, name := range []string{".tmp-x", ".trash-" + testSHA + "-1", ".tmp-" + testSHA + "-42"} {
 		// A complete-looking folder under that name must still not count.
-		mustWrite(t, filepath.Join(root, "versions", name, "index.html"), indexWithScript("a"), 0o644)
-		mustWrite(t, filepath.Join(root, "versions", name, "gc-ui-release.json"), "{}", 0o644)
+		mustWrite(t, filepath.Join(root, "versions", name, "index.html"), indexWithScript("a"))
+		mustWrite(t, filepath.Join(root, "versions", name, "gc-ui-release.json"), "{}")
 	}
 	for _, name := range []string{".tmp-x", ".trash-" + testSHA + "-1", ".tmp-" + testSHA + "-42"} {
 		setCurrent(t, root, name+"\n")
@@ -296,7 +297,7 @@ func TestCSPCacheRevalidates(t *testing.T) {
 	}
 	// Replace index.html with a new inode (write + rename), as an extract would.
 	tmp := filepath.Join(v, "index.html.new")
-	mustWrite(t, tmp, indexWithScript("two()"), 0o644)
+	mustWrite(t, tmp, indexWithScript("two()"))
 	if err := os.Rename(tmp, filepath.Join(v, "index.html")); err != nil {
 		t.Fatal(err)
 	}

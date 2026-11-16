@@ -227,10 +227,10 @@ func newDashboardDirRoot(t *testing.T) string {
 	return root
 }
 
-func dashboardGet(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
+func dashboardGetRoot(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	return rec
 }
 
@@ -243,7 +243,7 @@ func TestAttachDashboardServesDir(t *testing.T) {
 	if err != nil || plane == nil {
 		t.Fatalf("attachDashboard = (%v, %v), want a plane and nil error", plane, err)
 	}
-	rec := dashboardGet(t, mux, "/")
+	rec := dashboardGetRoot(t, mux)
 	if got := rec.Header().Get("X-GC-Dashboard-UI"); got != "dir "+dashDirTestSHA {
 		t.Fatalf("GET /: X-GC-Dashboard-UI = %q, want dir %s (status %d)", got, dashDirTestSHA, rec.Code)
 	}
@@ -263,7 +263,7 @@ func TestAttachDashboardBadDirStillStarts(t *testing.T) {
 		if err != nil || plane == nil {
 			t.Fatalf("attachDashboard(%q) = (%v, %v), want a plane and nil error", dir, plane, err)
 		}
-		rec := dashboardGet(t, mux, "/")
+		rec := dashboardGetRoot(t, mux)
 		if rec.Code != http.StatusOK {
 			t.Errorf("dir %q: GET / status = %d, want 200 (embedded)", dir, rec.Code)
 		}
