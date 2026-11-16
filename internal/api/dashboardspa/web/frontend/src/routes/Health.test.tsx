@@ -1,116 +1,78 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HealthOutputBody, StatusBody } from 'gas-city-dashboard-shared/gc-supervisor';
+import type {
+  DoltNomsTrend,
+  LiveHealth,
+  LocalToolVersions,
+  RigStoreHealthReport,
+} from 'gas-city-dashboard-shared';
 import { HealthPage } from './Health';
 import { invalidate } from '../api/cache';
 import { AttentionProvider } from '../attention/context';
 import { createAttentionContributors, type HealthAttentionFacts } from '../attention/registry';
-import type { HealthOutputBody, StatusBody } from 'gas-city-dashboard-shared/gc-supervisor';
-import type {
-  DoltNomsTrend,
-  LocalToolVersions,
-  RigStoreHealthReport,
-  SystemHealth,
-} from 'gas-city-dashboard-shared';
-import { supervisorApiForRequestBudget } from '../supervisor/client';
+import { collectMissing, resetMissing, setLocale } from '../i18n';
+import { resetLiveHistory } from '../lib/hostLive';
+import { liveFixture } from '../test/fixtures/liveHealth';
+
+// Owner 16.11: Health answers «что с маком происходит при текущей нагрузке»:
+// a one-sentence verdict, realtime charts, who eats the Mac, and the city's
+// facts quietly below. Russian, full width.
 
 const mockCityHealth = vi.fn<(cityName: string) => Promise<HealthOutputBody>>();
-const mockSupervisorApiForRequestBudget = supervisorApiForRequestBudget as unknown as Mock;
 
 vi.mock('../supervisor/client', () => ({
-  supervisorApiForRequestBudget: vi.fn(() => ({
-    cityHealth: mockCityHealth,
-  })),
+  supervisorApiForRequestBudget: vi.fn(() => ({ cityHealth: mockCityHealth })),
 }));
 
-// gascity-dashboard-e0hh: coverage for the absent supervisor.city /
-// supervisor.version paths in Health.tsx —
-// (a) the warn-toned <Kv> blocks render "not reported by supervisor",
-// (b) buildSynopsis omits the "on <city>" locator clause, asserted
-//     via rendered DOM rather than by exporting the module-private
-//     helper. Mirrors the WorkflowRunDetail.test.tsx fetch-stub pattern.
-
-let currentHealth: SystemHealth = baseHealth();
-let currentLocalTools: LocalToolVersions = baseLocalTools();
-let currentTrend: DoltNomsTrend = baseTrend();
-let currentRigStores: RigStoreHealthReport = baseRigStores();
-let currentStatus: StatusBody = baseStatus();
-let systemHealthMode: 'ok' | 'fail' = 'ok';
-let trendMode: 'ok' | 'fail' = 'ok';
-let rigStoreMode: 'ok' | 'fail' = 'ok';
-// gascity-dashboard-4bol: the Health status widgets read the dashboard
-// backend's cached /supervisor-status snapshot, not the supervisor directly.
-// 'available' = fresh sample, 'degraded' = last-good served while the latest
-// read failed (must still render data), 'warming' = never sampled yet,
-// 'blank' = a read failed with no prior sample. A null status under 'pending'
-// is modelled via pendingStatusResponse (the local fetch has not resolved yet).
-let statusMode: 'available' | 'degraded' | 'warming' | 'blank' = 'available';
-let pendingStatusResponse: Promise<Response> | null = null;
+let live: LiveHealth = liveFixture();
+let status: StatusBody = baseStatus();
+let trend: DoltNomsTrend = {
+  available: true,
+  samples: [],
+  source: 'status.store_health.size_bytes',
+};
 
 beforeEach(() => {
   invalidate('health');
-  mockSupervisorApiForRequestBudget.mockClear();
+  resetLiveHistory();
+  setLocale('ru');
+  resetMissing();
+  live = liveFixture({
+    processes: {
+      status: 'available',
+      total: 640,
+      items: [
+        { name: 'claude', count: 6, cpu_pct: 140, rss_bytes: 1_800_000_000 },
+        { name: 'dolt', count: 3, cpu_pct: 4, rss_bytes: 280_000_000 },
+        { name: 'gc', count: 4, cpu_pct: 1, rss_bytes: 900_000_000 },
+        { name: 'WindowServer', count: 1, cpu_pct: 12, rss_bytes: 80_000_000 },
+      ],
+      rest: { count: 626, cpu_pct: 3, rss_bytes: 400_000_000 },
+    },
+  });
+  status = baseStatus();
+  trend = { available: true, samples: [], source: 'status.store_health.size_bytes' };
   mockCityHealth.mockReset();
-  mockCityHealth.mockResolvedValue(presentLocator());
-  currentHealth = baseHealth();
-  currentLocalTools = baseLocalTools();
-  currentTrend = baseTrend();
-  currentRigStores = baseRigStores();
-  currentStatus = baseStatus();
-  systemHealthMode = 'ok';
-  trendMode = 'ok';
-  rigStoreMode = 'ok';
-  statusMode = 'available';
-  pendingStatusResponse = null;
+  mockCityHealth.mockResolvedValue({
+    status: 'ok',
+    city: 'demo',
+    version: 'dev',
+    uptime_sec: 21_000,
+  });
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/health/system') {
-        if (systemHealthMode === 'fail') {
-          return errorResponse('system health offline');
-        }
-        return jsonResponse(currentHealth);
-      }
-      if (url === '/api/health/local-tools') {
-        return jsonResponse(currentLocalTools);
-      }
-      if (url === '/api/city/test-city/dolt-noms/trend') {
-        if (trendMode === 'fail') {
-          return errorResponse('dolt trend offline');
-        }
-        return jsonResponse(currentTrend);
-      }
-      if (url === '/api/city/test-city/rig-store-health') {
-        if (rigStoreMode === 'fail') {
-          return errorResponse('rig store health offline');
-        }
-        return jsonResponse(currentRigStores);
-      }
+      if (url === '/api/health/live') return json(live);
+      if (url === '/api/health/local-tools') return json(tools());
+      if (url === '/api/city/test-city/dolt-noms/trend') return json(trend);
+      if (url === '/api/city/test-city/rig-store-health') return json(rigStores());
       if (url === '/api/city/test-city/supervisor-status') {
-        if (pendingStatusResponse !== null) {
-          return pendingStatusResponse;
-        }
-        if (statusMode === 'warming') {
-          return jsonResponse({ available: false, reason: 'not_sampled_yet', status: null });
-        }
-        if (statusMode === 'blank') {
-          return jsonResponse({ available: false, reason: 'status_read_failed', status: null });
-        }
-        if (statusMode === 'degraded') {
-          return jsonResponse({
-            available: false,
-            reason: 'status_read_failed',
-            status: currentStatus,
-          });
-        }
-        return jsonResponse({
-          available: true,
-          sampledAt: '2026-06-07T00:00:00.000Z',
-          status: currentStatus,
-        });
+        return json({ available: true, sampledAt: '2026-11-16T10:00:00Z', status });
       }
-      throw new Error(`unexpected fetch: ${url}`);
+      return new Response(JSON.stringify({ error: `unexpected ${url}` }), { status: 404 });
     }),
   );
 });
@@ -118,452 +80,105 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  setLocale('en');
 });
 
 describe('HealthPage', () => {
-  it('renders warn-toned "not reported by supervisor" for absent city and version', async () => {
-    mockCityHealth.mockResolvedValue(absentLocator());
-
-    const { container } = renderPage();
-    await screen.findByRole('heading', { name: /^health$/i });
-    await screen.findByRole('heading', { name: /supervisor/i });
-
-    const cityValue = valueFor(container, 'City');
-    const versionValue = valueFor(container, 'Version');
-
-    expect(cityValue?.textContent).toBe('not reported by supervisor');
-    expect(versionValue?.textContent).toBe('not reported by supervisor');
-    expect(cityValue?.className).toMatch(/text-warn/);
-    expect(versionValue?.className).toMatch(/text-warn/);
-  });
-
-  it('omits the "on <city>" locator clause from the synopsis when city is absent', async () => {
-    mockCityHealth.mockResolvedValue(absentLocator());
-
+  it('opens with one Russian sentence about the Mac right now', async () => {
     renderPage();
-    // Wait for the data-dependent Supervisor section heading before
-    // reading the synopsis — the page-title 'Health' heading renders
-    // even during the initial loading state, so anchoring on it could
-    // race the fetch resolution on slow CI workers.
-    await screen.findByRole('heading', { name: /supervisor/i });
-    const heading = await screen.findByRole('heading', { name: /^health$/i });
-    const synopsis = synopsisFor(heading);
-
-    expect(synopsis).not.toBeNull();
-    // Structural assertion: between "Supervisor" and "uptime" there is
-    // no " on " locator clause. Coupled to the synopsis shape, not the
-    // exact copy.
-    expect(synopsis?.textContent ?? '').toMatch(/Supervisor healthy, uptime /);
-    expect(synopsis?.textContent ?? '').not.toMatch(/Supervisor healthy on /);
+    const headline = await screen.findByRole('heading', { level: 1 });
+    expect(headline.textContent).toContain(
+      'Мак загружен на 38 %, памяти хватает, на диске 40 ГБ свободно.',
+    );
+    expect(headline.closest('[data-host-tone]')?.getAttribute('data-host-tone')).toBe('ok');
   });
 
-  it('renders city/version without warn tone and includes the locator clause when present', async () => {
-    // Positive contrast for the absent-path tests — guards against a
-    // false-positive where the warn tone or the dropped clause was
-    // applied to every supervisor render path.
-    mockCityHealth.mockResolvedValue(presentLocator());
-
-    const { container } = renderPage();
-    // Same as the test above: wait for the Supervisor section heading
-    // so the data has actually loaded before we query for the City /
-    // Version Kvs the assertion reads.
-    await screen.findByRole('heading', { name: /supervisor/i });
-    const heading = await screen.findByRole('heading', { name: /^health$/i });
-
-    const cityValue = valueFor(container, 'City');
-    const versionValue = valueFor(container, 'Version');
-
-    expect(cityValue?.textContent).toBe('demo-city');
-    expect(versionValue?.textContent).toBe('1.4.2');
-    expect(cityValue?.className).not.toMatch(/text-warn/);
-    expect(versionValue?.className).not.toMatch(/text-warn/);
-
-    const synopsis = synopsisFor(heading);
-    // Guard against a vacuous pass: if a future PageHeader refactor
-    // restructures the synopsis element, synopsisFor would return null
-    // and the positive match below would correctly fail — but assert
-    // explicitly so the failure mode is "missing synopsis node" rather
-    // than "positive match against an empty string".
-    expect(synopsis).not.toBeNull();
-    expect(synopsis?.textContent ?? '').toMatch(/Supervisor healthy on demo-city, uptime /);
-  });
-
-  it('reads city health via the generated supervisor client and status via the dashboard cached-status route', async () => {
-    // gascity-dashboard-4bol: health stays on the direct (fast) supervisor
-    // client, but the slow /status read moves behind the dashboard backend's
-    // cached sampler at /supervisor-status. The page must NOT hit the supervisor
-    // /status directly, and must NOT reintroduce a dashboard city-health mirror.
+  it('turns the headline amber when the disk runs low', async () => {
+    live = {
+      ...live,
+      disk: {
+        status: 'available',
+        value: { total_bytes: 460 * 2 ** 30, free_bytes: 9.3 * 2 ** 30 },
+      },
+    };
     renderPage();
-
-    await screen.findByRole('heading', { name: /supervisor/i });
-
-    expect(mockCityHealth).toHaveBeenCalledWith('test-city');
-    expect(mockSupervisorApiForRequestBudget).toHaveBeenCalledWith(2500);
-    expect(fetch).toHaveBeenCalledWith('/api/city/test-city/supervisor-status', expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith('/api/health/system', expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith('/api/health/local-tools', expect.any(Object));
-    expect(fetch).not.toHaveBeenCalledWith('/api/city/test-city/health/system', expect.any(Object));
-    expect(fetch).not.toHaveBeenCalledWith('/api/city/test-city/status', expect.any(Object));
+    const headline = await screen.findByRole('heading', { level: 1 });
+    await screen.findByText(/на диске мало места/);
+    expect(headline.closest('[data-host-tone]')?.getAttribute('data-host-tone')).toBe('warn');
   });
 
-  it('renders fast sections while supervisor status is still pending', async () => {
-    const pendingStatus = deferred<Response>();
-    pendingStatusResponse = pendingStatus.promise;
-
+  it('draws the CPU, memory and disk charts', async () => {
     renderPage();
+    expect(await screen.findByRole('img', { name: /^Процессор/ })).toBeTruthy();
+    expect(screen.getByRole('img', { name: /^Память/ })).toBeTruthy();
+    expect(screen.getByRole('img', { name: /^Диск/ })).toBeTruthy();
+  });
 
-    await screen.findByRole('heading', { name: /supervisor/i });
-    await screen.findByRole('heading', { name: /host/i });
-    await screen.findByRole('heading', { name: /diagnostics/i });
+  it('shows who eats the Mac, grouped, by process name only', async () => {
+    renderPage();
+    const region = await screen.findByRole('region', { name: 'Кто ест Мак' });
+    expect(await within(region).findAllByText('Агенты')).not.toHaveLength(0);
+    expect(within(region).getAllByText('claude').length).toBeGreaterThan(0);
+    expect(within(region).getAllByText('Хранилища (dolt, bd)').length).toBeGreaterThan(0);
+  });
 
-    expect(screen.getByText('demo-city')).toBeTruthy();
-    expect(screen.getByText('8')).toBeTruthy();
+  it('says plainly when the process list is only visible on this Mac', async () => {
+    live = {
+      ...live,
+      processes: {
+        status: 'unavailable',
+        reason: 'not_loopback',
+        total: 0,
+        items: [],
+        rest: { count: 0, cpu_pct: 0, rss_bytes: 0 },
+      },
+    };
+    renderPage();
+    expect(await screen.findByText(/Список процессов виден только на самом Маке/)).toBeTruthy();
+  });
+
+  it('flags a bloated city store as one plain advisory line and changes nothing', async () => {
+    status = baseStatus({
+      size_bytes: 939_298_155,
+      live_rows: 16,
+      ratio_mb_per_row: 58.7,
+      warning: false,
+    });
+    renderPage();
     expect(
-      screen.getAllByText(/Unavailable: supervisor status still loading\./i).length,
-    ).toBeGreaterThan(0);
-  });
-
-  it('keeps dashboard-local host health visible when direct supervisor health fails', async () => {
-    mockCityHealth.mockRejectedValue(new Error('supervisor unavailable'));
-
-    renderPage();
-
-    await screen.findByRole('heading', { name: /host/i });
-    expect(
-      screen.getByText(
-        'Supervisor not reachable. The dashboard shell stays up; live data is stale.',
+      await screen.findByText(
+        /^База города раздута: 896\sМБ на 16 записей — можно сжать \(нужно твоё «да»\)\.$/,
       ),
     ).toBeTruthy();
-    expect(screen.getByText('8')).toBeTruthy();
   });
 
-  it('keeps host and supervisor sections visible when dolt-noms trend fails', async () => {
-    trendMode = 'fail';
-
+  it('shows no advisory while the store is within its MB-per-row threshold', async () => {
     renderPage();
-
-    await screen.findByRole('heading', { name: /host/i });
-    expect(screen.getByRole('heading', { name: /supervisor/i })).toBeTruthy();
-    expect(screen.getByText(/dolt-noms metric unavailable/i)).toBeTruthy();
+    await screen.findByRole('heading', { level: 1 });
+    await screen.findAllByText('dev');
+    expect(screen.queryByText(/База города раздута/)).toBeNull();
   });
 
-  it('keeps supervisor diagnostics visible when dashboard host health fails', async () => {
-    systemHealthMode = 'fail';
+  it('keeps a missing store trend as a quiet note, not a problem', async () => {
+    trend = { available: false, samples: [], reason: 'store_health_absent' };
+    renderPage({ trend });
+    expect(await screen.findByText(/Тренд размера базы не ведётся/)).toBeTruthy();
+    expect(screen.queryByText(/Нет тренда хранилища/)).toBeNull();
+  });
 
+  it('keeps supervisor, tool versions and store health below, in Russian', async () => {
     renderPage();
-
-    await screen.findByRole('heading', { name: /supervisor/i });
-    expect(screen.getByText(/dashboard host health unavailable/i)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: /diagnostics/i })).toBeTruthy();
-  });
-
-  it('renders unavailable values instead of non-finite or synthetic zero telemetry', async () => {
-    currentHealth = {
-      ...baseHealth(),
-      admin: {
-        ...baseHealth().admin,
-        rss: { status: 'unavailable', reason: 'sample_failed' },
-      },
-      host: {
-        ...baseHealth().host,
-        memory: { status: 'unavailable', reason: 'invalid_sample' },
-        uptime: { status: 'unavailable', reason: 'sample_failed' },
-      },
-    };
-
-    const { container } = renderPage();
-    await screen.findByRole('heading', { name: /host/i });
-
-    const heading = screen.getByRole('heading', { name: /^health$/i });
-    const synopsis = synopsisFor(heading)?.textContent ?? '';
-    expect(synopsis).toContain('Memory unavailable');
-    expect(synopsis).not.toMatch(/NaN|Infinity/);
-    expect(valueFor(container, 'Memory free')?.textContent).toBe('n/a');
-    expect(valueFor(container, 'Host uptime')?.textContent).toBe('n/a');
-    expect(valueFor(container, 'RSS')?.textContent).toBe('n/a');
-    expect(valueFor(container, 'Load (1m, 5m, 15m)')?.textContent).toBe('0.42, 0.55, 0.61');
-    expect(screen.getByText('telemetry unavailable')).toBeTruthy();
-    expect(screen.queryByText(/dashboard host health unavailable/i)).toBeNull();
-    expect(container.textContent).not.toContain('0 B of 0 B');
-  });
-
-  it('renders an available zero-denominator memory sample as unavailable', async () => {
-    currentHealth = {
-      ...baseHealth(),
-      host: {
-        ...baseHealth().host,
-        memory: {
-          status: 'available',
-          value: { total_mem_bytes: 0, free_mem_bytes: 0 },
-        },
-      },
-    };
-
-    const { container } = renderPage();
-    await screen.findByRole('heading', { name: /host/i });
-
-    const heading = screen.getByRole('heading', { name: /^health$/i });
-    const synopsis = synopsisFor(heading)?.textContent ?? '';
-    expect(synopsis).toContain('Memory unavailable');
-    expect(valueFor(container, 'Memory free')?.textContent).toBe('n/a');
-    expect(container.textContent).not.toMatch(/NaN|Infinity/);
-    expect(container.textContent).not.toContain('0 B of 0 B');
-  });
-
-  it('contains malformed CPU, load, and admin metrics at the display boundary', async () => {
-    currentHealth = {
-      ...baseHealth(),
-      admin: {
-        ...baseHealth().admin,
-        pid: 0,
-        uptime_sec: -1,
-        heap_used_bytes: -1,
-      },
-      host: {
-        ...baseHealth().host,
-        cpu_count: 0,
-        load: {
-          status: 'available',
-          value: {
-            load_avg_1: -1,
-            load_avg_5: -1,
-            load_avg_15: -1,
-          },
-        },
-      },
-    };
-
-    const { container } = renderPage();
-    await screen.findByRole('heading', { name: /host/i });
-
-    const heading = screen.getByRole('heading', { name: /^health$/i });
-    const synopsis = synopsisFor(heading)?.textContent ?? '';
-    expect(synopsis).toContain('CPU/load unavailable');
-    expect(valueFor(container, 'CPUs')?.textContent).toBe('n/a');
-    expect(valueFor(container, 'Load (1m, 5m, 15m)')?.textContent).toBe('n/a');
-    expect(valueFor(container, 'PID')?.textContent).toBe('n/a');
-    expect(valueFor(container, 'Heap used')?.textContent).toBe('n/a');
-
-    const adminSection = sectionFor('Admin process');
-    expect(adminSection).not.toBeNull();
-    expect(valueFor(adminSection!, 'Uptime')?.textContent).toBe('n/a');
-    expect(screen.getAllByText('telemetry unavailable').length).toBeGreaterThan(0);
-    expect(container.textContent).not.toMatch(/NaN|Infinity/);
-  });
-
-  it('keeps the Host badge healthy when only the admin process telemetry is degraded', async () => {
-    currentHealth = {
-      ...baseHealth(),
-      admin: {
-        ...baseHealth().admin,
-        pid: 0,
-        uptime_sec: -1,
-        rss: { status: 'unavailable', reason: 'sample_failed' },
-        heap_used_bytes: -1,
-      },
-      // host telemetry is left fully valid: the Host badge must reflect the
-      // host, not the dashboard process.
-    };
-
-    renderPage();
-    await screen.findByRole('heading', { name: /host/i });
-
-    const hostSection = sectionFor('Host');
-    expect(hostSection).not.toBeNull();
-    expect(hostSection!.textContent).not.toContain('telemetry unavailable');
-
-    // Admin problems still surface in the Admin section, unchanged.
-    const adminSection = sectionFor('Admin process');
-    expect(adminSection).not.toBeNull();
-    expect(valueFor(adminSection!, 'PID')?.textContent).toBe('n/a');
-    expect(valueFor(adminSection!, 'Uptime')?.textContent).toBe('n/a');
-  });
-
-  it('treats a just-started host with zero uptime as available, not telemetry-unavailable', async () => {
-    currentHealth = {
-      ...baseHealth(),
-      host: {
-        ...baseHealth().host,
-        uptime: { status: 'available', value: 0 },
-      },
-    };
-
-    renderPage();
-    await screen.findByRole('heading', { name: /host/i });
-
-    const hostSection = sectionFor('Host');
-    expect(hostSection).not.toBeNull();
-    expect(hostSection!.textContent).not.toContain('telemetry unavailable');
-  });
-
-  it('restores diagnostics from local probes plus the cached supervisor status', async () => {
-    renderPage();
-
-    await screen.findByRole('heading', { name: /diagnostics/i });
-
-    expect(screen.getByText('Dolt usage')).toBeTruthy();
-    expect(screen.getByText('Beads usage')).toBeTruthy();
-    expect(screen.getByText('5')).toBeTruthy();
-    expect(screen.getByText('Dolt MB-per-row ratio')).toBeTruthy();
-    expect(screen.getByText('<= 1')).toBeTruthy();
-    // Fresh data carries no stale marker — guards against the marker leaking
-    // onto a healthy read (the negative contrast for the degraded test below).
-    expect(screen.queryAllByText(/showing the last sample/i)).toHaveLength(0);
-  });
-
-  it('shows cached status data plus a stale marker when the latest sample failed but a prior one exists', async () => {
-    // gascity-dashboard-4bol: a degraded report (latest /status read failed on a
-    // slow supervisor) still carries the last good snapshot, so the widgets must
-    // render real data with a "showing last sample" marker, NOT
-    // "supervisor status unavailable".
-    statusMode = 'degraded';
-
-    renderPage();
-
-    await screen.findByRole('heading', { name: /diagnostics/i });
-
-    expect(screen.getByText('Dolt usage')).toBeTruthy();
-    expect(screen.getByText('Beads usage')).toBeTruthy();
-    expect(screen.getByText('Dolt MB-per-row ratio')).toBeTruthy();
-    expect(screen.queryAllByText(/supervisor status unavailable/i)).toHaveLength(0);
-    // The stale marker renders on each cached widget (Dolt usage, Beads usage,
-    // Store thresholds), mirroring the rig-store-health "showing last sample".
-    expect(
-      screen.getAllByText(/showing the last sample; refresh failed/i).length,
-    ).toBeGreaterThanOrEqual(3);
-  });
-
-  it('surfaces the warming-up copy when the backend has not sampled status yet', async () => {
-    statusMode = 'warming';
-
-    renderPage();
-
-    await screen.findByRole('heading', { name: /diagnostics/i });
-
-    expect(screen.getAllByText(/supervisor status sample is warming up/i).length).toBeGreaterThan(
-      0,
-    );
-  });
-
-  it('surfaces the read-failed copy when a sample failed with no prior snapshot', async () => {
-    statusMode = 'blank';
-
-    renderPage();
-
-    await screen.findByRole('heading', { name: /diagnostics/i });
-
-    expect(screen.getAllByText(/latest supervisor status read failed/i).length).toBeGreaterThan(0);
-  });
-
-  it('surfaces per-rig bead-store health with a down rig flagged', async () => {
-    const { container } = renderPage();
-
-    await screen.findByRole('heading', { name: /bead stores by rig/i });
-
-    // Both rigs render; the down rig surfaces its dolt-down state.
-    expect(screen.getByText('codeprobe')).toBeTruthy();
-    expect(screen.getByText('geo')).toBeTruthy();
-    expect(screen.getByText('dolt down')).toBeTruthy();
-    expect(screen.getByText(/DOWN · 127\.0\.0\.1:29620/)).toBeTruthy();
-    // The ok rig surfaces an up endpoint.
-    expect(screen.getByText(/up · 127\.0\.0\.1:29620/)).toBeTruthy();
-
-    // Worst-first ordering: the down rig (geo) renders before the ok rig.
-    const names = Array.from(container.querySelectorAll('span'))
-      .map((s) => s.textContent)
-      .filter((t) => t === 'codeprobe' || t === 'geo');
-    expect(names[0]).toBe('geo');
-  });
-
-  it('keeps other Health sections visible when rig-store health fails', async () => {
-    rigStoreMode = 'fail';
-
-    renderPage();
-
-    await screen.findByRole('heading', { name: /supervisor/i });
-    await screen.findByRole('heading', { name: /bead stores by rig/i });
-    expect(screen.getByText(/per-rig store health unavailable/i)).toBeTruthy();
-  });
-
-  it('shows installed tool versions as a plain passthrough', async () => {
-    const { container } = renderPage();
-
-    await screen.findByRole('heading', { name: /tool versions/i });
-
-    // The panel reports each installed version with no floor, drift verdict, or
-    // warn tone — gc owns any version policy, the dashboard only surfaces it.
-    const dolt = toolRow(container, 'dolt');
-    expect(dolt?.textContent).toContain('2.0.7');
-    expect(dolt?.textContent).not.toMatch(/below floor/i);
-    expect(dolt?.querySelector('.text-warn')).toBeNull();
-
-    const beads = toolRow(container, 'bd');
-    expect(beads?.textContent).toContain('1.0.4');
-
-    const gc = toolRow(container, 'gc');
-    expect(gc?.textContent).toContain('dev');
-    expect(gc?.textContent).not.toMatch(/recommended|not pinned|below floor/i);
-  });
-
-  it('surfaces a probe failure reason in the tool versions table', async () => {
-    currentLocalTools = {
-      ...baseLocalTools(),
-      gc: { status: 'unavailable', reason: 'gc version probe failed: ENOENT' },
-    };
-
-    const { container } = renderPage();
-
-    await screen.findByRole('heading', { name: /tool versions/i });
-
-    const gc = toolRow(container, 'gc');
-    expect(gc?.textContent).toContain('unavailable');
-    expect(gc?.textContent).toContain('gc version probe failed: ENOENT');
-  });
-
-  it('highlights Health sections that match composed attention facts', async () => {
-    const supervisor = absentLocator();
-    mockCityHealth.mockResolvedValue(supervisor);
-    currentHealth = {
-      ...baseHealth(),
-      host: {
-        ...baseHealth().host,
-        memory: {
-          status: 'available',
-          value: {
-            total_mem_bytes: 16_000_000_000,
-            free_mem_bytes: 400_000_000,
-          },
-        },
-      },
-    };
-    currentTrend = {
-      available: false,
-      reason: 'sample_failed',
-      samples: [],
-    };
-
-    renderPage({
-      attention: {
-        system: currentHealth,
-        supervisor: { status: 'available', data: supervisor },
-        trend: currentTrend,
-      },
-    });
-
-    await screen.findByRole('heading', { name: /dolt storage/i });
-
-    expect(sectionFor('Supervisor')?.getAttribute('data-attention-severity')).toBe('watch');
-    expect(sectionFor('Host')?.getAttribute('data-attention-severity')).toBe('attention');
-    expect(sectionFor('Dolt storage, last 24 hours')?.getAttribute('data-attention-severity')).toBe(
-      'watch',
-    );
+    const facts = await screen.findByRole('region', { name: 'Город' });
+    expect(await within(facts).findByText('работает 5 ч 50 мин')).toBeTruthy();
+    expect(within(facts).getByText('1.3.2')).toBeTruthy();
+    expect(within(facts).getByText('devwork')).toBeTruthy();
+    expect(screen.queryByText('Admin process')).toBeNull();
+    expect(collectMissing()).toEqual([]);
   });
 });
 
-function renderPage({ attention }: { attention?: HealthAttentionFacts } = {}) {
-  const contributors = createAttentionContributors(
-    attention === undefined ? {} : { health: attention },
-  );
+function renderPage(facts?: HealthAttentionFacts) {
+  const contributors = createAttentionContributors(facts === undefined ? {} : { health: facts });
   return render(
     <MemoryRouter initialEntries={['/health']}>
       <AttentionProvider contributors={contributors}>
@@ -573,180 +188,62 @@ function renderPage({ attention }: { attention?: HealthAttentionFacts } = {}) {
   );
 }
 
-function jsonResponse(payload: unknown): Response {
+function json(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
 }
 
-function errorResponse(message: string): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status: 503,
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
-function valueFor(container: HTMLElement, label: string): HTMLElement | null {
-  const terms = Array.from(container.querySelectorAll('dt')).filter(
-    (dt) => dt.textContent?.trim() === label,
-  );
-  if (terms.length !== 1) return null;
-  return terms[0]?.nextElementSibling as HTMLElement | null;
-}
-
-function toolRow(container: HTMLElement, label: string): HTMLElement | null {
-  return container.querySelector(`[data-tool-version-row="${label}"]`);
-}
-
-function synopsisFor(heading: HTMLElement): HTMLElement | null {
-  // PageHeader renders the synopsis as a sibling of the heading inside
-  // a shared header element. Walk up to the nearest <header>, then look
-  // for a paragraph descendant. Specific to PageHeader's structure but
-  // stable — the alternative (text search) would over-couple to copy.
-  const header = heading.closest('header');
-  return header?.querySelector('p') ?? null;
-}
-
-function sectionFor(heading: string): HTMLElement | null {
-  return screen.getByRole('heading', { name: heading }).closest('section');
-}
-
-function presentLocator(): HealthOutputBody {
+function tools(): LocalToolVersions {
   return {
-    status: 'ok',
-    city: 'demo-city',
-    version: '1.4.2',
-    uptime_sec: 4200,
+    dolt: { status: 'available', version: '1.81.0', source: '/opt/homebrew/bin/dolt' },
+    beads: { status: 'available', version: '1.3.2', source: '/usr/local/bin/bd' },
+    gc: { status: 'available', version: 'dev', source: '/Users/me/go/bin/gc' },
   };
 }
 
-function absentLocator(): HealthOutputBody {
-  // The two fields under test are deliberately omitted, not set to
-  // undefined or null — that mirrors what a wire-drifted supervisor
-  // payload actually looks like over JSON.
-  return {
-    status: 'ok',
-    uptime_sec: 4200,
-  };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
-function baseHealth(): SystemHealth {
-  return {
-    admin: {
-      pid: 4242,
-      uptime_sec: 600,
-      rss: { status: 'available', value: 50_000_000 },
-      heap_used_bytes: 30_000_000,
-      node_version: 'v20.10.0',
-    },
-    host: {
-      load: {
-        status: 'available',
-        value: { load_avg_1: 0.42, load_avg_5: 0.55, load_avg_15: 0.61 },
-      },
-      memory: {
-        status: 'available',
-        value: { total_mem_bytes: 16_000_000_000, free_mem_bytes: 8_000_000_000 },
-      },
-      cpu_count: 8,
-      uptime: { status: 'available', value: 86_400 },
-    },
-  };
-}
-
-function baseLocalTools(): LocalToolVersions {
-  return {
-    // Plain installed-version passthrough — no floor or drift verdict.
-    dolt: { status: 'available', version: '2.0.7', source: 'local probe: dolt version' },
-    beads: { status: 'available', version: '1.0.4', source: 'local probe: bd version' },
-    gc: { status: 'available', version: 'dev', source: 'local probe: gc version' },
-  };
-}
-
-function baseStatus(): StatusBody {
-  return {
-    agent_count: 1,
-    agents: {
-      quarantined: 0,
-      running: 1,
-      suspended: 0,
-      total: 1,
-    },
-    mail: {
-      total: 2,
-      unread: 1,
-    },
-    name: 'test-city',
-    path: '/srv/gc/test-city',
-    rig_count: 1,
-    rigs: {
-      suspended: 0,
-      total: 1,
-    },
-    running: 1,
-    store_health: {
-      live_rows: 2000,
-      path: '/srv/gc/test-city/.db',
-      ratio_mb_per_row: 0.5,
-      rows_measured: true,
-      size_bytes: 1_000_000,
-      threshold_mb_per_row: 1,
-      warning: false,
-      last_gc_status: 'success',
-    },
-    suspended: false,
-    uptime_sec: 4200,
-    version: '1.4.2',
-    work: {
-      open: 5,
-      ready: 3,
-      in_progress: 1,
-    },
-  };
-}
-
-function baseTrend(): DoltNomsTrend {
+function rigStores(): RigStoreHealthReport {
   return {
     available: true,
-    samples: [],
-    source: '/var/gc/.dolt/noms',
-  };
-}
-
-function baseRigStores(): RigStoreHealthReport {
-  return {
-    available: true,
-    sampledAt: '2026-06-06T00:00:00.000Z',
+    sampledAt: '2026-11-16T10:00:00Z',
     rigs: [
       {
-        rig: 'codeprobe',
-        beadsPath: '/home/ds/projects/codeprobe/.beads',
+        rig: 'devwork',
+        beadsPath: '/srv/devwork/.beads',
         rollup: 'ok',
         reachable: true,
-        doltEndpoint: '127.0.0.1:29620',
+        doltEndpoint: null,
         doltConnected: true,
         problems: [],
       },
-      {
-        rig: 'geo',
-        beadsPath: '/home/ds/projects/GEO/.beads',
-        rollup: 'down',
-        reachable: true,
-        doltEndpoint: '127.0.0.1:29620',
-        doltConnected: false,
-        problems: [],
-      },
     ],
+  };
+}
+
+function baseStatus(store: Partial<NonNullable<StatusBody['store_health']>> = {}): StatusBody {
+  return {
+    agent_count: 15,
+    agents: { quarantined: 0, running: 2, suspended: 0, total: 15 },
+    mail: { total: 0, unread: 0 },
+    name: 'test-city',
+    path: '/srv/test-city',
+    rig_count: 1,
+    rigs: { suspended: 0, total: 1 },
+    running: 2,
+    store_health: {
+      live_rows: 2000,
+      path: '/srv/test-city/.beads/dolt',
+      ratio_mb_per_row: 0.5,
+      rows_measured: true,
+      size_bytes: 1_000_000_000,
+      threshold_mb_per_row: 1,
+      warning: false,
+      ...store,
+    },
+    suspended: false,
+    uptime_sec: 21_000,
+    version: 'dev',
+    work: { open: 149, ready: 96, in_progress: 1 },
   };
 }

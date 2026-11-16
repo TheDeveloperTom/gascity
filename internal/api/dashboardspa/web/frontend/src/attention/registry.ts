@@ -872,7 +872,14 @@ function deriveHealthAttention(facts: HealthAttentionFacts | undefined): readonl
     appendDashboardProcessAttention(items, facts.system);
     appendHostAttention(items, facts.system);
   }
-  if (facts.trend !== undefined && !facts.trend.available) {
+  // Owner 16.11: bd-owned (proxied) stores never report store_health, so an
+  // absent trend is the expected state; Health shows it as a quiet note. Only
+  // a failed sample is a watch row.
+  if (
+    facts.trend !== undefined &&
+    !facts.trend.available &&
+    facts.trend.reason !== 'store_health_absent'
+  ) {
     items.push(
       healthWatch({
         id: 'health:dolt-noms-unavailable',
@@ -1025,7 +1032,10 @@ function appendHostAttention(items: AttentionItem[], health: SystemHealth): void
       healthAttention({
         id: 'health:load-high',
         title: t('Host load high'),
-        summary: t('load {load} across {cpus} CPUs', { load: loadAverage.toFixed(2), cpus: health.host.cpu_count }),
+        summary: t('load {load} across {cpus} CPUs', {
+          load: loadAverage.toFixed(2),
+          cpus: health.host.cpu_count,
+        }),
       }),
     );
   } else if (loadRatio !== null && loadRatio > 1) {
@@ -1033,7 +1043,10 @@ function appendHostAttention(items: AttentionItem[], health: SystemHealth): void
       healthWatch({
         id: 'health:load-elevated',
         title: t('Host load elevated'),
-        summary: t('load {load} across {cpus} CPUs', { load: loadAverage.toFixed(2), cpus: health.host.cpu_count }),
+        summary: t('load {load} across {cpus} CPUs', {
+          load: loadAverage.toFixed(2),
+          cpus: health.host.cpu_count,
+        }),
       }),
     );
   }

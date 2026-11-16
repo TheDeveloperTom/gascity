@@ -15,7 +15,8 @@ interface LayoutProps {
 function measureOf(pathname: string): string {
   const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   const path = trimmed === '' ? '/' : trimmed;
-  if (path === '/beads') return 'max-w-[120rem]';
+  // Health (owner 16.11): live charts of the Mac's load use the full width.
+  if (path === '/beads' || path === '/health') return 'max-w-[120rem]';
   // polish2 16.11 (owner, 2000 px): two columns from xl, capped at 1600 px.
   if (path === '/') return 'mx-auto max-w-[100rem]';
   return 'max-w-dashboard';

@@ -88,30 +88,23 @@ function renderPage(
   );
 }
 
-function sectionFor(heading: string): HTMLElement | null {
-  return screen.getByRole('heading', { name: heading }).closest('section');
-}
-
 describe('Health city issues', () => {
-  it('lists city issues first, before Supervisor', async () => {
+  // Owner 16.11: the page opens with the Mac's load; city trouble follows,
+  // still before the city's own facts and in its own section.
+  it('lists city issues before the city facts, in their own section', async () => {
     renderPage([
       { id: 'runs-test', domain: 'runs', getItems: () => [cityItem('runs:x', 'Step stalled')] },
     ]);
-    await screen.findByRole('heading', { name: 'Supervisor' });
+    const facts = await screen.findByRole('heading', { level: 2, name: 'City' });
     const city = screen.getByRole('heading', { level: 2, name: 'City issues' });
-    const supervisor = screen.getByRole('heading', { name: 'Supervisor' });
-    expect(
-      city.compareDocumentPosition(supervisor) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(city.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('Step stalled')).toBeTruthy();
-    // Its own top-level section: it never wraps an existing Health h2.
-    expect(city.closest('section')!.contains(supervisor)).toBe(false);
+    expect(city.closest('section')!.contains(facts)).toBe(false);
   });
 
-  it('existing sections keep their data-attention-severity', async () => {
+  it('host pressure from the attention model still reads in City issues', async () => {
     renderPage();
-    await screen.findByRole('heading', { name: 'Supervisor' });
-    expect(sectionFor('Host')?.getAttribute('data-attention-severity')).toBe('attention');
+    await screen.findByRole('heading', { level: 2, name: 'City' });
     const city = screen.getByRole('heading', { level: 2, name: 'City issues' }).closest('section')!;
     expect(city.textContent).toContain('Host memory critical');
   });
@@ -119,7 +112,7 @@ describe('Health city issues', () => {
   // Review I-1: a cold load of /health is not an all-clear.
   it('while the city reads load, City issues is not an all-clear', async () => {
     renderPage([], { cityReadiness: { state: 'loading' }, withHealthFacts: false });
-    await screen.findByRole('heading', { name: 'Supervisor' });
+    await screen.findByRole('heading', { level: 2, name: 'City' });
     expect(screen.queryByText('No city issues')).toBeNull();
     expect(screen.getByText('Reading the state of the city…')).toBeTruthy();
   });

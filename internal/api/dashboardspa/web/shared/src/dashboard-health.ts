@@ -70,3 +70,63 @@ export type DoltNomsTrend =
       samples: DoltNomsSample[];
       reason: DoltNomsUnavailableReason;
     };
+
+/** GET /api/health/live (dashboardbff/health_live.go): the Health page's
+ *  realtime host reading, polled every few seconds. */
+export interface LiveHealth {
+  sampled_at: IsoTimestamp;
+  cpu: {
+    /** Logical CPU count. */
+    cores: number;
+    /** Share of all cores busy since the previous sample, 0–100. */
+    busy_pct: HealthMetric<number>;
+    load: HealthMetric<HostLoadAverages>;
+  };
+  memory: HealthMetric<LiveMemory>;
+  disk: HealthMetric<LiveDisk>;
+  processes: LiveProcesses;
+}
+
+export type MemoryPressure = 'normal' | 'warn' | 'critical' | 'unknown';
+
+export interface LiveMemory {
+  total_bytes: number;
+  used_bytes: number;
+  available_bytes: number;
+  swap_total_bytes: number;
+  swap_used_bytes: number;
+  /** The kernel's memory-pressure level (macOS); `unknown` elsewhere. */
+  pressure: MemoryPressure;
+}
+
+export interface LiveDisk {
+  total_bytes: number;
+  free_bytes: number;
+}
+
+/** One command name's share: never args, env, paths or PIDs. */
+export interface ProcessUsage {
+  name: string;
+  count: number;
+  /** Summed CPU, percent of ONE core (Activity Monitor's scale). */
+  cpu_pct: number;
+  rss_bytes: number;
+}
+
+export interface ProcessRest {
+  count: number;
+  cpu_pct: number;
+  rss_bytes: number;
+}
+
+export type LiveProcessesUnavailableReason = 'not_loopback' | 'sample_failed';
+
+export type LiveProcesses =
+  | { status: 'available'; total: number; items: ProcessUsage[]; rest: ProcessRest }
+  | {
+      status: 'unavailable';
+      reason: LiveProcessesUnavailableReason;
+      total: number;
+      items: ProcessUsage[];
+      rest: ProcessRest;
+    };

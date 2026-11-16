@@ -3,6 +3,7 @@ import type {
   GitView,
   DeployList,
   SystemHealth,
+  LiveHealth,
   LocalToolVersions,
   DoltNomsTrend,
   RigStoreHealthReport,
@@ -286,6 +287,53 @@ const decodeSystemHealth = objectDecoder<SystemHealth>('system health', (record,
     requireNumberField(memory, metricURL, label, 'free_mem_bytes');
   });
 });
+// GET /api/health/live (dashboardbff/health_live.go): must match LiveHealth.
+const decodeLiveHealth = objectDecoder<LiveHealth>('live health', (record, url) => {
+  requireStringField(record, url, 'live health', 'sampled_at');
+  const cpu = requireRecord(record.cpu, url, 'live health.cpu');
+  requireNumberField(cpu, url, 'live health.cpu', 'cores');
+  requireHealthMetricField(cpu, url, 'live health.cpu', 'busy_pct', requireNumberValue);
+  requireHealthMetricField(cpu, url, 'live health.cpu', 'load', (value, metricURL, label) => {
+    const load = requireRecord(value, metricURL, label);
+    requireNumberField(load, metricURL, label, 'load_avg_1');
+    requireNumberField(load, metricURL, label, 'load_avg_5');
+    requireNumberField(load, metricURL, label, 'load_avg_15');
+  });
+  requireHealthMetricField(record, url, 'live health', 'memory', (value, metricURL, label) => {
+    const memory = requireRecord(value, metricURL, label);
+    for (const field of [
+      'total_bytes',
+      'used_bytes',
+      'available_bytes',
+      'swap_total_bytes',
+      'swap_used_bytes',
+    ]) {
+      requireNumberField(memory, metricURL, label, field);
+    }
+    requireStringField(memory, metricURL, label, 'pressure');
+  });
+  requireHealthMetricField(record, url, 'live health', 'disk', (value, metricURL, label) => {
+    const disk = requireRecord(value, metricURL, label);
+    requireNumberField(disk, metricURL, label, 'total_bytes');
+    requireNumberField(disk, metricURL, label, 'free_bytes');
+  });
+  const processes = requireRecord(record.processes, url, 'live health.processes');
+  requireStringField(processes, url, 'live health.processes', 'status');
+  requireNumberField(processes, url, 'live health.processes', 'total');
+  requireArrayField(processes, url, 'live health.processes', 'items');
+  (processes.items as unknown[]).forEach((item, i) => {
+    const label = `live health.processes.items[${i}]`;
+    const row = requireRecord(item, url, label);
+    requireStringField(row, url, label, 'name');
+    requireNumberField(row, url, label, 'count');
+    requireNumberField(row, url, label, 'cpu_pct');
+    requireNumberField(row, url, label, 'rss_bytes');
+  });
+  const rest = requireRecord(processes.rest, url, 'live health.processes.rest');
+  requireNumberField(rest, url, 'live health.processes.rest', 'count');
+  requireNumberField(rest, url, 'live health.processes.rest', 'cpu_pct');
+  requireNumberField(rest, url, 'live health.processes.rest', 'rss_bytes');
+});
 function requireLocalToolVersionField(
   record: JsonRecord,
   url: string,
@@ -425,6 +473,9 @@ export const api = {
   },
   localToolVersions(): Promise<LocalToolVersions> {
     return request('GET', '/api/health/local-tools', decodeLocalToolVersions);
+  },
+  liveHealth(): Promise<LiveHealth> {
+    return request('GET', '/api/health/live', decodeLiveHealth);
   },
   doltTrend(): Promise<DoltNomsTrend> {
     return request('GET', cityPath('/dolt-noms/trend'), decodeDoltTrend);
