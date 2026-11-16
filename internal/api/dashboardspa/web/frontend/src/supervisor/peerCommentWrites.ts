@@ -4,8 +4,10 @@ import { withApiBase } from '../lib/apiBase';
 
 // vk-final part 4: a person's writes to the other city. They go through our
 // own city service `peer-boards` with `X-GC-Request: 1` (the engine refuses a
-// /svc mutation without it); the service also checks a loopback Origin and
-// `Sec-Fetch-Site: same-origin`, which the browser sends itself. The
+// /svc mutation without it); the service also checks the Origin (loopback, or
+// the owner's tailnet origin from `[supervisor] allowed_hosts` with the
+// owner's Tailscale identity) and `Sec-Fetch-Site: same-origin`, which the
+// browser sends itself. The
 // dashboard always writes as our person.
 //
 // The ONLY person routes (sync/topics c664ac8f, topics-report.md «Final
@@ -94,7 +96,8 @@ function serviceUrl(route: string): string {
   return withApiBase(`/v0/city/${encodeURIComponent(city)}/svc/peer-boards/v1/${route}`);
 }
 
-async function post(route: string, body: unknown): Promise<unknown> {
+/** One POST to our peer-boards service (shared by topic writes and /v1/discuss). */
+export async function postPeerBoards(route: string, body: unknown): Promise<unknown> {
   const url = serviceUrl(route);
   const res = await fetch(url, {
     method: 'POST',
@@ -143,7 +146,7 @@ export interface CardRefBody {
  * several (the city defaults it for a peer card, and for our card with one peer).
  */
 export async function postCardMessage(card: CardRefBody, text: string, to?: string): Promise<{ opened: boolean }> {
-  const payload = await post('topics/card-message', {
+  const payload = await postPeerBoards('topics/card-message', {
     card: { city: card.city, rig: card.rig, id: card.id },
     text: clean(text),
     ...(to === undefined ? {} : { to }),
@@ -184,12 +187,12 @@ export async function postTopicAction(target: TopicTarget, action: TopicAction):
   const base = { city: target.city, topic_id: target.topicId };
   switch (action.action) {
     case 'message':
-      await post('topics/message', { ...base, text: clean(action.text) });
+      await postPeerBoards('topics/message', { ...base, text: clean(action.text) });
       return { pending: null };
     case 'resolve':
       return {
         pending: pendingOf(
-          await post('topics/resolve', {
+          await postPeerBoards('topics/resolve', {
             ...base,
             reason: action.reason,
             summary: clean(action.summary),
@@ -198,13 +201,13 @@ export async function postTopicAction(target: TopicTarget, action: TopicAction):
         ),
       };
     case 'continue':
-      return { pending: pendingOf(await post('topics/continue', base)) };
+      return { pending: pendingOf(await postPeerBoards('topics/continue', base)) };
   }
 }
 
 /** The per-reader last-read stamp: only for messages actually seen on screen. */
 export async function markTopicRead(target: TopicTarget, at: string): Promise<void> {
-  await post('topics/read', { city: target.city, topic_id: target.topicId, at });
+  await postPeerBoards('topics/read', { city: target.city, topic_id: target.topicId, at });
 }
 
 export function commentErrorText(err: unknown): string {
