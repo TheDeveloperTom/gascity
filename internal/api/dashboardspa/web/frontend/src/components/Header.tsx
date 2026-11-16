@@ -120,7 +120,10 @@ export function Header() {
   // True once the list has loaded and the selected city is a member. While the
   // list is empty (pre-load or a transient fetch blip) we do NOT flag the city
   // as unknown — only a loaded list that omits it is a real miss.
-  const activeCityKnown = selectedCity === '' || cityItems.some((c) => c.name === selectedCity);
+  // H1 16.11: the code said so but did not do it — an empty list flagged the
+  // city «(не найден)» on every first paint until the list arrived.
+  const activeCityKnown =
+    selectedCity === '' || cityItems.length === 0 || cityItems.some((c) => c.name === selectedCity);
   const showSwitcher = cityItems.length > 1 || !activeCityKnown;
   const onSwitchCity = (next: string): void => {
     if (next === activeCity) return;

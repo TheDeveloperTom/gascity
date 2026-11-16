@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invalidate } from '../api/cache';
 import { AttentionProvider } from '../attention/context';
 import type { AttentionContributor, AttentionItem } from '../attention/compose';
 import { ThemeProvider } from '../contexts/ThemeContext';
@@ -59,6 +60,18 @@ describe('Header top bar', () => {
 
   // vk lane 5 (ruling 4): the rail became the VK top bar. It holds two navs:
   // the section tabs (desktop) and the «Ещё» menu with every page.
+  // H1 16.11 (live, every first paint): before the city list loaded the top
+  // bar showed a switcher reading «devwork-platform (не найден)», then
+  // snapped to the plain name. An unloaded list is not a miss.
+  it('does not call the city unknown while the city list is still loading', async () => {
+    invalidate('cities');
+    renderHeader([]);
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText(/\(unknown\)/)).toBeNull();
+    await screen.findByText('test-city');
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
   it('two navs inside the header: section tabs and the page menu', () => {
     const { container } = renderHeader([]);
     const navs = Array.from(container.querySelector('header')!.querySelectorAll('nav'));
