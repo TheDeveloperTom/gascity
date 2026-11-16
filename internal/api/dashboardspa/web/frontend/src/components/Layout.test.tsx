@@ -20,24 +20,14 @@ function measureOf(path: string): string {
 }
 
 describe('Layout', () => {
-  // polish2 16.11 (owner, 2000 px): «Нужно от меня» uses the width on wide screens.
-  it('/beads is wide, / is centred and up to 1600 px, /runs keeps max-w-dashboard', () => {
-    const board = measureOf('/beads');
-    expect(board).toContain('max-w-[120rem]');
-    expect(board).not.toContain('max-w-dashboard');
-    cleanup();
-    const home = measureOf('/');
-    expect(home).toContain('max-w-[100rem]');
-    expect(home).toContain('mx-auto');
-    cleanup();
-    // Owner 16.11: Health is full width (charts of the Mac's load).
-    const health = measureOf('/health');
-    expect(health).toContain('max-w-[120rem]');
-    expect(health).not.toContain('max-w-dashboard');
-    cleanup();
-    for (const path of ['/runs', '/agents']) {
+  // Owner 16.11 (2000 px: a centred ~1440 px strip, ~300 px empty each side):
+  // every main page uses the full available width; the main keeps its padding.
+  it('the page wrapper has no max-width cap on any main page', () => {
+    for (const path of ['/', '/beads', '/health', '/runs', '/agents', '/mail', '/city/devwork-platform/beads']) {
       const cls = measureOf(path);
-      expect(cls, path).toContain('max-w-dashboard');
+      expect(cls, path).not.toMatch(/(^|\s)(\w+:)?max-w-/);
+      expect(cls, path).not.toContain('mx-auto');
+      expect(cls, path).toContain('w-full');
       cleanup();
     }
   });

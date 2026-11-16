@@ -169,8 +169,9 @@ export function BeadsPage() {
   );
   const setSelectedId = useCallback((id: string | null) => selectBead(id, null), [selectBead]);
   const jumpToBead = useCallback((id: string) => selectBead(id, selectedId), [selectBead, selectedId]);
-  // Graph sprint: «Доска | Граф» (`?view=graph`), offered once an epic is
-  // chosen or a chain is focused (`?focus=<id>` from «держит N задач»).
+  // Graph sprint: «Доска | Граф» (`?view=graph`). Owner 16.11: always shown;
+  // the graph itself is per epic (or a focused chain, `?focus=<id>`), and with
+  // «Все» the graph view holds the all-tickets graph's placeholder.
   const viewGraphParam = searchParams.get('view') === 'graph';
   const focusParam = normalizeSelectedBeadParam(searchParams.get('focus'));
   const setView = useCallback(
@@ -645,7 +646,7 @@ export function BeadsPage() {
           onOwnerFilter={setOwnerFilter}
           newTaskUrl={mayorChannelUrl()}
           plannedEmpty={plannedEmpty}
-          afterEpic={graphAvailable ? <ViewSwitch graph={showGraph} onView={(v) => setView(v)} /> : undefined}
+          afterEpic={<ViewSwitch graph={viewGraphParam} onView={(v) => setView(v)} />}
         />
         {peerSources.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -697,6 +698,9 @@ export function BeadsPage() {
 
       {(!hasLoadedBoard && loading) || !peerSettled ? (
         <p className="text-body text-fg-muted">{t('Loading beads.')}</p>
+      ) : viewGraphParam && !graphAvailable ? (
+        // The all-tickets graph lands here (next lane); until then a placeholder.
+        <div data-testid="graph-all-placeholder" className="min-w-0" />
       ) : showGraph && graphModel !== null ? (
         <section aria-label={t('Graph')} className="min-w-0">
           <GraphView

@@ -109,7 +109,7 @@ describe('Header top bar', () => {
     for (const a of Array.from(links)) expect(a.className.split(/\s+/)).toContain('h-11');
   });
 
-  it('the content column starts at the rail (left-aligned, capped)', () => {
+  it('the content column starts at the rail (left-aligned, full width — owner 16.11)', () => {
     const { container } = render(
       <ThemeProvider>
         <ViewingAsProvider>
@@ -125,7 +125,7 @@ describe('Header top bar', () => {
       </ThemeProvider>,
     );
     const column = container.querySelector('main')!.firstElementChild as HTMLElement;
-    expect(column.className).toContain('max-w-dashboard');
+    expect(column.className).not.toContain('max-w-');
     expect(column.className.split(/\s+/)).not.toContain('mx-auto');
   });
 

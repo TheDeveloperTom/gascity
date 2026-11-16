@@ -118,7 +118,9 @@ export function GraphCard(props: GraphCardProps) {
         <span style={{ flex: 1 }} />
         <Avatar assignee={node.assignee} />
       </div>
-      <span className="vkg-title">{node.title}</span>
+      <span className="vkg-title" title={node.title}>
+        {node.title}
+      </span>
       <div className="vkg-row" style={{ gap: 4 }}>
         {node.reason ? <ReasonChip state={node.state} text={node.reason} /> : null}
       </div>

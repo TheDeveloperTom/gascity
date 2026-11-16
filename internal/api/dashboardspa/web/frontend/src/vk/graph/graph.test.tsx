@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GraphView } from './GraphView';
+import { GraphView, layoutGraph } from './GraphView';
 import { M04 } from './graphFixture';
 import { whatIfBanner } from './model';
 
@@ -188,5 +188,88 @@ describe('GraphView phone question rows (integration 16.11, eyes at 390 px)', ()
     expect(title).not.toBeNull();
     expect(label.parentElement).toBe(title.parentElement);
     expect(label.parentElement?.classList.contains('vkg-qrow-text')).toBe(true);
+  });
+});
+
+describe('fluid layout (integration 16.11, eyes at 2000 px: graph used only the left 60%)', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const cols = Math.max(M04.columns.length, M04.nodes.reduce((m, n) => Math.max(m, n.column), 0) + 1);
+
+  it('without a measured width the columns keep the 190 px floor', () => {
+    const l = layoutGraph(M04);
+    expect(l.colW).toBe(190);
+  });
+
+  it('spreads columns over the available width: (width − gaps) / columns', () => {
+    const avail = 1500;
+    const l = layoutGraph(M04, avail);
+    const want = Math.min(380, Math.max(190, (avail - (cols - 1) * 26) / cols));
+    expect(l.colW).toBeCloseTo(want, 5);
+    expect(l.width).toBeCloseTo(Math.min(avail, cols * 380 + (cols - 1) * 26), 5);
+    for (const n of M04.nodes) expect(l.box.get(n.id)?.w).toBeCloseTo(want, 5);
+  });
+
+  it('clamps the column width between 190 and 380 px', () => {
+    expect(layoutGraph(M04, 400).colW).toBe(190);
+    expect(layoutGraph(M04, 10000).colW).toBe(380);
+  });
+
+  it('routes the lines from the same computed card positions', () => {
+    const l = layoutGraph(M04, 1800);
+    const e = M04.edges[0];
+    if (e === undefined) throw new Error('fixture has no edges');
+    const a = l.box.get(e.from);
+    if (a === undefined) throw new Error('missing box');
+    expect(l.paths.get(`${e.from}>${e.to}`)).toMatch(new RegExp(`^M ${(a.x + a.w).toFixed(1)} `));
+  });
+
+  it('measures the container with a ResizeObserver and widens cards and column heads', () => {
+    let fire: ((w: number) => void) | null = null;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        cb: ResizeObserverCallback;
+        constructor(cb: ResizeObserverCallback) {
+          this.cb = cb;
+        }
+        observe() {
+          fire = (w: number) => this.cb([{ contentRect: { width: w } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const { card } = setup();
+    expect(fire).not.toBeNull();
+    act(() => fire?.(1800));
+    const want = Math.min(380, Math.max(190, (1800 - (cols - 1) * 26) / cols));
+    const n = M04.nodes[0];
+    if (n === undefined) throw new Error('no nodes');
+    expect(parseFloat(card(n.id).style.width)).toBeCloseTo(want, 3);
+    const head = screen.getByTestId(`graph-col-${M04.columns[0]?.title ?? ''}`);
+    expect(parseFloat(head.style.width)).toBeCloseTo(want, 3);
+  });
+
+  it('a card title carries its full text as a tooltip (one line, ellipsis)', () => {
+    const { card } = setup();
+    const n = M04.nodes.find((x) => x.kind === 'task');
+    if (n === undefined) throw new Error('no task');
+    const title = card(n.id).querySelector('.vkg-title') as HTMLElement;
+    expect(title.getAttribute('title')).toBe(n.title);
+  });
+
+  it('the banner replaces the headline inside the same reserved head slot (no column jump on hover)', () => {
+    const { card } = setup();
+    const slot = screen.getByTestId('graph-head');
+    expect(slot.querySelector('.vkg-concl')).not.toBeNull();
+    const n = M04.nodes.find((x) => x.kind === 'task');
+    if (n === undefined) throw new Error('no task');
+    fireEvent.mouseEnter(card(n.id));
+    expect(screen.getByTestId('graph-head')).toBe(slot);
+    expect(slot.querySelector('.vkg-banner')).not.toBeNull();
   });
 });

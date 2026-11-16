@@ -18,7 +18,9 @@ export function QuestionCard({ onAnswer, onAnswerHover, ...shell }: QuestionCard
         <GraphIcon name="hand" />
         <span className="vkg-label">{node.label}</span>
       </div>
-      <span className="vkg-title">{node.title}</span>
+      <span className="vkg-title" title={node.title}>
+        {node.title}
+      </span>
       <div className="vkg-row" style={{ justifyContent: 'space-between' }}>
         <span className="vkg-holds">держит {node.holds}</span>
         <button

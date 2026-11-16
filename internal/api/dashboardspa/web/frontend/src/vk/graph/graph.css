@@ -27,6 +27,11 @@
 }
 
 /* ---- headline / banner ---- */
+.vkg-head {
+  /* reserved slot: headline and hover banner share it, so columns never jump */
+  height: 76px;
+  overflow: hidden;
+}
 .vkg-concl {
   display: flex;
   flex-direction: column;
@@ -51,7 +56,7 @@
   align-items: flex-start;
   gap: 16px;
   margin: 0 16px 6px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border: 1px solid oklch(var(--vk-text-low));
   border-left-width: 4px;
   border-radius: 4px;
@@ -66,7 +71,11 @@
   margin: 0;
   font-size: 19px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   color: oklch(var(--vk-text-high));
 }
 .vkg-tag {

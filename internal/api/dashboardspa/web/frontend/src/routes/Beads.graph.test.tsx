@@ -185,10 +185,23 @@ function renderPage(entry: string) {
 }
 
 describe('BeadsPage «Граф» tab', () => {
-  it('no Board | Graph switch until an epic is chosen', async () => {
+  // Owner 16.11: he could not find the graph, the switch only showed with an
+  // epic. It is always there; with «Все» the graph view is the all-tickets
+  // graph (placeholder until that lane lands).
+  it('the Board | Graph switch is shown without an epic too', async () => {
     renderPage('/beads');
     await screen.findByRole('region', { name: 'Board' });
-    expect(screen.queryByRole('group', { name: 'View' })).toBeNull();
+    expect(screen.getByRole('group', { name: 'View' })).toBeTruthy();
+  });
+
+  it('with «Все», «Граф» shows the all-tickets placeholder, not the board', async () => {
+    renderPage('/beads');
+    const group = await screen.findByRole('group', { name: 'View' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Graph' }));
+    expect(param('view')).toBe('graph');
+    await screen.findByTestId('graph-all-placeholder');
+    expect(screen.queryByTestId('graph-view')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Board' })).toBeNull();
   });
 
   it('with an epic, «Граф» writes ?view=graph and shows the epic graph', async () => {

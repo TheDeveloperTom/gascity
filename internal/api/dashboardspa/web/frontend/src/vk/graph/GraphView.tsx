@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox, type CardTone } from './GraphCard';
 import { GraphIcon } from './icons';
 import { chainOf, whatIfBanner, type Chain, type GraphModel, type GraphNode } from './model';
@@ -18,7 +18,10 @@ export interface GraphViewProps {
   onAnswer: (questionId: string) => void;
 }
 
-const COLW = 190;
+// Columns are fluid (16.11 eyes at 2000 px): (available − gaps) / columns,
+// clamped to [COLW_MIN, COLW_MAX]; 190 until the container is measured.
+const COLW_MIN = 190;
+const COLW_MAX = 380;
 const GUTTER = 26;
 const CARDH = 90;
 const PITCH = 102;
@@ -57,10 +60,30 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
+type Measured<T> = readonly [ref: RefObject<T>, width: number | null];
+
+/** Content-box width of the element, live via ResizeObserver; null until measured. */
+function useContentWidth<T extends HTMLElement>(): Measured<T> {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[entries.length - 1]?.contentRect.width;
+      if (w !== undefined && w > 0) setWidth((prev) => (prev !== null && Math.abs(prev - w) < 0.5 ? prev : w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
 // ------------------------------------------------------------ layout
 
 interface Layout {
   cols: number;
+  colW: number;
   width: number;
   height: number;
   bottom: number;
@@ -74,9 +97,11 @@ function bez(xs: number, ys: number, xe: number, ye: number): string {
   return `C ${(xs + dx).toFixed(1)} ${ys.toFixed(1)}, ${(xe - dx).toFixed(1)} ${ye.toFixed(1)}, ${xe.toFixed(1)} ${ye.toFixed(1)}`;
 }
 
-export function layoutGraph(model: GraphModel): Layout {
+export function layoutGraph(model: GraphModel, avail: number | null = null): Layout {
   const maxCol = model.nodes.reduce((m, n) => Math.max(m, n.column), 0);
   const cols = Math.max(model.columns.length, maxCol + 1);
+  const fluid = avail === null ? COLW_MIN : (avail - (cols - 1) * GUTTER) / cols;
+  const COLW = Math.min(COLW_MAX, Math.max(COLW_MIN, fluid));
   const xs = Array.from({ length: cols }, (_, i) => i * (COLW + GUTTER));
   const box = new Map<string, CardBox & { col: number }>();
   let bottom = TOP + CARDH;
@@ -121,7 +146,7 @@ export function layoutGraph(model: GraphModel): Layout {
   }
   const width = (xs[cols - 1] ?? 0) + COLW;
   const height = bottom + 24 + channels * 8;
-  return { cols, width, height, bottom, xs, box, paths };
+  return { cols, colW: COLW, width, height, bottom, xs, box, paths };
 }
 
 // ------------------------------------------------------------ chain state
@@ -153,7 +178,8 @@ function cardTone(focus: Focus | null, chain: Chain | null, id: string): CardTon
 export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewProps) {
   const [hover, setHover] = useState<Focus | null>(null);
   const reduced = useReducedMotion();
-  const layout = useMemo(() => layoutGraph(model), [model]);
+  const [scrollRef, avail] = useContentWidth<HTMLDivElement>();
+  const layout = useMemo(() => layoutGraph(model, avail), [model, avail]);
   const known = (id: string | null) => id !== null && model.nodes.some((n) => n.id === id);
 
   const focus: Focus | null =
@@ -183,6 +209,8 @@ export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewPr
         data-motion={reduced ? 'off' : 'on'}
         onMouseLeave={() => setHover(null)}
       >
+        {/* One reserved slot: the banner replaces the headline without moving the columns. */}
+        <div className="vkg-head" data-testid="graph-head">
         {banner !== null && focus !== null ? (
           <div className="vkg-banner" role="status" data-kind={focus.mode === 'answer' ? 'answer' : 'task'}>
             <p>{banner}</p>
@@ -194,13 +222,14 @@ export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewPr
             <p className="vkg-concl-2">{model.subline}</p>
           </div>
         )}
-        <div className="vkg-scroll">
+        </div>
+        <div className="vkg-scroll" ref={scrollRef}>
           <div className="vkg-canvas" style={{ width: layout.width, height: layout.height }}>
             {model.columns.map((c, i) => (
               <div
                 key={`${i}-${c.title}`}
                 className="vkg-colhead"
-                style={{ left: layout.xs[i] ?? 0, width: COLW }}
+                style={{ left: layout.xs[i] ?? 0, width: layout.colW }}
                 data-testid={`graph-col-${c.title}`}
               >
                 <div className="vkg-colhead-bar">
