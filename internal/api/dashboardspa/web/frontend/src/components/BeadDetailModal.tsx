@@ -6,6 +6,7 @@ import { useBoardData } from '../hooks/useBoardData';
 import { useEntityLinks } from '../hooks/useEntityLinks';
 import { t } from '../i18n';
 import { MARKDOWN_CLASS, renderMiniMarkdown } from '../lib/miniMarkdown';
+import { structureDescription } from '../lib/structureDescription';
 import { ownerQuestionOf } from '../lib/ownerQuestions';
 import { milestoneOf } from '../lib/waitReasons';
 import type { SupervisorBead } from '../supervisor/beadReads';
@@ -186,7 +187,7 @@ export function BeadDetailModal({
               data-testid="task-description"
               className={`text-base text-vk-text-normal ${MARKDOWN_CLASS}`}
             >
-              {renderMiniMarkdown(bead.description, { headingFrom: 3 })}
+              {renderMiniMarkdown(structureDescription(bead.description), { headingFrom: 3 })}
             </div>
           ) : undefined
         }

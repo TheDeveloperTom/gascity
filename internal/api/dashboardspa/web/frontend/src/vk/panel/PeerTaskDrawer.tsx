@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
 import { renderMiniMarkdown } from '../../lib/miniMarkdown';
+import { structureDescription } from '../../lib/structureDescription';
 import { safeExternalUrl } from '../../lib/stageBoard';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { ExternalLink } from '../ExternalLink';
@@ -107,7 +108,7 @@ export function PeerTaskDrawer({
         </p>
         {bead.description !== undefined && bead.description.length > 0 && (
           <div className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">
-            {renderMiniMarkdown(bead.description)}
+            {renderMiniMarkdown(structureDescription(bead.description))}
           </div>
         )}
         {children}

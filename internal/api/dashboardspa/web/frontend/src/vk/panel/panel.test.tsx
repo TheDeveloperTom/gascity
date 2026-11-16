@@ -399,6 +399,26 @@ describe('the drawer is one screen (item 8)', () => {
     expect(within(body).getByRole('heading', { level: 4, name: 'Средний' })).toBeTruthy();
   });
 
+  // 16.11 owner: a one-line description (migrated cards) is no longer one wall of text.
+  it('a one-line description renders as paragraphs, bold labels and a numbered list', () => {
+    const flat = {
+      ...DISPATCH_CARD,
+      id: 'gc-flat',
+      description:
+        'Начать сразу. Основание: замер. Четыре вливания: 1) типы; 2) шарды; 3) прогон. Не входит: удаление тестов.',
+    };
+    show(flat, [flat]);
+    const body = screen.getByTestId('task-description');
+    expect(body.querySelectorAll('p').length).toBeGreaterThanOrEqual(3);
+    expect(within(body).getByText('Основание:').tagName).toBe('STRONG');
+    expect(within(body).getByText('Не входит:').tagName).toBe('STRONG');
+    expect(Array.from(body.querySelectorAll('ol > li')).map((li) => li.textContent)).toEqual([
+      'типы',
+      'шарды',
+      'прогон.',
+    ]);
+  });
+
   // review M-8: «нужен ты» sits in the meta line, not in the phone's back row.
   it('«нужен ты» is in the chips row, not in the header row', () => {
     show(question);
