@@ -26,4 +26,10 @@ export const RU_GRAPHPAGE: Readonly<Record<string, string | RuPlural>> = {
   '{now} right away': '{now} сразу',
   '{now} right away, {more} more further': '{now} сразу, ещё {more} дальше',
   'holds {n} tasks: show the chain on the graph': 'показать цепочку на графе',
+  'Chain: {label} · {n} tasks': {
+    one: 'Цепочка: {label} · {n} задача',
+    few: 'Цепочка: {label} · {n} задачи',
+    many: 'Цепочка: {label} · {n} задач',
+  },
+  '← full graph': '← весь граф',
 };
