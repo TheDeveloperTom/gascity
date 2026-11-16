@@ -1,8 +1,9 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { BoardGraph, Lane } from './boardModel';
-import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox, type CardTone } from './GraphCard';
+import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox } from './GraphCard';
 import { GraphIcon } from './icons';
-import { chainOf, whatIfBanner, type Chain, type GraphNode } from './model';
+import { bez, cardTone, columnColor, edgeLit, useReducedMotion, type Focus } from './GraphView';
+import { chainOf, whatIfBanner, type GraphNode } from './model';
 import { QuestionCard } from './QuestionCard';
 import './graph.css';
 import './boardGraph.css';
@@ -14,9 +15,8 @@ import './boardGraph.css';
 // lanes. Hover / click are the per-epic V1 / V5; when part of a lit chain is
 // off screen, «↓ ещё N ниже» / «→ ещё N правее» scroll there.
 //
-// Copied from GraphView.tsx (not exported there, and GraphView is being
-// changed by another lane): bez, columnColor, useReducedMotion, edgeLit,
-// cardTone, and the phone row markup.
+// Shared with GraphView.tsx: bez, columnColor, useReducedMotion, edgeLit,
+// cardTone (exported there).
 
 export interface BoardGraphViewProps {
   graph: BoardGraph;
@@ -40,32 +40,6 @@ const LANE_PAD = 10;
 const LANE_GAP = 22;
 const SUMMARY_H = 40;
 export const COLHEAD_H = 72;
-
-const AMBER = '#F59E0B';
-const GREEN = '#22C55E';
-const BLUE = '#3B82F6';
-const GRAY = '#64748B';
-
-function columnColor(i: number, n: number): string {
-  if (i === 0) return AMBER;
-  if (i === 1) return GREEN;
-  if (i === n - 1) return GRAY;
-  return BLUE;
-}
-
-function useReducedMotion(): boolean {
-  const query = '(prefers-reduced-motion: reduce)';
-  const read = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
-  const [reduced, setReduced] = useState(read);
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const mq = window.matchMedia(query);
-    const on = () => setReduced(mq.matches);
-    mq.addEventListener?.('change', on);
-    return () => mq.removeEventListener?.('change', on);
-  }, []);
-  return reduced;
-}
 
 /** «M05, M06 … M12» → «M05–M12»; anything else is listed. */
 export function epicRange(keys: ReadonlyArray<string>): string {
@@ -105,11 +79,6 @@ export interface BoardLayout {
   box: Map<string, Box>;
   paths: Map<string, string>;
   routes: Map<string, Route>;
-}
-
-function bez(xs: number, ys: number, xe: number, ye: number): string {
-  const dx = (xe - xs) * 0.5;
-  return `C ${(xs + dx).toFixed(1)} ${ys.toFixed(1)}, ${(xe - dx).toFixed(1)} ${ye.toFixed(1)}, ${xe.toFixed(1)} ${ye.toFixed(1)}`;
 }
 
 /** Orthogonal polyline with rounded corners. */
@@ -232,35 +201,6 @@ export function layoutBoard(graph: BoardGraph, avail: number): BoardLayout {
 
 // ------------------------------------------------------------ chain state
 
-type Mode = 'card' | 'answer' | 'select';
-interface Focus {
-  id: string;
-  mode: Mode;
-}
-type EdgeLit = 'idle' | 'faint' | 'held' | 'toward' | 'away' | 'wave';
-
-function edgeLit(focus: Focus | null, chain: Chain | null, from: string, to: string): EdgeLit {
-  if (focus === null || chain === null) return 'idle';
-  const onUp = chain.up.has(from) && (chain.up.has(to) || to === focus.id);
-  const onDown = (from === focus.id || chain.down.has(from)) && chain.down.has(to);
-  if (focus.mode === 'select') return onUp || onDown ? 'held' : 'faint';
-  if (focus.mode === 'answer') return onDown ? 'wave' : 'faint';
-  if (onUp) return 'toward';
-  if (onDown) return 'away';
-  return 'faint';
-}
-
-function cardTone(focus: Focus | null, chain: Chain | null, id: string): CardTone {
-  if (focus === null || chain === null) return 'none';
-  if (focus.mode === 'card') {
-    if (id === focus.id) return 'hover';
-    if (chain.downNow.has(id)) return 'near';
-    if (chain.down.has(id)) return 'far';
-  }
-  if (focus.mode === 'answer' && chain.downNow.has(id)) return 'go';
-  return 'none';
-}
-
 // ------------------------------------------------------------ desktop
 
 interface Viewport {
@@ -270,7 +210,9 @@ interface Viewport {
   h: number;
 }
 
-function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
+type Sized<T> = readonly [ref: React.RefObject<T>, width: number];
+
+function useWidth<T extends HTMLElement>(): Sized<T> {
   const ref = useRef<T>(null);
   const [w, setW] = useState(0);
   useLayoutEffect(() => {
@@ -646,7 +588,7 @@ function BoardPhone({ graph, selectedId, onSelect, onAnswer }: BoardGraphViewPro
       {questions.length > 0 ? (
         <div data-testid="board-phone-ask">
           <div className="vkg-wave">
-            <span aria-hidden="true" className="vkg-dot" style={{ background: AMBER }} />
+            <span aria-hidden="true" className="vkg-dot" style={{ background: columnColor(0, 2) }} />
             <span className="vkg-wave-name">{graph.columns[0]?.title ?? 'От тебя'}</span>
             <span className="vkg-colhead-count">{questions.length}</span>
           </div>

@@ -32,21 +32,21 @@ const GREEN = '#22C55E';
 const BLUE = '#3B82F6';
 const GRAY = '#64748B';
 
-type Mode = 'card' | 'answer' | 'select';
-interface Focus {
+export type Mode = 'card' | 'answer' | 'select';
+export interface Focus {
   id: string;
   mode: Mode;
 }
 export type EdgeLit = 'idle' | 'faint' | 'held' | 'toward' | 'away' | 'wave';
 
-function columnColor(i: number, n: number): string {
+export function columnColor(i: number, n: number): string {
   if (i === 0) return AMBER;
   if (i === 1) return GREEN;
   if (i === n - 1) return GRAY;
   return BLUE;
 }
 
-function useReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const query = '(prefers-reduced-motion: reduce)';
   const read = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
   const [reduced, setReduced] = useState(read);
@@ -92,7 +92,7 @@ interface Layout {
   paths: Map<string, string>;
 }
 
-function bez(xs: number, ys: number, xe: number, ye: number): string {
+export function bez(xs: number, ys: number, xe: number, ye: number): string {
   const dx = (xe - xs) * 0.5;
   return `C ${(xs + dx).toFixed(1)} ${ys.toFixed(1)}, ${(xe - dx).toFixed(1)} ${ye.toFixed(1)}, ${xe.toFixed(1)} ${ye.toFixed(1)}`;
 }
@@ -151,7 +151,7 @@ export function layoutGraph(model: GraphModel, avail: number | null = null): Lay
 
 // ------------------------------------------------------------ chain state
 
-function edgeLit(focus: Focus | null, chain: Chain | null, from: string, to: string): EdgeLit {
+export function edgeLit(focus: Focus | null, chain: Chain | null, from: string, to: string): EdgeLit {
   if (focus === null || chain === null) return 'idle';
   const onUp = chain.up.has(from) && (chain.up.has(to) || to === focus.id);
   const onDown = (from === focus.id || chain.down.has(from)) && chain.down.has(to);
@@ -162,7 +162,7 @@ function edgeLit(focus: Focus | null, chain: Chain | null, from: string, to: str
   return 'faint';
 }
 
-function cardTone(focus: Focus | null, chain: Chain | null, id: string): CardTone {
+export function cardTone(focus: Focus | null, chain: Chain | null, id: string): CardTone {
   if (focus === null || chain === null) return 'none';
   if (focus.mode === 'card') {
     if (id === focus.id) return 'hover';
