@@ -131,7 +131,8 @@ describe('Header language toggle', () => {
       contributor('mail', [item('m1', 'mail', 'attention', 'owner')]),
     ]);
     const summary = container.querySelector('header details summary') as HTMLElement;
-    expect(summary.getAttribute('aria-label')).toBe('Ещё');
+    // vk-1to1: the page list sits behind the canvas «Список» icon.
+    expect(summary.getAttribute('aria-label')).toBe('Список');
     expect(summary.querySelector('.bg-accent')).not.toBeNull();
   });
 

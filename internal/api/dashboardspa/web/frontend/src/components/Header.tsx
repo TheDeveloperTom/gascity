@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { NavLink, useLocation } from 'react-router';
+import { NavLink, useLocation, useSearchParams } from 'react-router';
 import { api } from '../api/client';
 import { getActiveCity } from '../api/cityBase';
 import { NavAttentionIndicator } from '../attention/NavAttentionIndicator';
@@ -15,8 +15,9 @@ import { t } from '../i18n';
 import { useLocale } from '../i18n/LocaleProvider';
 import { hardNavigate } from '../lib/navigation';
 import { supervisorApi } from '../supervisor/client';
-import { MoreGlyph } from '../vk/shell/BottomTabs';
 import { TopNav } from '../vk/shell/TopNav';
+import { HelpGlyph, LinkGlyph, ListGlyph, SettingsGlyph } from '../vk/shell/glyphs';
+import { openCommandBar } from '../lib/commandBar';
 import { ALL_VIEWS } from '../views/registry';
 import { filterEnabledViews } from '../views/resolve';
 import { Icon, type IconName } from './icons';
@@ -157,16 +158,39 @@ export function Header() {
   // The «Ещё» menu is a <details>: no state, keyboard and screen-reader
   // native. It closes whenever the route changes.
   const moreRef = useRef<HTMLDetailsElement>(null);
+  const settingsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     if (moreRef.current !== null) moreRef.current.open = false;
+    if (settingsRef.current !== null) settingsRef.current.open = false;
   }, [pathname]);
+  // The open task (board drawer, `?bead=`): the canvas header shows its id
+  // with a copy-link icon on the left.
+  const [searchParams] = useSearchParams();
+  const openTask = searchParams.get('bead')?.trim() || null;
 
   const groups = navGroups(ROUTES);
   const ownerAttention = attention.owner.total;
   return (
-    <header className="border-b border-vk-border bg-vk-bg-secondary pl-[var(--sail)] pr-[var(--sair)] pt-[var(--sait)] font-vk-sans md:sticky md:top-0 md:z-30">
-      <div className="flex min-h-11 items-center gap-2 px-3 md:gap-3">
-        <div className="flex min-w-0 items-center gap-1.5">
+    <header className="border-b border-vk-border bg-vk-bg-primary pl-[var(--sail)] pr-[var(--sair)] pt-[var(--sait)] font-vk-sans md:sticky md:top-0 md:z-30 md:pl-0">
+      <div className="flex min-h-11 items-center gap-2 px-3 md:grid md:h-11 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-2">
+        <div className="hidden min-w-0 items-center gap-2 md:flex">
+          {openTask !== null && (
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(window.location.href).catch(() => undefined);
+              }}
+              aria-label={t('Copy link to {id}', { id: openTask })}
+              title={t('Copy link to {id}', { id: openTask })}
+              className="inline-flex h-[30px] min-w-0 items-center gap-1.5 rounded-[3px] px-1 font-vk-mono text-[15px] text-vk-text-normal hover:text-vk-text-high focus-mark"
+            >
+              <LinkGlyph />
+              <span className="truncate">{openTask}</span>
+            </button>
+          )}
+          <TopNav />
+        </div>
+        <div className="flex min-w-0 items-center justify-center gap-1.5">
           {showSwitcher ? (
             <label className="sr-only" htmlFor="city-switcher">
               {t('Switch city')}
@@ -177,7 +201,7 @@ export function Header() {
               id="city-switcher"
               value={selectedCity}
               onChange={(e) => onSwitchCity(e.target.value)}
-              className="h-11 min-w-0 max-w-[12rem] cursor-pointer truncate rounded-[3px] border-0 bg-transparent px-1 text-[14px] text-vk-text-normal transition-colors duration-150 ease-out-quart hover:text-vk-text-high focus-mark md:h-[30px]"
+              className="h-11 min-w-0 max-w-[12rem] cursor-pointer truncate rounded-[3px] border-0 bg-transparent px-1 text-[15px] text-vk-text-normal transition-colors duration-150 ease-out-quart hover:text-vk-text-high focus-mark md:h-[30px]"
             >
               {/* A grammar-valid but unregistered/renamed city in the URL is not
                   a list member; the disabled option keeps it visible without
@@ -194,15 +218,13 @@ export function Header() {
               ))}
             </select>
           ) : (
-            <span className="min-w-0 truncate px-1 text-[14px] text-vk-text-normal">
+            <span className="min-w-0 truncate px-1 text-[15px] text-vk-text-normal">
               {selectedCity || t('city')}
             </span>
           )}
         </div>
 
-        <TopNav />
-
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
           {showReadingAs && (
             <span className="hidden text-label md:inline">
               <StatusBadge
@@ -223,10 +245,11 @@ export function Header() {
 
           <details ref={moreRef} className="relative">
             <summary
-              aria-label={t('More')}
+              aria-label={t('List')}
+              title={t('All pages')}
               className={`${BAR_BUTTON} relative cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
             >
-              <MoreGlyph size={18} />
+              <ListGlyph />
               {ownerAttention > 0 && (
                 <span
                   aria-hidden="true"
@@ -293,39 +316,53 @@ export function Header() {
 
           <button
             type="button"
-            onClick={toggle}
-            aria-label={
-              resolved === 'dark' ? t('Switch to light theme') : t('Switch to dark theme')
-            }
+            onClick={openCommandBar}
+            aria-label={t('Help')}
+            title={t('Help')}
             className={BAR_BUTTON}
           >
-            <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[17px] w-[17px]" />
+            <HelpGlyph />
           </button>
-          {/* Language toggle (SH-18, ruling R2): the label names the language
-              it switches TO; the choice persists in gascity:locale:v2. The tree
-              remounts on a change, so focus is handed back (review M-5). */}
-          <button
-            ref={localeToggleRef}
-            type="button"
-            onClick={() => {
-              refocusLocaleToggle = true;
-              setLocale(locale === 'ru' ? 'en' : 'ru');
-            }}
-            aria-label={
-              locale === 'ru'
-                ? t('Switch language to English (EN)')
-                : t('Switch language to Russian (RU)')
-            }
-            className={`${BAR_BUTTON} font-semibold`}
-          >
-            {locale === 'ru' ? 'EN' : 'RU'}
-          </button>
-          <span
-            title={t('You')}
-            className="ml-1 hidden h-7 w-7 shrink-0 items-center justify-center rounded-full bg-vk-bg-panel text-[13px] font-medium text-vk-text-normal md:inline-flex"
-          >
-            А
-          </span>
+          <details ref={settingsRef} className="relative">
+            <summary
+              aria-label={t('Settings')}
+              title={t('Settings')}
+              className={`${BAR_BUTTON} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+            >
+              <SettingsGlyph />
+            </summary>
+            <div className="absolute right-0 top-full z-40 mt-1 flex items-center gap-1 rounded-[4.5px] border border-vk-border bg-vk-bg-primary p-1 shadow-overlay">
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label={
+                  resolved === 'dark' ? t('Switch to light theme') : t('Switch to dark theme')
+                }
+                className={BAR_BUTTON}
+              >
+                <Icon name={resolved === 'dark' ? 'sun' : 'moon'} className="h-[17px] w-[17px]" />
+              </button>
+              {/* Language toggle (SH-18, ruling R2): the label names the language
+                  it switches TO; the choice persists in gascity:locale:v2. The tree
+                  remounts on a change, so focus is handed back (review M-5). */}
+              <button
+                ref={localeToggleRef}
+                type="button"
+                onClick={() => {
+                  refocusLocaleToggle = true;
+                  setLocale(locale === 'ru' ? 'en' : 'ru');
+                }}
+                aria-label={
+                  locale === 'ru'
+                    ? t('Switch language to English (EN)')
+                    : t('Switch language to Russian (RU)')
+                }
+                className={`${BAR_BUTTON} font-semibold`}
+              >
+                {locale === 'ru' ? 'EN' : 'RU'}
+              </button>
+            </div>
+          </details>
         </div>
       </div>
     </header>

@@ -121,12 +121,20 @@ const PAIRS: Array<[string, string]> = [
   ['on-primary', 'primary'],
 ];
 
-describe('«Табличка» tokens', () => {
+// vk-1to1 16.11: the canvas is the spec, so two light canvas pairs that sit
+// under 4.5:1 are kept as drawn and listed here (VK error #B83B3B on
+// bg-panel #E3E3E3 is 4.39:1, VK success #2F7D2B on it is 4.00:1).
+const CANVAS_EXCEPTIONS: Record<string, ReadonlyArray<string>> = {
+  light: ['accent on surface-tint', 'ok on surface-tint'],
+};
+
+describe('VK tokens (canvas values)', () => {
   for (const [theme, block] of Object.entries(BLOCKS)) {
-    it(`${theme}: every measured pair clears 4.5:1`, () => {
+    it(`${theme}: every measured pair clears 4.5:1 (bar the listed canvas pairs)`, () => {
       expect(block, `${theme} block present`).not.toBe('');
+      const allowed = CANVAS_EXCEPTIONS[theme] ?? [];
       const low = PAIRS.map(([fg, bg]) => [fg, bg, contrast(block, fg, bg)] as const)
-        .filter(([, , ratio]) => ratio < 4.5)
+        .filter(([fg, bg, ratio]) => ratio < 4.5 && !allowed.includes(`${fg} on ${bg}`))
         .map(([fg, bg, ratio]) => `${fg} on ${bg}: ${ratio.toFixed(2)}`);
       expect(low).toEqual([]);
     });
@@ -136,14 +144,51 @@ describe('«Табличка» tokens', () => {
     });
   }
 
-  // design pass 15.11: dark enamel is a brighter cobalt (#3355C2) on the
-  // vibe-kanban dark ladder, ground #1A1B1E (Discord's darker frame).
-  it('enamel is #1B3F8B in light and #3355C2 in dark', () => {
-    expect(hexClose(toHex(tokenLinear(BLOCKS.light, 'plate')), '#1B3F8B')).toBe(true);
-    expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'plate')), '#3355C2')).toBe(true);
-    expect(hexClose(toHex(tokenLinear(BLOCKS.light, 'surface')), '#F2F2EF')).toBe(true);
-    expect(hexClose(toHex(tokenLinear(BLOCKS.light, 'fg')), '#1F2238')).toBe(true);
-    expect(hexClose(toHex(tokenLinear(BLOCKS.dark, 'surface')), '#1A1B1E')).toBe(true);
+  // vk-1to1 16.11: every ladder token is the canvas `.vk` / `.vk.dark` hex.
+  const CANVAS: Record<'light' | 'dark', Record<string, string>> = {
+    light: {
+      'surface-raised': '#FFFFFF',
+      surface: '#F2F2F2',
+      'surface-tint': '#E3E3E3',
+      fg: '#0D0D0D',
+      'fg-muted': '#333333',
+      'fg-faint': '#636363',
+      rule: '#E3E3E3',
+      accent: '#B83B3B',
+      warn: '#96540A',
+      ok: '#2F7D2B',
+      plate: '#1D5BD6',
+      'vk-brand': '#EA7A29',
+    },
+    dark: {
+      'surface-raised': '#212121',
+      surface: '#1C1C1C',
+      'surface-tint': '#292929',
+      fg: '#F5F5F5',
+      'fg-muted': '#C4C4C4',
+      'fg-faint': '#969696',
+      rule: '#333333',
+      accent: '#E88080',
+      warn: '#F2B544',
+      ok: '#6CC468',
+      'plate-ring': '#8DB4FF',
+    },
+  };
+  for (const theme of ['light', 'dark'] as const) {
+    it(`${theme}: the ladder is the canvas VK palette`, () => {
+      const off = Object.entries(CANVAS[theme])
+        .map(([name, hex]) => [name, hex, toHex(tokenLinear(BLOCKS[theme], name))] as const)
+        .filter(([, hex, actual]) => !hexClose(actual, hex))
+        .map(([name, hex, actual]) => `--${name}: ${actual}, canvas ${hex}`);
+      expect(off).toEqual([]);
+    });
+  }
+
+  it('the rail tile colours are the canvas active-bg / active-fg', () => {
+    expect(BLOCKS.light).toContain('--vkc-active-bg: #dce8ff;');
+    expect(BLOCKS.light).toContain('--vkc-active-fg: #1d5bd6;');
+    expect(BLOCKS.dark).toContain('--vkc-active-bg: rgb(59 130 246 / 0.18);');
+    expect(BLOCKS.dark).toContain('--vkc-active-fg: #8db4ff;');
   });
 
   it('in light the focus ring is the enamel itself (review m5: no drift)', () => {
@@ -202,7 +247,10 @@ describe('«Табличка» tokens', () => {
     for (const [theme, block] of Object.entries(BLOCKS)) {
       for (const fg of ['fg', 'fg-muted', 'fg-faint', 'accent', 'warn']) {
         const ratio = contrastOnFill(block, fg, fill ?? '', 'surface-raised');
-        if (ratio < 4.5) low.push(`${theme} ${fg} on ${fill}: ${ratio.toFixed(2)}`);
+        const canvasPair = (CANVAS_EXCEPTIONS[theme] ?? []).includes(
+          `${fg} on ${fill}`.replace('bg-', ''),
+        );
+        if (ratio < 4.5 && !canvasPair) low.push(`${theme} ${fg} on ${fill}: ${ratio.toFixed(2)}`);
       }
     }
     expect(low).toEqual([]);

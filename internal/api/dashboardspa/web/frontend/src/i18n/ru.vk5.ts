@@ -13,4 +13,13 @@ export const RU_VK5: Readonly<Record<string, string | RuPlural>> = {
   'devwork product': 'Продукт devwork',
   'The city itself': 'Сам город',
   You: 'Ты',
+  // vk-1to1 shell: the canvas project rail and header icons.
+  Projects: 'Проекты',
+  Menu: 'Меню',
+  'Connect a project': 'Подключить проект',
+  'Mayor in Discord': 'Мэр в Discord',
+  List: 'Список',
+  Help: 'Помощь',
+  Settings: 'Настройки',
+  'Copy link to {id}': 'Скопировать ссылку на {id}',
 };
