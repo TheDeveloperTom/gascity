@@ -25,12 +25,15 @@ const LEFT: Readonly<Record<string, { max: number; why: string }>> = {
   'vk/CommandBar.tsx': { max: 2, why: 'the «esc» key cap' },
   'vk/shell/ProjectRail.tsx': { max: 1, why: 'the «DW» project mark (canvas rail)' },
   'vk/board/KanbanCard.tsx': { max: 1, why: 'a template literal, not text' },
+  'components/health/LiveChart.tsx': {
+    max: 1,
+    why: 'a TS return type `[Ref<…>, number]`, not text',
+  },
   'CityBootstrap.tsx': {
     max: 7,
     why: 'first-run `gc init` instructions; no city exists for the owner to see them',
   },
   // Operator debug pages behind «Ещё» (not the owner's two sections).
-  'routes/Health.tsx': { max: 62, why: 'debug page «Здоровье»' },
   'routes/Activity.tsx': { max: 25, why: 'debug page «Активность»' },
   'routes/Agents.tsx': { max: 13, why: 'debug page «Агенты»' },
   'routes/AgentDetail.tsx': { max: 9, why: 'debug page, one agent' },

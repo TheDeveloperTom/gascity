@@ -473,21 +473,10 @@
   }
 }
 
-/* Health charts (vk/health, owner 16.11). The dataviz reference palette's
-   first two categorical slots, stepped per theme and validated against the
-   card surfaces (#FFFFFF light, #222327 dark): contrast ≥ 3:1, adjacent CVD
-   ΔE 24.7 / 26.8. Marks only; text keeps the text tokens. */
+/* Health charts (vk/health, owner 16.11). One mark colour, the VK canvas's
+   one blue (active-fg), aliased so it follows both themes with the canvas:
+   #1D5BD6 on the light card #FFFFFF (6.0:1), #8DB4FF on the dark card
+   #212121. Marks only; text keeps the text tokens. */
 :root {
-  --viz-1: #2a78d6;
-  --viz-2: #eb6834;
-}
-:root[data-theme='dark'] {
-  --viz-1: #3987e5;
-  --viz-2: #d95926;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not([data-theme='dark']) {
-    --viz-1: #3987e5;
-    --viz-2: #d95926;
-  }
+  --viz-1: var(--vkc-active-fg);
 }
