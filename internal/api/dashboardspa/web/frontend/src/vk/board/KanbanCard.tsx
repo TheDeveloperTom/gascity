@@ -25,11 +25,14 @@
  * board model) instead of VK's issue props; useTranslation → our `t`; the
  * description preview, tag editor, assignee avatar, more-actions menu and PR
  * status badge are dropped (owner cuts); the PR is a plain `#N` ExternalLink;
- * the title wraps (`[overflow-wrap:anywhere]`, two lines) instead of
- * truncating; badges add «нужен ты», «срочно», «стоит N ч» and the blocker
- * relations named by milestone tag + short title; a step panel shows what the
- * agent does now. Card shell (padding, border, -1px margins) from the
- * approved Cards/Main design frames.
+ * vk11 (16.11, canvas 1:1): the top line is a short mono label from the title
+ * / milestone / epic (cardLabel), never the bead id; the title is one line
+ * with an ellipsis; an assignee avatar sits at the right («А» ты, «И»
+ * Исполнитель, «Р» Ричард); chips are the epic dot chip, «ждёт тебя», the PR
+ * number, compact relation chips (icon + short label, two then «+N»),
+ * «срочно» and «стоит N ч» with a clock; no project tag. A step panel shows
+ * what the agent does now with «сейчас». Card shell (padding, border, -1px
+ * margins, selected border) from the approved Cards/Main frames.
  */
 // Source: vibe-kanban packages/ui/src/components/KanbanCardContent.tsx
 
@@ -43,14 +46,15 @@ import { ageText, lastProgressMs, STUCK_AFTER_MS } from '../../lib/boardFacts';
 import type { BoardCard } from '../../lib/boardModel';
 import { OWNER_QUESTION_LABEL } from '../../lib/ownerQuestions';
 import { routeRunHref } from '../../lib/stageBoard';
-import { blockerIds, milestoneOf, titleStartsWithTag } from '../../lib/waitReasons';
+import { blockerIds, milestoneOf } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
 import { KanbanBadge } from './KanbanBadge';
-import { PeerKanbanCard, PROJECT_COLOR } from './PeerKanbanCard';
-import { PriorityIcon, priorityLevelOf } from './PriorityIcon';
-import { RelationshipBadge } from './RelationshipBadge';
+import { CardAvatar } from './CardAvatar';
+import { cardLabel } from './cardLabel';
+import { PeerKanbanCard } from './PeerKanbanCard';
+import { RelationshipBadge, type RelationshipDisplayType } from './RelationshipBadge';
 import { RunningDots } from './RunningDots';
 
 /** Milestone tag colours: the design's dots, picked by a stable hash of the key. */
@@ -82,11 +86,32 @@ function shortTitle(title: string): string {
   return clean.length > SHORT_TITLE ? `${clean.slice(0, SHORT_TITLE - 1)}…` : clean;
 }
 
-function relationLabel(bead: SupervisorBead): string {
-  const tag = milestoneOf(bead);
-  const title = shortTitle(bead.title);
-  return tag === null || titleStartsWithTag(title, tag) ? title : `${tag} ${title}`;
+function epicTitleOf(bead: SupervisorBead, beadById: (id: string) => SupervisorBead | undefined): string | null {
+  if (!bead.parent) return null;
+  const parent = beadById(bead.parent);
+  return parent !== undefined && parent.issue_type === 'epic' ? parent.title : null;
 }
+
+/** A card's derived label and title (canvas: «M04 #3» over the bare title). */
+export function labelOf(
+  bead: SupervisorBead,
+  beadById: (id: string) => SupervisorBead | undefined,
+): { label: string | null; title: string } {
+  return cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle: epicTitleOf(bead, beadById) });
+}
+
+/** A related task's chip text: its short label, else its short title — never its id. */
+function relationLabel(bead: SupervisorBead, beadById: (id: string) => SupervisorBead | undefined): string {
+  const derived = labelOf(bead, beadById);
+  return derived.label ?? shortTitle(derived.title);
+}
+
+const CLOCK = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+    <circle cx="8" cy="8" r="5.6" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M8 5v3.2l2 1.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
 
 export interface KanbanCardProps {
   card: BoardCard;
@@ -144,6 +169,9 @@ function OwnKanbanCard({
   }, [selected]);
 
   const milestone = milestoneOf(bead);
+  const epicTitle = epicTitleOf(bead, beadById);
+  const { label, title } = labelOf(bead, beadById);
+  const epicChip = milestone ?? epicTitle;
   const running = isRunning(card, sessions);
   const active = stage.stage === 'working' || stage.stage === 'review' || stage.stage === 'pr';
   const progress = active ? lastProgressMs(card, sessions) : null;
@@ -151,32 +179,54 @@ function OwnKanbanCard({
   const needsYou = (bead.labels ?? []).includes(OWNER_QUESTION_LABEL);
   const urgent = bead.priority != null && bead.priority <= 1 && stage.stage !== 'merged';
 
-  const blockedBy: { id: string; label: string; title: string }[] = [];
+  const relations: { id: string; label: string; title: string; type: RelationshipDisplayType }[] = [];
   if (card.wait?.kind === 'decision') {
-    blockedBy.push({ id: card.wait.gate.id, label: `«${shortTitle(card.wait.gate.title)}»`, title: card.wait.gate.title });
+    const gate = card.wait.gate;
+    const known = beadById(gate.id);
+    relations.push({
+      id: gate.id,
+      label: known !== undefined ? relationLabel(known, beadById) : shortTitle(gate.title),
+      title: gate.title,
+      type: 'blocked_by',
+    });
   }
   if (stage.stage === 'waiting' && (card.wait?.kind === 'tasks' || card.wait?.kind === 'held')) {
     for (const id of blockerIds(bead)) {
       const blocker = beadById(id);
       if (blocker !== undefined && blocker.status === 'closed') continue;
-      blockedBy.push({ id, label: blocker ? relationLabel(blocker) : id, title: blocker?.title ?? id });
+      relations.push({
+        id,
+        label: blocker ? relationLabel(blocker, beadById) : id,
+        title: blocker?.title ?? id,
+        type: 'blocked_by',
+      });
     }
   }
-  const blocks = (stage.stage === 'merged' ? [] : (waitersOf?.get(bead.id) ?? [])).map((id) => {
+  for (const id of stage.stage === 'merged' ? [] : (waitersOf?.get(bead.id) ?? [])) {
     const waiter = beadById(id);
-    return { id, label: waiter ? relationLabel(waiter) : id, title: waiter?.title ?? id };
-  });
-  const relations = [
-    ...blockedBy.map((r) => ({ ...r, type: 'blocked_by' as const })),
-    ...blocks.map((r) => ({ ...r, type: 'blocks' as const })),
-  ];
+    relations.push({
+      id,
+      label: waiter ? relationLabel(waiter, beadById) : id,
+      title: waiter?.title ?? id,
+      type: 'blocks',
+    });
+  }
+  for (const dep of bead.dependencies ?? []) {
+    if (dep.type !== 'related' || dep.depends_on_id === bead.id) continue;
+    const other = beadById(dep.depends_on_id);
+    if (other === undefined) continue;
+    relations.push({ id: other.id, label: relationLabel(other, beadById), title: other.title, type: 'related' });
+  }
+
   const pr = stage.pr;
   const stepLabel =
     active && stage.stepLabel !== null && stage.stepLabel.length > 0 && stage.stepLabel !== 'Queued'
       ? stage.stepLabel
       : null;
-  const priority = priorityLevelOf(bead.priority);
+  const stepAge =
+    progress === null || nowMs - progress < 60_000 ? t('now') : ageText(nowMs - progress);
   const routeAttention = stage.marks.find((mark) => mark.tone === 'attention') ?? null;
+  const executor = stage.stage === 'working';
 
   return (
     <article
@@ -189,25 +239,26 @@ function OwnKanbanCard({
       {...(attentionSeverity === null ? {} : { 'data-attention-severity': attentionSeverity })}
       onClick={() => onSelect(bead.id)}
       className={cn(
-        'group flex min-w-0 cursor-pointer flex-col gap-1 border-vk-border p-2 font-vk-sans',
-        selected ? null : 'bg-vk-bg-primary',
+        'group flex min-w-0 cursor-pointer flex-col gap-1 bg-vk-bg-primary p-2 font-vk-sans hover:bg-vk-bg-secondary',
         variant === 'column' ? '-mx-px -mt-px border' : 'border-b',
-        selected && 'relative z-[1] bg-vk-brand/10 ring-2 ring-inset ring-vk-brand-secondary',
+        // canvas Main: the open task keeps its background and gets a --sel (brand) border
+        selected ? 'relative z-[1] border-vk-brand' : 'border-vk-border',
         className,
       )}
     >
-      {/* Row 1: stage tag (or id) + running dots */}
-      <div className="flex items-center justify-between gap-1">
+      {/* Row 1: short label + running dots */}
+      {(label !== null || running) && (
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate font-vk-mono text-sm text-vk-text-low" title={bead.id}>
-            {milestone ?? bead.id}
-          </span>
+          {label !== null && (
+            <span data-card-label="" className="truncate font-vk-mono text-sm text-vk-text-low">
+              {label}
+            </span>
+          )}
           {running && <RunningDots />}
         </div>
-        <PriorityIcon priority={priority} />
-      </div>
+      )}
 
-      {/* Row 2: title — the card's one button (keyboard + screen reader) */}
+      {/* Row 2: title on one line — the card's one button (keyboard + screen reader) */}
       <button
         type="button"
         aria-pressed={selected}
@@ -219,18 +270,27 @@ function OwnKanbanCard({
         className="min-w-0 rounded-sm text-left focus-mark"
       >
         <span
+          title={bead.title}
           className={cn(
-            'line-clamp-2 min-w-0 text-base [overflow-wrap:anywhere]',
+            'block min-w-0 truncate text-base',
             stage.stage === 'merged' ? 'text-vk-text-low' : 'text-vk-text-normal',
           )}
         >
-          {bead.title}
+          {title}
         </span>
       </button>
 
-      {/* Row 5: tags, PR, relationships */}
-      {(milestone !== null ||
-        card.tag !== null ||
+      {/* Row 3: assignee avatar at the right */}
+      <div className="flex items-center justify-end text-vk-text-low">
+        {executor ? (
+          <CardAvatar letter="И" label={t('Implementer')} tone="executor" />
+        ) : (
+          <CardAvatar letter="А" label={t('Assignee: you')} tone="owner" />
+        )}
+      </div>
+
+      {/* Row 4: chips */}
+      {(epicChip !== null ||
         needsYou ||
         urgent ||
         stalledFor !== null ||
@@ -238,9 +298,14 @@ function OwnKanbanCard({
         relations.length > 0 ||
         stage.marks.length > 0) && (
         <div className="flex min-w-0 flex-wrap items-center gap-1">
-          {milestone !== null && <KanbanBadge name={milestone} color={tagColor(milestone)} />}
-          {card.tag !== null && <KanbanBadge name={card.tag} color={PROJECT_COLOR} />}
-          {needsYou && <KanbanBadge name={t('needs you')} color={NEEDS_YOU_COLOR} />}
+          {epicChip !== null && (
+            <KanbanBadge
+              name={<span className="max-w-[12rem] truncate">{epicChip}</span>}
+              color={tagColor(epicChip)}
+              {...(epicTitle !== null && milestone === null ? { title: epicTitle } : {})}
+            />
+          )}
+          {needsYou && <KanbanBadge name={t('waits for you')} color={NEEDS_YOU_COLOR} />}
           {pr !== null &&
             (pr.url !== null ? (
               <ExternalLink
@@ -255,7 +320,7 @@ function OwnKanbanCard({
             ))}
           {urgent && <KanbanBadge name={t('urgent')} tone="error" />}
           {stalledFor !== null && (
-            <KanbanBadge name={t('stalled {age}', { age: ageText(stalledFor) })} tone="error" />
+            <KanbanBadge name={t('stalled {age}', { age: ageText(stalledFor) })} tone="error" icon={CLOCK} />
           )}
           {stage.marks.map((mark) => (
             <KanbanBadge
@@ -271,6 +336,7 @@ function OwnKanbanCard({
               displayType={rel.type}
               relatedIssueDisplayId={rel.label}
               title={rel.title}
+              compact
             />
           ))}
           {relations.length > VISIBLE_RELATIONS && (
@@ -279,9 +345,9 @@ function OwnKanbanCard({
         </div>
       )}
 
-      {/* What the agent does now */}
+      {/* What the agent does now (canvas: «Исполнитель пишет код» / dots · сейчас) */}
       {stepLabel !== null && (
-        <div className="mt-1 flex min-w-0 flex-col gap-1 rounded-sm bg-vk-bg-panel p-2">
+        <div data-step-panel="" className="mt-1 flex min-w-0 flex-col gap-1 rounded-sm bg-vk-bg-panel p-2">
           {stage.root !== null ? (
             <Link
               to={routeRunHref(stage.root, stage.step)}
@@ -291,15 +357,17 @@ function OwnKanbanCard({
                   ? t('Open step {id} in its run', { id: stage.step.id })
                   : t('Open run {id}', { id: stage.root.id })
               }
-              className="line-clamp-2 rounded-sm text-sm text-vk-text-normal [overflow-wrap:anywhere] focus-mark hover:underline"
+              className="block truncate rounded-sm text-sm text-vk-text-normal focus-mark hover:underline"
             >
               {stepLabel}
             </Link>
           ) : (
-            <span className="line-clamp-2 text-sm text-vk-text-normal [overflow-wrap:anywhere]">
-              {stepLabel}
-            </span>
+            <span className="block truncate text-sm text-vk-text-normal">{stepLabel}</span>
           )}
+          <span className="flex items-center gap-1.5 text-xs text-vk-text-low">
+            {running && <RunningDots />}
+            {stepAge}
+          </span>
         </div>
       )}
     </article>

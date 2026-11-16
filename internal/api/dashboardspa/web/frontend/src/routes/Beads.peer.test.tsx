@@ -167,7 +167,8 @@ describe('BeadsPage with Richard’s board', () => {
     await screen.findByText('Изменение схемы users');
     const card = peerCard()!;
     expect(within(card).getByText('Ричарда')).toBeTruthy();
-    expect(within(card).getByLabelText('Карточка Ричарда').textContent).toBe('Р');
+    // vk11: canvas Main — «Исполнитель: Ричард», filled teal «Р»
+    expect(within(card).getByLabelText('Исполнитель: Ричард').textContent).toBe('Р');
     // design Main: the rig heads the card and is its project tag
     expect(within(card).getAllByText('crm-api')).toHaveLength(2);
     expect(within(card).getByText(`на ${clock(at)}`)).toBeTruthy();

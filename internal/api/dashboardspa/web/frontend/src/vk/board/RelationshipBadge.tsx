@@ -24,16 +24,13 @@
  * Modified for the Gas City dashboard: labels go through our `t`; VK tokens
  * map to the --vk-* aliases (error → accent, our nearest red); the onClick /
  * keyboard role is dropped (the board opens the card, not the relation); a
- * `title` carries the full related title.
+ * `title` carries the full related title. vk11 (16.11): the canvas's own
+ * icons replace phosphor's; on the card the chip is `compact` (icon + short
+ * label, no «ждёт:» prefix).
  */
 // Source: vibe-kanban packages/ui/src/components/RelationshipBadge.tsx
 
-import {
-  ArrowBendUpRightIcon,
-  ArrowsLeftRightIcon,
-  CopyIcon,
-  ProhibitIcon,
-} from '@phosphor-icons/react';
+import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { cn } from '../cn';
 
@@ -52,13 +49,37 @@ export interface RelationshipBadgeProps {
   title?: string;
 }
 
-const RELATIONSHIP_ICONS = {
-  blocks: ArrowBendUpRightIcon,
-  blocked_by: ProhibitIcon,
-  related: ArrowsLeftRightIcon,
-  duplicate_of: CopyIcon,
-  duplicated_by: CopyIcon,
-} as const;
+// The canvas's own 15 px icons (Cards / Main 15.11): ⊘ waits for, ↱ blocks,
+// ⇄ related (replaces VK's phosphor set; vk11 card lane).
+const STROKE = { stroke: 'currentColor', strokeWidth: 1.6 } as const;
+const DUPLICATE = <rect x="3" y="3" width="10" height="10" rx="1.5" {...STROKE} />;
+const ICON_PATHS: Readonly<Record<RelationshipDisplayType, ReactNode>> = {
+  blocked_by: (
+    <>
+      <circle cx="8" cy="8" r="5.6" {...STROKE} />
+      <path d="M4 4l8 8" {...STROKE} />
+    </>
+  ),
+  blocks: (
+    <path
+      d="M3 13V9.5A3.5 3.5 0 0 1 6.5 6H13M10 3l3 3-3 3"
+      {...STROKE}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ),
+  related: (
+    <path
+      d="M2.5 5.5h11M11 3l2.5 2.5L11 8M13.5 10.5h-11M5 8l-2.5 2.5L5 13"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ),
+  duplicate_of: DUPLICATE,
+  duplicated_by: DUPLICATE,
+};
 
 function getRelationshipLabel(displayType: RelationshipDisplayType): string {
   switch (displayType) {
@@ -82,7 +103,6 @@ export function RelationshipBadge({
   className,
   title,
 }: RelationshipBadgeProps) {
-  const Icon = RELATIONSHIP_ICONS[displayType];
   const label = getRelationshipLabel(displayType);
   const isBlocking = displayType === 'blocks' || displayType === 'blocked_by';
 
@@ -100,7 +120,9 @@ export function RelationshipBadge({
         className,
       )}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" weight="bold" aria-hidden="true" />
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+        {ICON_PATHS[displayType]}
+      </svg>
       <span className="truncate">
         {compact ? relatedIssueDisplayId : `${label} ${relatedIssueDisplayId}`}
       </span>

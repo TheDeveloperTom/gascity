@@ -10,6 +10,7 @@ import { RU_VK6 } from './ru.vk6';
 import { RU_VKFINAL } from './ru.vkfinal';
 import { RU_H1 } from './ru.h1';
 import { RU_POLISH2 } from './ru.polish2';
+import { RU_VK11CARD } from './ru.vk11card';
 
 // A small gettext-style layer: the English string is the key, Russian lives
 // in `ru.ts` plus one dictionary per dashboard-v3 lane (`ru.home.ts`,
@@ -29,6 +30,7 @@ const RU: Readonly<Record<string, string | RuPlural>> = {
   ...RU_VKFINAL,
   ...RU_H1,
   ...RU_POLISH2,
+  ...RU_VK11CARD,
 };
 
 export type Locale = 'en' | 'ru';

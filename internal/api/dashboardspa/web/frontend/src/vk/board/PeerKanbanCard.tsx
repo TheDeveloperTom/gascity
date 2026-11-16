@@ -2,9 +2,9 @@ import { useEffect, useRef } from 'react';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
 import type { BoardCard } from '../../lib/boardModel';
-import { milestoneOf } from '../../lib/waitReasons';
 import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
+import { CardAvatar } from './CardAvatar';
 import { KanbanBadge } from './KanbanBadge';
 
 // vk-final part 3: a card from a peer's board (design Main, «Изменение схемы
@@ -65,7 +65,6 @@ export function PeerKanbanCard({
     if (selected) ref.current?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
   }, [selected]);
   if (peer === null) return null;
-  const milestone = milestoneOf(bead);
   const pr = card.stage.pr;
   const clock = asOfClock(peer.asOf);
 
@@ -78,16 +77,17 @@ export function PeerKanbanCard({
       data-stage={card.stage.stage}
       onClick={() => onSelect(card.key)}
       className={cn(
-        'group flex min-w-0 cursor-pointer flex-col gap-1 border-vk-border p-2 font-vk-sans',
-        selected ? null : 'bg-vk-bg-primary',
+        'group flex min-w-0 cursor-pointer flex-col gap-1 bg-vk-bg-primary p-2 font-vk-sans hover:bg-vk-bg-secondary',
         variant === 'column' ? '-mx-px -mt-px border' : 'border-b',
-        selected && 'relative z-[1] bg-vk-brand/10 ring-2 ring-inset ring-vk-brand-secondary',
+        // vk11: canvas Main — the open card keeps its background, brand (--sel) border
+        selected ? 'relative z-[1] border-vk-brand' : 'border-vk-border',
         className,
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate font-vk-mono text-sm text-vk-text-low" title={bead.id}>
-          {milestone ?? peer.rig}
+        {/* vk11: canvas Main peer card — the top line is the rig («crm-api») */}
+        <span data-card-label="" className="truncate font-vk-mono text-sm text-vk-text-low">
+          {peer.rig}
         </span>
       </div>
 
@@ -102,8 +102,9 @@ export function PeerKanbanCard({
         className="min-w-0 rounded-sm text-left focus-mark"
       >
         <span
+          title={bead.title}
           className={cn(
-            'line-clamp-2 min-w-0 text-base [overflow-wrap:anywhere]',
+            'block min-w-0 truncate text-base',
             card.stage.stage === 'merged' ? 'text-vk-text-low' : 'text-vk-text-normal',
           )}
         >
@@ -156,7 +157,7 @@ export function PeerKanbanCard({
             </span>
           )}
         </div>
-        <PeerAvatar letter={peer.avatar} label={t('Card of {owner}', { owner: peer.label })} />
+        <CardAvatar letter={peer.avatar} label={t('Assignee: {who}', { who: peer.name })} tone="peer" />
       </div>
     </article>
   );
