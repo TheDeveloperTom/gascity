@@ -51,7 +51,23 @@ export interface ListSupervisorBeadsOptions {
    * product tasks; the unscoped closed window is all route-step churn from the
    * city store, so it cannot surface recent merges.
    */
-  recentClosed?: { limit: number };
+  recentClosed?: {
+    limit: number;
+    /**
+     * The rigs to read closed legs from, when the caller already reads the
+     * rig list (useBoardData shares one /rigs request). Omitted: list rigs.
+     */
+    rigNames?: () => Promise<readonly string[]>;
+  };
+  /**
+   * The status=in_progress leg is a Live read past the server cache: slow
+   * under load, and the read waits for it. `when-truncated` runs it only when
+   * the window did not hold every bead it matched (or cannot say so). Only for
+   * reads that sit beside the full board read, whose own city-wide leg covers
+   * every rig and is merged first: the board's fast first paint and the
+   * graph's per-rig reads (BOARD-LOAD 16.11). Default `always`.
+   */
+  inProgressLeg?: 'always' | 'when-truncated';
 }
 
 // Pre-exposure load bounds (gascity-dashboard-q89b): board and detail-fallback
@@ -101,7 +117,7 @@ export async function listSupervisorBeads(
   // so without them the chip showed no closed task at all (review I3).
   const recentClosedLegs =
     options.recentClosed !== undefined
-      ? recentClosedRigs(rigFilter).then((rigs) =>
+      ? recentClosedRigs(rigFilter, options.recentClosed.rigNames).then((rigs) =>
           Promise.all(
             rigs.map((rig) =>
               listWith({ limit: RECENT_CLOSED_FETCH_LIMIT, status: 'closed', rig })
@@ -121,9 +137,16 @@ export async function listSupervisorBeads(
   // Best-effort: a failed route leg leaves cards on their status fallback and
   // reports routes as incomplete, so nothing is read as a stopped run.
   const routeLeg = wantsRouteLeg ? listWith({ limit }).catch(() => null) : Promise.resolve(null);
+  const windowLeg = listWith(baseQuery);
+  const inProgressLeg =
+    options.inProgressLeg === 'when-truncated'
+      ? windowLeg.then((window) =>
+          windowHoldsAll(window) ? null : listWith(inProgressQuery).catch(() => null),
+        )
+      : listWith(inProgressQuery).catch(() => null);
   const [list, inProgress, closedLegs, routeList] = await Promise.all([
-    listWith(baseQuery),
-    listWith(inProgressQuery).catch(() => null),
+    windowLeg,
+    inProgressLeg,
     recentClosedLegs.catch(() => null),
     routeLeg,
   ]);
@@ -246,8 +269,24 @@ function byRecentUpdate(a: SupervisorBead, b: SupervisorBead): number {
   return ta < tb ? 1 : ta > tb ? -1 : 0;
 }
 
-async function recentClosedRigs(rigFilter: string): Promise<string[]> {
+/**
+ * True only when the window says it returned every bead it matched: an exact
+ * total, no partial (degraded) read, and at least that many rows. Anything
+ * else counts as truncated, so the in-progress leg runs.
+ */
+function windowHoldsAll(window: ListBodyBead): boolean {
+  const total = countAsNumber(window.total);
+  if (total === undefined) return false;
+  if (window.partial === true) return false;
+  return (window.items ?? []).length >= total;
+}
+
+async function recentClosedRigs(
+  rigFilter: string,
+  rigNames?: () => Promise<readonly string[]>,
+): Promise<string[]> {
   if (rigFilter.length > 0) return [rigFilter];
+  if (rigNames !== undefined) return uniqueNonEmpty(await rigNames());
   const rigs = await listSupervisorRigs();
   return uniqueNonEmpty(rigs.items.map((rig) => rig.name));
 }

@@ -4,7 +4,7 @@ import { invalidate } from '../api/cache';
 import { listSupervisorBeads } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
-import { sharedRead, useBoardData } from './useBoardData';
+import { readRigStore, sharedRead, useBoardData, type BoardRead } from './useBoardData';
 
 vi.mock('../supervisor/beadReads', () => ({ listSupervisorBeads: vi.fn() }));
 vi.mock('../supervisor/rigReads', () => ({ listSupervisorRigs: vi.fn() }));
@@ -47,7 +47,14 @@ function Consumer({ name }: { name: string }) {
   );
 }
 
+const probe: { read: BoardRead | undefined } = { read: undefined };
+function Probe() {
+  probe.read = useBoardData();
+  return null;
+}
+
 beforeEach(() => {
+  probe.read = undefined;
   invalidate('');
   beads.mockReset();
   rigs.mockReset();
@@ -115,10 +122,147 @@ describe('useBoardData', () => {
     );
     await waitFor(() => expect(screen.getByTestId('beads').textContent).toBe('1/0/0/true/1/1'));
     expect(screen.getByTestId('home').textContent).toBe('1/0/0/true/1/1');
-    expect(beads).toHaveBeenCalledTimes(1);
-    expect(beads).toHaveBeenCalledWith({ withRoutes: true, recentClosed: { limit: 100 } });
+    // One unscoped board read, plus (REVIEW 16.11) one open-store read per rig
+    // for the owner model; both shared by every consumer. The rig-store read
+    // skips its own Live in-progress leg while its window is complete: the
+    // board read's city-wide leg covers every rig (BOARD-LOAD 16.11).
+    await waitFor(() =>
+      expect(beads).toHaveBeenCalledWith({ rigFilter: 'devwork', inProgressLeg: 'when-truncated' }),
+    );
+    expect(beads).toHaveBeenCalledTimes(2);
+    expect(beads).toHaveBeenCalledWith({
+      withRoutes: true,
+      recentClosed: { limit: 100, rigNames: expect.any(Function) },
+    });
     expect(rigs).toHaveBeenCalledTimes(1);
     expect(sessions).toHaveBeenCalledTimes(1);
+  });
+
+  // BOARD-LOAD 16.11: the closed legs' rig list joins the board's own /rigs
+  // read in flight instead of sending a second /rigs request beside it.
+  it('the closed legs read their rigs from the shared rigs read', async () => {
+    let releaseRigs: () => void = () => undefined;
+    rigs.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRigs = () => resolve({ items: [{ name: 'devwork', prefix: 'dw' }, { name: 'east' }] } as never);
+        }),
+    );
+    render(<Consumer name="beads" />);
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(1));
+    const options = beads.mock.calls[0]?.[0];
+    const rigNames = options?.recentClosed?.rigNames;
+    expect(options?.recentClosed?.limit).toBe(100);
+    expect(rigNames).toBeTypeOf('function');
+    const names = rigNames!();
+    expect(rigs).toHaveBeenCalledTimes(1);
+    releaseRigs();
+    await expect(names).resolves.toEqual(['devwork', 'east']);
+  });
+
+  // BOARD-LOAD × REVIEW 16.11: the Beads page's fast first paint reads the
+  // same rig store the board read takes for the owner model; one request per
+  // rig serves both while it is in flight.
+  it('a second reader of a rig store joins the board read of that store', async () => {
+    let releaseStore: () => void = () => undefined;
+    beads.mockImplementation(async (options) =>
+      options?.rigFilter === 'devwork'
+        ? new Promise((resolve) => {
+            releaseStore = () =>
+              resolve({ items: [], total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never);
+          })
+        : ({ items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never),
+    );
+    render(<Consumer name="beads" />);
+    await waitFor(() =>
+      expect(beads).toHaveBeenCalledWith({ rigFilter: 'devwork', inProgressLeg: 'when-truncated' }),
+    );
+    const joined = readRigStore('devwork');
+    const storeCalls = () => beads.mock.calls.filter(([o]) => o?.rigFilter === 'devwork').length;
+    expect(storeCalls()).toBe(1);
+    releaseStore();
+    await expect(joined).resolves.toMatchObject({ items: [] });
+    expect(storeCalls()).toBe(1);
+  });
+
+  // REVIEW Round 2 MEDIUM: a failed rig-store leg was cached as an empty
+  // store and the stores read as «in», so a question asked only there left
+  // the shelf, the badge and the graph without a word. It is now named as
+  // failed, the stores are not «in», and the next refresh reads it again.
+  it('a failed rig-store leg is reported, never read as an empty store', async () => {
+    rigs.mockResolvedValue({ items: [{ name: 'devwork', prefix: 'dw' }, { name: 'east' }] } as never);
+    const devworkRow = { id: 'dw-q', title: 'q', status: 'open', issue_type: 'task', created_at: '2026-11-15T08:00:00Z' };
+    let eastUp = false;
+    beads.mockImplementation(async (options) => {
+      if (options?.rigFilter === 'east' && !eastUp) throw new Error('east store down');
+      if (options?.rigFilter !== undefined)
+        return { items: options.rigFilter === 'devwork' ? [devworkRow] : [], total: 1, upstream_fetched: 1, fetch_limit: 1000 } as never;
+      return { items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresFailed).toEqual(['east']));
+    expect(probe.read?.rigStoresIn).toBe(false);
+    expect(probe.read?.data?.rigStoreItems?.map((b) => b.id)).toEqual(['dw-q']);
+    eastUp = true;
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+    expect(probe.read?.rigStoresFailed).toEqual([]);
+  });
+
+  // REL17 R2-1: completeness has no loading term. A refresh in flight after a
+  // good read keeps the stores complete (the «От тебя» count gets no «?»);
+  // only a failed store makes them incomplete.
+  it('a refresh in flight after a good read keeps the rig stores complete', async () => {
+    let hold = false;
+    let release: () => void = () => undefined;
+    beads.mockImplementation(async (options) => {
+      if (options?.rigFilter !== undefined) {
+        if (hold) {
+          return new Promise((resolve) => {
+            release = () => resolve({ items: [], total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never);
+          });
+        }
+        return { items: [], total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+      }
+      return { items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+    expect(probe.read?.rigStoresComplete).toBe(true);
+    hold = true;
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(false));
+    expect(probe.read?.rigStoresComplete).toBe(true);
+    release();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+  });
+
+  it('a failed rig store makes the rig stores incomplete', async () => {
+    beads.mockImplementation(async (options) => {
+      if (options?.rigFilter !== undefined) throw new Error('store down');
+      return { items: [], route_items: [], service_items: [], routes_complete: true, total: 0, upstream_fetched: 0, fetch_limit: 1000 } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresFailed).toEqual(['devwork']));
+    expect(probe.read?.rigStoresComplete).toBe(false);
+  });
+
+  // REVIEW Round 2 LOW: a failed rig-list read left the stores waiting on a
+  // promise that never resolved, so the graphs stayed partial for ever. It is
+  // now «stores unknown», and the next refresh reads the rig list again.
+  it('a failed rig list reads as stores unknown and is retried on the next refresh', async () => {
+    let rigsUp = false;
+    rigs.mockImplementation(async () => {
+      if (!rigsUp) throw new Error('rigs down');
+      return { items: [{ name: 'devwork', prefix: 'dw' }] } as never;
+    });
+    render(<Probe />);
+    await waitFor(() => expect(probe.read?.rigStoresFailed).toEqual(['*']));
+    expect(probe.read?.rigStoresIn).toBe(false);
+    rigsUp = true;
+    activeStreams()[0]?.onMatch();
+    await waitFor(() => expect(probe.read?.rigStoresIn).toBe(true));
+    expect(probe.read?.rigStoresFailed).toEqual([]);
   });
 
   // vk integration: TopNav, BottomTabs, the drawer and ⌘K each read the board.
@@ -134,6 +278,7 @@ describe('useBoardData', () => {
       </>,
     );
     await waitFor(() => expect(screen.getByTestId('tabs').textContent).toBe('1/0/0/true/1/1'));
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(2));
     expect(activeStreams()).toHaveLength(1);
     expect(activeStreams()[0]?.prefixes).toBe('bead.');
 
@@ -152,7 +297,8 @@ describe('useBoardData', () => {
         expect(screen.getByTestId(name).textContent).toBe('0/0/0/true/1/1');
       }
     });
-    expect(beads).toHaveBeenCalledTimes(2);
+    // the event refreshes the board read and the rig store read once each
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(4));
 
     // The leader leaving hands the stream to another consumer.
     view.rerender(

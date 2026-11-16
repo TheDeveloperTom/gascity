@@ -3,6 +3,7 @@ import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeadsPage } from './Beads';
 import { invalidate } from '../api/cache';
+import { resetSupervisorApiForTests } from '../supervisor/client';
 import { setActiveCity } from '../api/cityBase';
 import { AttentionProvider } from '../attention/context';
 import { NowProvider } from '../contexts/NowContext';
@@ -92,9 +93,20 @@ vi.mock('../vk/graph/GraphView', () => ({
 // keep the ALL-README contract (buildBoardGraph(beads, {nowMs, partial,
 // collapsed, filter}); BoardGraphView {graph, selectedId, onSelect, onAnswer,
 // onToggleLane, onOpenEpic}).
-const net = vi.hoisted(() => ({ unscoped: 'ok' as 'ok' | 'hang' | 'restarting', release: [] as Array<() => void> }));
+const net = vi.hoisted(() => ({
+  unscoped: 'ok' as 'ok' | 'hang' | 'restarting',
+  rigStore: 'ok' as 'ok' | 'fail',
+  release: [] as Array<() => void>,
+}));
 const boardCalls = vi.hoisted(
-  () => [] as Array<{ ids: string[]; partial?: boolean; collapsed?: Record<string, boolean>; filter?: string }>,
+  () =>
+    [] as Array<{
+      ids: string[];
+      partial?: boolean;
+      ownerIncomplete?: boolean;
+      collapsed?: Record<string, boolean>;
+      filter?: string;
+    }>,
 );
 vi.mock('../vk/graph/boardModel', async (orig) => {
   const real = await orig<typeof import('../vk/graph/boardModel')>();
@@ -102,11 +114,12 @@ vi.mock('../vk/graph/boardModel', async (orig) => {
     ...real,
     buildBoardGraph: (
       beads: ReadonlyArray<{ id: string; title: string }>,
-      opts: { partial?: boolean; collapsed?: Record<string, boolean>; filter?: string },
+      opts: { partial?: boolean; ownerIncomplete?: boolean; collapsed?: Record<string, boolean>; filter?: string },
     ) => {
       boardCalls.push({
         ids: beads.map((b) => b.id),
         ...(opts.partial !== undefined ? { partial: opts.partial } : {}),
+        ...(opts.ownerIncomplete !== undefined ? { ownerIncomplete: opts.ownerIncomplete } : {}),
         ...(opts.collapsed !== undefined ? { collapsed: opts.collapsed } : {}),
         ...(opts.filter !== undefined ? { filter: opts.filter } : {}),
       });
@@ -196,6 +209,7 @@ beforeEach(() => {
   graphCalls.length = 0;
   boardCalls.length = 0;
   net.unscoped = 'ok';
+  net.rigStore = 'ok';
   setActiveCity('test-city');
   window.localStorage.clear();
   invalidate('beads:board:');
@@ -219,7 +233,10 @@ beforeEach(() => {
           );
         }
         // The rig's own work store holds a task the unscoped window lacks.
-        if (url.searchParams.get('rig') === 'devwork') return json({ items: [...items, R], total: items.length + 1 });
+        if (url.searchParams.get('rig') === 'devwork') {
+          if (net.rigStore === 'fail') return new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } });
+          return json({ items: [...items, R], total: items.length + 1 });
+        }
         if (net.unscoped === 'hang') {
           return new Promise<Response>((resolve) => net.release.push(() => resolve(json({ items, total: items.length }))));
         }
@@ -527,6 +544,82 @@ describe('BeadsPage progressive loading and the restarting city', () => {
     await screen.findByTestId('board-graph-view');
     await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
     expect(screen.queryByText('Data still loading…')).toBeNull();
+  });
+
+  // BOARD-LOAD 16.11: the fast paint and the graph's rig reads sit beside the
+  // full board read, whose city-wide in-progress leg (a Live read, slow under
+  // load) covers every rig. With a complete rig window they send no rig-scoped
+  // in-progress read of their own; the full board still sends its leg.
+  it('rig previews send no in-progress read of their own when the rig window is complete', async () => {
+    // The client captures fetch once; rebuild it on this test's stub so the
+    // calls below are this page's requests.
+    resetSupervisorApiForTests();
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
+    const beadUrls = () =>
+      vi
+        .mocked(fetch)
+        .mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : String(input), window.location.origin))
+        .filter((url) => url.pathname === '/v0/city/test-city/beads');
+    const isRigWindow = (u: URL) => u.searchParams.get('rig') === 'devwork' && !u.searchParams.has('status');
+    // The old code sent the rig in-progress leg together with the rig window.
+    await vi.waitFor(() => expect(beadUrls().filter(isRigWindow).length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 20));
+    const urls = beadUrls();
+    const rigWindows = urls.filter(isRigWindow);
+    const rigInProgress = urls.filter(
+      (u) => u.searchParams.get('rig') === 'devwork' && u.searchParams.get('status') === 'in_progress',
+    );
+    const cityInProgress = urls.filter(
+      (u) => !u.searchParams.has('rig') && u.searchParams.get('status') === 'in_progress',
+    );
+    expect(rigWindows.length).toBeGreaterThan(0);
+    expect(rigInProgress).toHaveLength(0);
+    expect(cityInProgress.length).toBeGreaterThan(0);
+  });
+
+  // BOARD-LOAD × REVIEW 16.11: the fast first paint and the board read's rig
+  // store (owner model) are the same rig read; one request serves both.
+  it('the fast paint and the board read share one request for the rig store', async () => {
+    resetSupervisorApiForTests();
+    net.unscoped = 'hang';
+    renderPage('/beads');
+    const board = await screen.findByRole('region', { name: 'Board' });
+    expect(within(board).getAllByText(/Вторая/).length).toBeGreaterThan(0);
+    await new Promise((r) => setTimeout(r, 50));
+    const rigWindows = vi
+      .mocked(fetch)
+      .mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : String(input), window.location.origin))
+      .filter(
+        (u) =>
+          u.pathname === '/v0/city/test-city/beads' &&
+          u.searchParams.get('rig') === 'devwork' &&
+          !u.searchParams.has('status'),
+      );
+    expect(rigWindows).toHaveLength(1);
+  });
+
+  // REVIEW Round 2: a rig store that could not be read is named on the page
+  // and keeps the graph partial; it never reads as a store with no tasks.
+  it('a failed rig-store read is named and keeps the graph partial', async () => {
+    resetSupervisorApiForTests();
+    net.rigStore = 'fail';
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    expect(await screen.findByText('Could not read the tasks of: devwork')).toBeTruthy();
+    expect(boardCalls.at(-1)?.partial).toBe(true);
+    // REL17 R2-1: a failed store marks «От тебя» incomplete.
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.ownerIncomplete).toBe(true));
+  });
+
+  // REL17 R2-1: once the reads are in and none failed, «От тебя» is complete.
+  it('a complete read gives the graph a complete «От тебя»', async () => {
+    resetSupervisorApiForTests();
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
+    expect(boardCalls.at(-1)?.ownerIncomplete).toBe(false);
   });
 
   it('a restarting city shows one calm line, not red not_found alerts', async () => {

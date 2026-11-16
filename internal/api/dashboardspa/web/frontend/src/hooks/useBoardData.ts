@@ -3,7 +3,8 @@ import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { getActiveCity } from '../api/cityBase';
 import type { BeadAttentionSession } from '../attention/beadsNeedingAttention';
 import type { BoardData, RigPrefix } from '../lib/boardModel';
-import { listSupervisorBeads, type SupervisorBeadList } from '../supervisor/beadReads';
+import { ownerAskedOf, ownerBeadsOf, type OwnerAsked } from '../lib/ownerAsked';
+import { listSupervisorBeads, type SupervisorBead, type SupervisorBeadList } from '../supervisor/beadReads';
 import { listSupervisorRigs } from '../supervisor/rigReads';
 import { listSupervisorSessions } from '../supervisor/sessionReads';
 import { useCachedData } from './useCachedData';
@@ -21,7 +22,27 @@ export const BOARD_RECENT_CLOSED_LIMIT = 100;
 export const BOARD_REFRESH_COALESCE_MS = 10_000;
 
 export interface BoardRead {
+  /** The open board, with each rig's open work store in `rigStoreItems` once it is in. */
   data: BoardData | undefined;
+  /**
+   * The one owner model (lib/ownerAsked), computed once from the raw read
+   * (ownerBeadsOf(data)) before any view filters it: the shelf, the badge and
+   * both graphs read it (REVIEW 16.11).
+   */
+  owner?: OwnerAsked | undefined;
+  /** Every rig store has been read (the graphs are partial until then). */
+  rigStoresIn?: boolean;
+  /**
+   * Rigs whose open store could not be read, `['*']` when the rig list itself
+   * could not be read (REVIEW Round 2). Empty when nothing failed.
+   */
+  rigStoresFailed?: readonly string[];
+  /**
+   * The rig list was read, the rig stores were read for it, and none failed.
+   * No loading term: a refresh in flight after a good read stays complete
+   * (REL17 R2-1), unlike `rigStoresIn`.
+   */
+  rigStoresComplete?: boolean;
   rigs: readonly RigPrefix[];
   sessions: readonly BeadAttentionSession[];
   loading: boolean;
@@ -70,11 +91,65 @@ export function sessionsCacheKey(city: string | null): string {
   return `sessions:${city ?? 'no-city'}`;
 }
 
+export function rigStoresCacheKey(city: string | null, rigs: readonly string[]): string {
+  return `beads:board:${city ?? 'no-city'}:rig-stores:${rigs.join(',')}`;
+}
+
+/**
+ * One rig's open work store, one request while it is in flight: the board
+ * read's rig stores (owner model, graphs) and the Beads page's fast first
+ * paint read the same store (BOARD-LOAD × REVIEW 16.11). Its own Live
+ * in-progress leg runs only when the rig window may be incomplete: the board
+ * read's city-wide leg covers every rig, and ownerBeadsOf puts the board's
+ * rows first.
+ */
+export function readRigStore(
+  rig: string,
+  options: { fresh?: boolean } = {},
+): Promise<SupervisorBeadList> {
+  return sharedRead(
+    `beads:rig-store:${getActiveCity() ?? 'no-city'}:${rig}`,
+    () => listSupervisorBeads({ rigFilter: rig, inProgressLeg: 'when-truncated' }),
+    options,
+  );
+}
+
+/** The rig stores read: the rows of every store read, and the rigs whose read failed. */
+export interface RigStoresRead {
+  items: SupervisorBead[];
+  /** Rigs whose store read failed: their rows are missing, never «no tasks». */
+  failed: string[];
+}
+
+/**
+ * Each rig's own open work store, merged. A failed leg is named in `failed`
+ * (REVIEW Round 2): the read is partial, so the board does not count the
+ * stores as in and the pages say what could not be read.
+ */
+export function readRigStores(
+  rigs: readonly string[],
+  options: { fresh?: boolean } = {},
+): Promise<RigStoresRead> {
+  return Promise.all(
+    rigs.map((rig) =>
+      readRigStore(rig, options).then(
+        (list) => ({ rig, items: list.items, ok: true }),
+        () => ({ rig, items: [] as SupervisorBead[], ok: false }),
+      ),
+    ),
+  ).then((legs) => ({
+    items: legs.flatMap((leg) => leg.items),
+    failed: legs.filter((leg) => !leg.ok).map((leg) => leg.rig),
+  }));
+}
+
 export function rigsCacheKey(city: string | null): string {
   return `rigs:${city ?? 'no-city'}`;
 }
 
 const EMPTY_RIGS: readonly RigPrefix[] = [];
+const NO_FAILED: readonly string[] = [];
+const STORES_UNKNOWN: readonly string[] = ['*'];
 const EMPTY_SESSIONS: readonly BeadAttentionSession[] = [];
 
 /** A bead list read in the board's shape; null/undefined stays undefined. */
@@ -119,10 +194,14 @@ export function useBoardData(): BoardRead {
   const sessionsKey = sessionsCacheKey(city);
   const rigsKey = rigsCacheKey(city);
 
+  // The closed legs need the rig names; they join this hook's own /rigs read
+  // in flight rather than sending a second /rigs beside it (BOARD-LOAD 16.11).
+  const readRigNames = () =>
+    sharedRead(rigsKey, listSupervisorRigs).then((list) => list.items.map((rig) => rig.name));
   const readBoard = () =>
     listSupervisorBeads({
       withRoutes: true,
-      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
+      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT, rigNames: readRigNames },
     });
   const board = useCachedData(boardKey, () => sharedRead(boardKey, readBoard), {
     refreshFetcher: () => sharedRead(boardKey, readBoard, { fresh: true }),
@@ -138,7 +217,38 @@ export function useBoardData(): BoardRead {
     refreshFetcher: () => sharedRead(rigsKey, listSupervisorRigs, { fresh: true }),
   });
 
-  const refreshBoard = board.refresh;
+  // REVIEW 16.11: the unscoped window can miss a rig's tasks, so the board
+  // read also takes each rig's own open work store (the graph read them on
+  // its own before; now every page counts from the same set).
+  const rigNames = useMemo(
+    () => [...new Set((rigs.data?.items ?? []).map((rig) => rig.name).filter((name) => name.length > 0))].sort(),
+    [rigs.data],
+  );
+  // Until the rig list is in, the stores wait (a pending key that never
+  // resolves): data from an empty rig list must not read as «every store in».
+  // A FAILED rig list is not waiting: it reads as «stores unknown» and the
+  // next board refresh reads the rig list again (REVIEW Round 2).
+  const rigsKnown = rigs.data !== undefined;
+  const rigsFailed = !rigsKnown && rigs.error !== null;
+  const rigStoresKey = rigsKnown ? rigStoresCacheKey(city, rigNames) : `${rigStoresCacheKey(city, [])}pending`;
+  const readStores = (fresh: boolean): Promise<RigStoresRead> =>
+    !rigsKnown
+      ? new Promise<RigStoresRead>(() => undefined)
+      : rigNames.length === 0
+        ? Promise.resolve({ items: [], failed: [] })
+        : sharedRead(rigStoresKey, () => readRigStores(rigNames, { fresh }), { fresh });
+  const rigStores = useCachedData(rigStoresKey, () => readStores(false), {
+    refreshFetcher: () => readStores(true),
+  });
+  const refreshRigStores = rigStores.refresh;
+  const refreshBoardOnly = board.refresh;
+  const refreshRigList = rigs.refresh;
+  const refreshBoard = useCallback(async () => {
+    await Promise.all([
+      refreshBoardOnly(),
+      rigsFailed ? refreshRigList() : refreshRigStores(),
+    ]);
+  }, [refreshBoardOnly, refreshRigStores, refreshRigList, rigsFailed]);
   const [token] = useState(() => Symbol('board-consumer'));
   const refreshRef = useRef(refreshBoard);
   refreshRef.current = refreshBoard;
@@ -158,7 +268,13 @@ export function useBoardData(): BoardRead {
     coalesceMs: BOARD_REFRESH_COALESCE_MS,
   });
 
-  const data = useMemo(() => boardDataOf(board.data), [board.data]);
+  const data = useMemo(() => {
+    const base = boardDataOf(board.data);
+    return base === undefined || rigStores.data === undefined
+      ? base
+      : { ...base, rigStoreItems: rigStores.data.items };
+  }, [board.data, rigStores.data]);
+  const owner = useMemo(() => (data === undefined ? undefined : ownerAskedOf(ownerBeadsOf(data))), [data]);
   const rigItems = useMemo<readonly RigPrefix[]>(() => rigs.data?.items ?? EMPTY_RIGS, [rigs.data]);
   const sessionItems = useMemo<readonly BeadAttentionSession[]>(
     () => sessions.data?.items ?? EMPTY_SESSIONS,
@@ -172,6 +288,16 @@ export function useBoardData(): BoardRead {
 
   return {
     data,
+    owner,
+    // In only once the rig list is known and every store is read for it.
+    rigStoresIn:
+      rigs.data !== undefined &&
+      rigStores.data !== undefined &&
+      !rigStores.loading &&
+      rigStores.data.failed.length === 0,
+    rigStoresFailed: rigsFailed ? STORES_UNKNOWN : (rigStores.data?.failed ?? NO_FAILED),
+    rigStoresComplete:
+      rigs.data !== undefined && rigStores.data !== undefined && rigStores.data.failed.length === 0,
     rigs: rigItems,
     sessions: sessionItems,
     loading: board.loading,

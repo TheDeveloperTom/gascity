@@ -3,6 +3,7 @@ import type {
   SessionStructuredMessage,
 } from 'gas-city-dashboard-shared/gc-supervisor';
 import { t } from '../i18n';
+import { sentences } from './structureDescription';
 
 export { sessionForBead } from '../attention/beadsNeedingAttention';
 
@@ -10,8 +11,8 @@ export { sessionForBead } from '../attention/beadsNeedingAttention';
 // latest structured message. A Bash call says its own description (the
 // engine keeps it since dashboard v3; until it is reinstalled a call reads
 // «выполняет команду» and the command sits behind «подробнее»), Edit and
-// Write name the file, otherwise the latest assistant text is cut to 120
-// characters, and thinking alone reads «думает».
+// Write name the file, otherwise the last sentence of the latest assistant
+// text (cut at a word to 120 characters), and thinking alone reads «думает».
 
 export interface AgentNow {
   text: string;
@@ -73,8 +74,51 @@ function toolNow(block: Extract<SessionStructuredBlock, { type: 'tool_use' }>): 
   };
 }
 
+/** Cut at the last word boundary within the limit, with an ellipsis. */
+function clip(text: string): string {
+  if (text.length <= AGENT_NOW_TEXT_LIMIT) return text;
+  const head = text.slice(0, AGENT_NOW_TEXT_LIMIT);
+  const space = head.search(/\s\S*$/);
+  const cut = space > 0 ? head.slice(0, space) : head;
+  return `${cut.replace(/[\s,;:—–-]+$/u, '')}…`;
+}
+
+/**
+ * The last complete sentence of the last non-empty line (16.11 owner: keeping
+ * the last 120 characters started the line mid-sentence), without a leading
+ * markdown list or heading marker.
+ */
+function lastSentence(text: string): string {
+  const line = lastProseLine(text);
+  // Only code or tables (REL17 finding 2): the old cut of the last characters.
+  if (line === null) return lastChars(text);
+  const parts = sentences(line);
+  return clip(parts[parts.length - 1] ?? line);
+}
+
+/**
+ * The last line that is prose: not a code fence, not code inside one, not a
+ * table row or separator; without a leading list or heading marker.
+ */
+function lastProseLine(text: string): string | null {
+  let inFence = false;
+  let last: string | null = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (/^(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || line.length === 0 || /^\|.*\|$/.test(line)) continue;
+    const prose = line.replace(/^(?:#{1,6}|[-*]|\d+[.)])\s+/, '');
+    if (prose.length > 0) last = prose;
+  }
+  return last;
+}
+
 function lastChars(text: string): string {
-  return text.length > AGENT_NOW_TEXT_LIMIT ? text.slice(-AGENT_NOW_TEXT_LIMIT) : text;
+  const trimmed = text.trim();
+  return trimmed.length > AGENT_NOW_TEXT_LIMIT ? trimmed.slice(-AGENT_NOW_TEXT_LIMIT) : trimmed;
 }
 
 export function describeAgentNow(messages: readonly SessionStructuredMessage[]): AgentNow | null {
@@ -89,7 +133,7 @@ export function describeAgentNow(messages: readonly SessionStructuredMessage[]):
       if (block.type === 'tool_use') return { ...toolNow(block), sinceIso };
       if (block.type === 'text') {
         const text = str(block.text);
-        if (text.length > 0) return { text: lastChars(text), sinceIso, raw: null };
+        if (text.length > 0) return { text: lastSentence(text), sinceIso, raw: null };
       }
       if (block.type === 'thinking') sawThinking = true;
     }

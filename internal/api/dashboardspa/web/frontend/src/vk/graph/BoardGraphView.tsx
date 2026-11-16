@@ -3,7 +3,7 @@ import type { BoardGraph, Lane } from './boardModel';
 import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox } from './GraphCard';
 import { GraphIcon } from './icons';
 import { BannerSlot, bez, cardTone, columnColor, edgeLit, useHoverFocus, useReducedMotion, type Focus } from './GraphView';
-import { chainOf, whatIfBanner, type GraphNode } from './model';
+import { chainOf, holdsLabel, whatIfBanner, type GraphNode } from './model';
 import { QuestionCard } from './QuestionCard';
 import './graph.css';
 import './boardGraph.css';
@@ -403,7 +403,13 @@ export function BoardGraphView(props: BoardGraphViewProps) {
                       <div className="vkg-colhead-bar">
                         <span aria-hidden="true" className="vkg-dot" style={{ background: columnColor(i, graph.columns.length) }} />
                         <p>{c.title}</p>
-                        <span className="vkg-colhead-count">{c.count}</span>
+                        <span
+                          className="vkg-colhead-count"
+                          {...(c.incomplete === true ? { title: 'прочитано не полностью' } : {})}
+                        >
+                          {c.count}
+                          {c.incomplete === true ? '?' : ''}
+                        </span>
                       </div>
                       <div className="vkg-verdict" data-alarm={c.alarm ? 'true' : 'false'}>
                         {c.alarm ? <GraphIcon name="clock" size={13} /> : null}
@@ -547,7 +553,7 @@ function PhoneRow({ n, selectedId, onSelect, onAnswer }: { n: GraphNode } & Pick
         <span className="vkg-qrow-text">
           <span className="vkg-label vkg-qrow-label">{n.label}</span>
           <span className="vkg-qrow-title">{n.title}</span>
-          <span style={{ fontSize: 13, color: 'oklch(var(--vk-text-low))' }}>держит {n.holds}</span>
+          <span style={{ fontSize: 13, color: 'oklch(var(--vk-text-low))' }}>{holdsLabel(n.holds)}</span>
         </span>
         <button
           type="button"

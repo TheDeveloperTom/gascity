@@ -160,6 +160,76 @@ describe('supervisor bead reads', () => {
     expect(result.items.map((item) => item.id)).toEqual(['recent-open']);
   });
 
+  // BOARD-LOAD 16.11: the in-progress leg is a Live read past the server cache
+  // (0.5-8 s under load) and the board waits for it. A preview read (the
+  // board's fast first paint, the graph's per-rig reads) sits beside the full
+  // board read, whose city-wide leg covers every rig; it skips its own leg
+  // when its window already holds every bead it matched.
+  it('skips the in-progress leg on request when the window is complete', async () => {
+    const listBeads = vi.fn(async () => ({
+      items: [bead({ id: 'a', issue_type: 'task' }), bead({ id: 'b', issue_type: 'task' })],
+      total: 2,
+    }));
+    setSupervisorApiForTests({ ...baseApi, listBeads });
+
+    const result = await listSupervisorBeads({ rigFilter: 'devwork', inProgressLeg: 'when-truncated' });
+
+    expect(listBeads).toHaveBeenCalledTimes(1);
+    expect(listBeads).toHaveBeenCalledWith('test-city', { limit: 1000, rig: 'devwork' });
+    expect(result.items.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('still runs the in-progress leg on request when the window is truncated', async () => {
+    const listBeads = vi.fn(async (_city: string, query: { status?: string }) =>
+      query.status === 'in_progress'
+        ? { items: [bead({ id: 'old-wip', issue_type: 'task', status: 'in_progress' })], total: 1 }
+        : { items: [bead({ id: 'new', issue_type: 'task' })], total: 2 },
+    );
+    setSupervisorApiForTests({ ...baseApi, listBeads });
+
+    const result = await listSupervisorBeads({ limit: 1, inProgressLeg: 'when-truncated' });
+
+    expect(listBeads).toHaveBeenCalledWith('test-city', { limit: 1, status: 'in_progress' });
+    expect(result.items.map((item) => item.id)).toEqual(['new', 'old-wip']);
+  });
+
+  it('runs the in-progress leg on request when the window reports no total', async () => {
+    // A window without a total (the generated type requires one; an older
+    // server or a proxy may still drop it).
+    const listBeads = vi.fn(async (_city: string, query: { status?: string }) =>
+      query.status === 'in_progress'
+        ? { items: [bead({ id: 'wip', issue_type: 'task', status: 'in_progress' })] }
+        : { items: [bead({ id: 'new', issue_type: 'task' })] },
+    );
+    setSupervisorApiForTests({ ...baseApi, listBeads: listBeads as unknown as SupervisorApi['listBeads'] });
+
+    const result = await listSupervisorBeads({ inProgressLeg: 'when-truncated' });
+
+    expect(result.items.map((item) => item.id)).toEqual(['new', 'wip']);
+  });
+
+  it('runs the in-progress leg on request when the window is partial', async () => {
+    const listBeads = vi.fn(async (_city: string, query: { status?: string }) =>
+      query.status === 'in_progress'
+        ? { items: [bead({ id: 'wip', issue_type: 'task', status: 'in_progress' })], total: 1 }
+        : { items: [bead({ id: 'new', issue_type: 'task' })], total: 1, partial: true },
+    );
+    setSupervisorApiForTests({ ...baseApi, listBeads });
+
+    const result = await listSupervisorBeads({ inProgressLeg: 'when-truncated' });
+
+    expect(result.items.map((item) => item.id)).toEqual(['new', 'wip']);
+  });
+
+  it('keeps the in-progress leg by default even when the window is complete', async () => {
+    const listBeads = vi.fn(async () => ({ items: [bead({ id: 'a', issue_type: 'task' })], total: 1 }));
+    setSupervisorApiForTests({ ...baseApi, listBeads });
+
+    await listSupervisorBeads();
+
+    expect(listBeads).toHaveBeenCalledWith('test-city', { limit: 1000, status: 'in_progress' });
+  });
+
   // gascity-dashboard-sg9o: a "needs you" decision alert can deep-link to a
   // bead the supervisor has since pruned (e.g. gc-316879). fetchSupervisorBead
   // is the data edge the deep-link modal sits on: it must surface a true 404 as

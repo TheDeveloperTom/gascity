@@ -43,11 +43,13 @@ import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts
 import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel, CITY_PROJECT_KEY, rigProjectLabel } from '../lib/boardModel';
 import { isBoardNoise } from '../lib/boardNoise';
+import { ownerBeadsOf } from '../lib/ownerAsked';
 import { splitCityRestarting } from '../lib/cityRestarting';
 import {
   BOARD_RECENT_CLOSED_LIMIT,
   BOARD_REFRESH_COALESCE_MS,
   boardDataOf,
+  readRigStore,
   rigsCacheKey,
   sessionsCacheKey,
   sharedRead,
@@ -232,8 +234,10 @@ export function BeadsPage() {
     fastKey === 'off'
       ? Promise.resolve(null)
       : // No withRoutes: a rig read with routes adds an unscoped route leg, the
-        // very read this one is here to outrun. Routes fill in with it.
-        listSupervisorBeads({ rigFilter: fastKey }),
+        // very read this one is here to outrun. Routes fill in with it. It is
+        // the same rig-store read the board takes for the owner model, so the
+        // two share one request (BOARD-LOAD × REVIEW 16.11).
+        readRigStore(fastKey),
   );
   const fastData = useMemo(() => boardDataOf(fast.data), [fast.data]);
   const data = showAllHistory ? historyData : (board.data ?? fastData);
@@ -324,7 +328,9 @@ export function BeadsPage() {
   const boardModel = useMemo(
     () =>
       buildBoardModel(
-        { items: rows, routeItems: routeBeads, serviceItems, routesComplete },
+        // REL17 finding 4: the fast paint lacks the closed rows that decide
+        // whether an epic heads a group, so it shows no epic as a card.
+        { items: rows, routeItems: routeBeads, serviceItems, routesComplete, preview: boardPartial },
         rigItems,
         {
           project,
@@ -340,6 +346,7 @@ export function BeadsPage() {
       routeBeads,
       serviceItems,
       routesComplete,
+      boardPartial,
       rigItems,
       project,
       search,
@@ -482,46 +489,19 @@ export function BeadsPage() {
   const showAllGraph = viewGraphParam && !graphAvailable;
   const anyGraph = showGraph || showAllGraph;
   // Graph integration 16.11: the unscoped window can miss a rig's tasks (the
-  // model lane saw 2 of the M04 beads unscoped, all of them with rig=devwork),
-  // so the graph also reads each rig's own open work store, merged by id.
-  const graphRigNames = useMemo(
-    () => [...new Set(rigItems.map((rig) => rig.name).filter((name) => name.length > 0))].sort(),
-    [rigItems],
+  // model lane saw 2 of the M04 beads unscoped, all of them with rig=devwork).
+  // REVIEW 16.11: each rig's open work store is now part of the one board read
+  // (useBoardData), so the graphs, the shelf and the badge count from the
+  // same raw set and the same owner model (board.owner).
+  const rigStoreItems = board.data?.rigStoreItems;
+  const graphRows = useMemo(
+    () => ownerBeadsOf({ items: allRows, rigStoreItems: rigStoreItems ?? EMPTY_BEADS, serviceItems }),
+    [allRows, rigStoreItems, serviceItems],
   );
-  const graphRigs = useCachedData(
-    `beads:board:${cityCacheKey}:graph-rigs:${anyGraph ? graphRigNames.join(',') : 'off'}`,
-    () =>
-      anyGraph && graphRigNames.length > 0
-        ? Promise.all(
-            graphRigNames.map((rig) =>
-              listSupervisorBeads({ rigFilter: rig })
-                .then((list) => list.items)
-                .catch(() => [] as SupervisorBead[]),
-            ),
-          ).then((legs) => legs.flat())
-        : Promise.resolve([] as SupervisorBead[]),
-  );
-  const refreshGraphRigs = graphRigs.refresh;
-  useGcEventRefresh(
-    [GC_EVENT_PREFIX.bead],
-    () => {
-      if (anyGraph) void refreshGraphRigs();
-    },
-    { coalesceMs: BOARD_REFRESH_COALESCE_MS },
-  );
-  const graphRows = useMemo(() => {
-    const seen = new Set<string>();
-    const out: SupervisorBead[] = [];
-    for (const bead of [...allRows, ...(graphRigs.data ?? []), ...serviceItems]) {
-      if (seen.has(bead.id)) continue;
-      seen.add(bead.id);
-      out.push(bead);
-    }
-    return out;
-  }, [allRows, graphRigs.data, serviceItems]);
+  const owner = board.owner;
   // Until every read is in, the graphs are built from what has arrived and
   // marked partial (no «никто не взял», ALL-README rule 11).
-  const graphRigsIn = graphRigNames.length === 0 || graphRigs.data !== undefined;
+  const graphRigsIn = board.rigStoresIn !== false;
   const graphPartial = !unscopedIn || !graphRigsIn;
   const graphModel = useMemo(
     () =>
@@ -531,9 +511,10 @@ export function BeadsPage() {
             ...(focusParam !== null ? { focusIds: [focusParam] } : {}),
             nowMs,
             ...(graphPartial ? { partial: true } : {}),
+            ...(owner === undefined ? {} : { owner }),
           })
         : null,
-    [showGraph, graphRows, epic, focusParam, nowMs, graphPartial],
+    [showGraph, graphRows, epic, focusParam, nowMs, graphPartial, owner],
   );
   // Owner 16.11: on the all-tickets graph a card's chain sat far off screen.
   // A graph click selects the card (drawer, ?bead=) AND narrows the graph to
@@ -612,11 +593,15 @@ export function BeadsPage() {
         ? buildBoardGraph(liveAllGraphRows, {
             nowMs,
             partial: graphPartial,
+            // REL17 R2-1: «?» only when a read is missing or failed, never for
+            // a refresh in flight after a good read.
+            ownerIncomplete: !unscopedIn || board.rigStoresComplete === false,
             collapsed: laneCollapsed,
             filter: graphFilter,
+            ...(owner === undefined ? {} : { owner }),
           })
         : null,
-    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, laneCollapsed, graphFilter],
+    [showAllGraph, liveAllGraphRows, nowMs, graphPartial, unscopedIn, board.rigStoresComplete, laneCollapsed, graphFilter, owner],
   );
   const toggleLane = useCallback(
     (key: string) => {
@@ -715,7 +700,14 @@ export function BeadsPage() {
   // drawer is 560 px at the right), so the board makes room instead of hiding.
   const drawerOpen = selectedId !== null && (selectedPeer !== null || ownSelectedId !== null);
 
-  const pageErrors = splitCityRestarting([error, sessions.error, rigs.error]);
+  // REVIEW Round 2: a rig store that could not be read is named, never shown
+  // as a store with no tasks (a failed rig list already reads as rigs.error).
+  const unreadStores = (board.rigStoresFailed ?? []).filter((rig) => rig !== '*');
+  const storesError =
+    unreadStores.length === 0
+      ? null
+      : t('Could not read the tasks of: {names}', { names: unreadStores.join(', ') });
+  const pageErrors = splitCityRestarting([error, sessions.error, rigs.error, storesError]);
   const isTruncated =
     typeof upstreamTotal === 'number' &&
     typeof upstreamFetched === 'number' &&

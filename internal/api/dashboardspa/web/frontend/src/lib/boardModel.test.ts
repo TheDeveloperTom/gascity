@@ -342,3 +342,40 @@ describe('buildBoardModel with a peer board', () => {
     expect(all(model).find((c) => c.key === 'dw-iy9a')?.holds).toBe(0);
   });
 });
+
+// REL17 finding 4 (16.11): an epic is a group heading when a row names it as
+// parent or shares its stage, and the full board's rows include the recently
+// closed tasks. The fast first paint has no closed legs, so the same epic
+// turned into a card there (live: dw-9r8jn, dw-9g432 on M14). The preview now
+// treats every epic as a heading, so the preview and the full board agree.
+describe('epics in the preview and on the full board', () => {
+  const EPIC = bead('dw-9g432', { issue_type: 'epic', labels: ['milestone:M14'], title: 'Контракты API' });
+  const PROBE = bead('dw-9r8jn', { issue_type: 'epic', labels: ['milestone:M14'], title: 'Проба' });
+  const DONE = bead('dw-9g432.1', {
+    status: 'closed',
+    parent: 'dw-9g432',
+    labels: ['milestone:M14'],
+    updated_at: '2026-11-15T09:00:00Z',
+  });
+  const TASK = bead('dw-a1', { title: 'обычная задача' });
+  const cardIds = (model: ReturnType<typeof buildBoardModel>) =>
+    Object.values(model.columns).flatMap((list) => list.map((c) => c.key));
+
+  it('the full board, with the closed children, shows neither epic as a card', () => {
+    const full = buildBoardModel(data([TASK, EPIC, PROBE, DONE]), RIGS, NO_FILTERS);
+    expect(cardIds(full)).not.toContain('dw-9g432');
+    expect(cardIds(full)).not.toContain('dw-9r8jn');
+  });
+
+  it('the preview, without the closed rows, shows the same cards as the full board', () => {
+    const full = buildBoardModel(data([TASK, EPIC, PROBE, DONE]), RIGS, NO_FILTERS);
+    const preview = buildBoardModel(data([TASK, EPIC, PROBE], { preview: true }), RIGS, NO_FILTERS);
+    const open = (keys: string[]) => keys.filter((k) => k !== 'dw-9g432.1');
+    expect(cardIds(preview).sort()).toEqual(open(cardIds(full)).sort());
+  });
+
+  it('outside the preview an epic with no tasks at all is still a card', () => {
+    const lone = bead('dw-lone', { issue_type: 'epic', title: 'новый эпик' });
+    expect(cardIds(buildBoardModel(data([TASK, lone]), RIGS, NO_FILTERS))).toContain('dw-lone');
+  });
+});

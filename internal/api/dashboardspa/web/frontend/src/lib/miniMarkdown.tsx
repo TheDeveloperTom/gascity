@@ -23,13 +23,18 @@ function safeHttps(raw: string): string | null {
   }
 }
 
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+/** Renders a run of plain text (no markup in it); default: the string itself. */
+export type TextRenderer = (text: string, key: string) => ReactNode[];
+
+const plainText: TextRenderer = (text) => [text];
+
+function renderInline(text: string, keyPrefix: string, renderText: TextRenderer = plainText): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let index = 0;
   for (const match of text.matchAll(INLINE)) {
     const start = match.index ?? 0;
-    if (start > last) out.push(text.slice(last, start));
+    if (start > last) out.push(...renderText(text.slice(last, start), `${keyPrefix}-t${index}`));
     const key = `${keyPrefix}-${index}`;
     index += 1;
     const [whole, code, bold, em, link, label, href] = match;
@@ -53,7 +58,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     }
     last = start + whole.length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(...renderText(text.slice(last), `${keyPrefix}-t${index}`));
   return out;
 }
 
@@ -128,16 +133,19 @@ export interface MiniMarkdownOptions {
    * The level a `#` heading renders at (review M-4: inside the card drawer the
    * title is an h2, so `#` starts at h3). Default 1.
    */
-  headingFrom?: 1 | 2 | 3;
+  headingFrom?: 1 | 2 | 3 | 4;
+  /** Renders plain text runs (e.g. ids in the mono face); never sees markup. */
+  renderText?: TextRenderer;
 }
 
 export function renderMiniMarkdown(source: string, options: MiniMarkdownOptions = {}): ReactNode {
   const shift = (options.headingFrom ?? 1) - 1;
+  const rt = options.renderText ?? plainText;
   return parseBlocks(source).map((block, i) => {
     const key = `b${i}`;
     switch (block.kind) {
       case 'heading': {
-        const children = renderInline(block.text, key);
+        const children = renderInline(block.text, key, rt);
         const level = Math.min(6, block.level + shift);
         if (level === 1) return <h1 key={key}>{children}</h1>;
         if (level === 2) return <h2 key={key}>{children}</h2>;
@@ -148,7 +156,7 @@ export function renderMiniMarkdown(source: string, options: MiniMarkdownOptions 
       case 'ul':
       case 'ol': {
         const items = block.items.map((item, j) => (
-          <li key={`${key}-${j}`}>{renderInline(item, `${key}-${j}`)}</li>
+          <li key={`${key}-${j}`}>{renderInline(item, `${key}-${j}`, rt)}</li>
         ));
         return block.kind === 'ul' ? <ul key={key}>{items}</ul> : <ol key={key}>{items}</ol>;
       }
@@ -159,7 +167,7 @@ export function renderMiniMarkdown(source: string, options: MiniMarkdownOptions 
           <p key={key}>
             {block.lines.flatMap((line, j) => [
               ...(j > 0 ? [<br key={`${key}-br${j}`} />] : []),
-              ...renderInline(line, `${key}-${j}`),
+              ...renderInline(line, `${key}-${j}`, rt),
             ])}
           </p>
         );

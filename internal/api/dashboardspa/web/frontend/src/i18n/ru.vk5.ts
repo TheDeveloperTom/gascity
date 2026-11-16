@@ -4,6 +4,7 @@ import type { RuPlural } from './ru';
 export const RU_VK5: Readonly<Record<string, string | RuPlural>> = {
   'Needs from me': 'Нужно от меня',
   'Needs from me, {n}': 'Нужно от меня, {n}',
+  'Needs from me, {n}, not fully read': 'Нужно от меня, {n}, прочитано не полностью',
   Board: 'Доска',
   Search: 'Поиск',
   Sections: 'Разделы',

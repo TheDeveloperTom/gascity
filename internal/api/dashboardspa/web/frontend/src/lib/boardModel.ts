@@ -92,6 +92,11 @@ export interface WaitingGroup {
 
 export interface BoardData {
   items: readonly SupervisorBead[];
+  /**
+   * Each rig's own open work store (REVIEW 16.11): the unscoped window can
+   * miss a rig's tasks, so the owner model and the graphs read these too.
+   */
+  rigStoreItems?: readonly SupervisorBead[];
   routeItems: readonly SupervisorBead[];
   serviceItems: readonly SupervisorBead[];
   routesComplete: boolean;
@@ -99,6 +104,13 @@ export interface BoardData {
   upstreamTotal?: number;
   /** How many open beads the read fetched. */
   upstreamFetched?: number;
+  /**
+   * The fast first paint (a rig read without closed legs). An epic is a
+   * heading when a row, closed ones included, names it or shares its stage;
+   * the preview lacks the closed rows, so every epic is a heading there, as
+   * it may be on the full board (REL17 finding 4).
+   */
+  preview?: boolean;
 }
 
 export interface BoardFilters {
@@ -324,6 +336,7 @@ function stageCardsOf(
   routesComplete: boolean,
   /** Beads kept off the board that may still be stall alarms (C1, 16.11). */
   serviceItems: readonly SupervisorBead[] = [],
+  preview = false,
 ) {
   // Tasks only, so a card never counts route steps as its neighbours.
   const graph = buildBeadGraph(tasks);
@@ -332,7 +345,9 @@ function stageCardsOf(
   // reach the model as service items, never as rows; they still mark their task.
   const stopCards = stopCardsByTask([...tasks, ...serviceItems]);
   const taskIds = new Set(tasks.map((b) => b.id));
-  const heads = headingEpics(tasks);
+  const heads = preview
+    ? new Set(tasks.filter((b) => b.issue_type === 'epic').map((b) => b.id))
+    : headingEpics(tasks);
   const waitersOf = buildWaitersIndex(tasks);
 
   // RB8: a stop card folds into its task when that task is a card.
@@ -363,7 +378,7 @@ export function buildBoardModel(
   const tasks = data.items.filter((bead) => beadRole(bead) === 'task');
   const everything = [...tasks, ...data.routeItems, ...data.serviceItems];
   const byId = new Map(everything.map((b) => [b.id, b]));
-  const own = stageCardsOf(tasks, data.routeItems, data.routesComplete, data.serviceItems);
+  const own = stageCardsOf(tasks, data.routeItems, data.routesComplete, data.serviceItems, data.preview === true);
   const { routeIndex, taskIds, waitersOf } = own;
 
   const prefixComplete = rigs.every((rig) => (rig.prefix?.trim() ?? '').length > 0);

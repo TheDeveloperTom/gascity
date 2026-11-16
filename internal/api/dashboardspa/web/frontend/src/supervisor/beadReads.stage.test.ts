@@ -106,6 +106,24 @@ describe('listSupervisorBeads stage-board options', () => {
     expect(closed).toEqual([{ limit: 1000, status: 'closed', rig: 'east' }]);
   });
 
+  // BOARD-LOAD 16.11: the board's own rigs read (useBoardData) and the closed
+  // legs' rig list were two parallel /rigs requests; the caller now hands the
+  // closed legs its shared rigs read.
+  it('takes the closed legs rig names from the caller instead of listing rigs again', async () => {
+    const api = install(async (_city, query) => openWindow(query), ['ignored']);
+    const rigNames = vi.fn(async () => ['devwork', 'east']);
+    await listSupervisorBeads({ withRoutes: true, recentClosed: { limit: 100, rigNames } });
+    expect(api.listRigs).not.toHaveBeenCalled();
+    expect(rigNames).toHaveBeenCalledTimes(1);
+    const closed = api.listBeads.mock.calls
+      .map((c) => c[1] as Query)
+      .filter((q) => q['status'] === 'closed');
+    expect(closed).toEqual([
+      { limit: 1000, status: 'closed', rig: 'devwork' },
+      { limit: 1000, status: 'closed', rig: 'east' },
+    ]);
+  });
+
   // Review I3: under the `closed` chip the unscoped all=true window is all
   // closed route steps from the city store (live: 1000/1000 gcg), so after
   // the fold it held no task at all. The chip must be a superset of the

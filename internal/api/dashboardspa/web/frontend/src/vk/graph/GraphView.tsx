@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type RefObject, type SetStateAction } from 'react';
 import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox, type CardTone } from './GraphCard';
 import { GraphIcon } from './icons';
-import { chainOf, whatIfBanner, type Chain, type GraphModel, type GraphNode } from './model';
+import { chainOf, holdsLabel, whatIfBanner, type Chain, type GraphModel, type GraphNode } from './model';
 import { QuestionCard } from './QuestionCard';
 import './graph.css';
 
@@ -394,7 +394,7 @@ function PhoneWaves({ model, selectedId, onSelect, onAnswer }: GraphViewProps) {
                   <span className="vkg-qrow-text">
                     <span className="vkg-label vkg-qrow-label">{n.label}</span>
                     <span className="vkg-qrow-title">{n.title}</span>
-                    <span style={{ fontSize: 13, color: 'oklch(var(--vk-text-low))' }}>держит {n.holds}</span>
+                    <span style={{ fontSize: 13, color: 'oklch(var(--vk-text-low))' }}>{holdsLabel(n.holds)}</span>
                   </span>
                   <button
                     type="button"

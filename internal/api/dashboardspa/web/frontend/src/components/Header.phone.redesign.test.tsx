@@ -23,7 +23,7 @@ vi.mock('../api/client', () => ({
 
 // vk integration: TopNav's badge reads lane 3's real board model; isolate the
 // header from the board reads (the count is tested in vk/shell/shell.test.tsx).
-vi.mock('../lib/needsFromMe', () => ({ useNeedsFromMeCount: () => 0 }));
+vi.mock('../lib/needsFromMe', () => ({ useNeedsFromMeCount: () => 0, useNeedsFromMeIncomplete: () => false }));
 
 vi.mock('../supervisor/client', () => ({
   supervisorApi: () => ({

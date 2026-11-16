@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActiveCity } from '../api/cityBase';
@@ -44,7 +44,12 @@ describe('BeadsPage supervisor reads', () => {
     // The windowed read plus the dedicated in-progress leg (gp-6xd F1), plus the
     // stage board's one rig-scoped recent-closed leg — none is the slow
     // closed-history (all=true) path.
-    expect(beadFetches()).toHaveLength(3);
+    // REVIEW 16.11: the one board read also takes the rig's open work store
+    // for the owner model. BOARD-LOAD 16.11: a complete rig window sends no
+    // in-progress leg of its own (the city-wide leg covers the rig).
+    await waitFor(() => expect(beadFetches()).toHaveLength(4));
+    expect(beadFetches().filter((call) => call.query.has('rig') && call.query.get('status') !== 'closed')).toHaveLength(1);
+    expect(beadFetches().filter((call) => call.query.has('rig') && call.query.get('status') === 'in_progress')).toHaveLength(0);
     expect(beadFetches().every((call) => call.query.has('all'))).toBe(false);
     expect(beadFetches().every((call) => call.query.has('type'))).toBe(false);
   });

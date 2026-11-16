@@ -35,6 +35,7 @@ import { t } from '../i18n';
 import { SUPERVISOR_REQUEST_TIMEOUT_MS, supervisorApi } from '../supervisor/client';
 
 const POLL_MS = 15_000;
+const NO_UNREAD: readonly string[] = [];
 const MAX_TRACE_SAMPLES = 48;
 const SECONDS_PER_DAY = 86_400;
 
@@ -193,12 +194,28 @@ export function CockpitHomePage() {
     () => attention.city.items.filter((item) => item.severity !== 'unavailable'),
     [attention.city.items],
   );
+  // REVIEW Round 2: a rig store the board could not read may hold a question
+  // for the owner; say so here instead of showing a shorter shelf.
+  const needsUnread = needs.unread ?? NO_UNREAD;
+  const storesUnreadable = useMemo<AttentionItem | null>(
+    () =>
+      needsUnread.length === 0
+        ? null
+        : unreadableItem(
+            'rig-stores-unread',
+            needsUnread.includes('*')
+              ? t('Project list')
+              : t('Project tasks ({names})', { names: needsUnread.join(', ') }),
+          ),
+    [needsUnread],
+  );
   const cityUnreadable = useMemo(
     () => [
       ...(statusUnreadable === null ? [] : [statusUnreadable]),
+      ...(storesUnreadable === null ? [] : [storesUnreadable]),
       ...attention.city.items.filter((item) => item.severity === 'unavailable'),
     ],
-    [attention.city.items, statusUnreadable],
+    [attention.city.items, statusUnreadable, storesUnreadable],
   );
   const cityAgents: CityAgents =
     status === undefined

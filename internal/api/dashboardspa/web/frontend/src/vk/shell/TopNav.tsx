@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router';
 import { t } from '../../i18n';
 import { openCommandBar } from '../../lib/commandBar';
-import { useNeedsFromMeCount } from '../../lib/needsFromMe';
+import { useNeedsFromMeCount, useNeedsFromMeIncomplete } from '../../lib/needsFromMe';
 import { cn } from '../cn';
 import { NeedsBadge, SearchGlyph, needsLabel } from './BottomTabs';
 
@@ -14,13 +14,14 @@ const TAB =
 
 export function TopNav() {
   const count = useNeedsFromMeCount();
+  const incomplete = useNeedsFromMeIncomplete();
   return (
     <div className="hidden min-w-0 items-center gap-2 md:flex">
       <nav aria-label={t('Sections')} className="flex items-center gap-0.5">
         <NavLink
           to="/"
           end
-          aria-label={needsLabel(count)}
+          aria-label={needsLabel(count, incomplete)}
           className={({ isActive }) =>
             cn(
               TAB,
@@ -31,7 +32,7 @@ export function TopNav() {
           }
         >
           {t('Needs from me')}
-          <NeedsBadge count={count} tone="warn" />
+          <NeedsBadge count={count} incomplete={incomplete} tone="warn" />
         </NavLink>
         <NavLink
           to="/beads"

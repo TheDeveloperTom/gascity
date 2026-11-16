@@ -10,6 +10,9 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 
 const PROJECT = 'gascity';
 const beadQueries: URLSearchParams[] = [];
+/** REVIEW 16.11: each rig's open work store, read by the one board read for the owner model. */
+const rigStoreQueries: URLSearchParams[] = [];
+const isRigStoreLeg = (q: URLSearchParams) => q.has('rig') && q.get('status') !== 'closed';
 let extraBeads: SupervisorBead[] = [];
 const supervisorWrites: Array<{
   method: string;
@@ -20,6 +23,7 @@ const supervisorWrites: Array<{
 beforeEach(() => {
   setActiveCity('test-city');
   beadQueries.length = 0;
+  rigStoreQueries.length = 0;
   supervisorWrites.length = 0;
   extraBeads = [];
   invalidate('beads:board:');
@@ -32,7 +36,7 @@ beforeEach(() => {
       const url = parsedUrl(input);
       const method = requestMethod(input, init);
       if (url.pathname === '/v0/city/test-city/beads' && method === 'GET') {
-        beadQueries.push(url.searchParams);
+        (isRigStoreLeg(url.searchParams) ? rigStoreQueries : beadQueries).push(url.searchParams);
         return jsonResponse(
           beadListPayload(url.searchParams.has('type') ? [] : [sampleBead(), ...extraBeads]),
         );
@@ -173,6 +177,12 @@ describe('BeadsPage', () => {
     expect(inProgressLeg?.get('status')).toBe('in_progress');
     expect(inProgressLeg?.has('all')).toBe(false);
     expect(inProgressLeg?.has('type')).toBe(false);
+    // REVIEW 16.11: plus each rig's open work store, never closed history.
+    // BOARD-LOAD 16.11: a complete rig window sends no in-progress leg of its
+    // own (the board read's city-wide leg above covers every rig).
+    await waitFor(() => expect(rigStoreQueries.map((q) => q.get('rig')).sort()).toEqual(['east', 'west']));
+    expect(rigStoreQueries.some((q) => q.get('status') === 'in_progress')).toBe(false);
+    expect(rigStoreQueries.some((q) => q.has('all'))).toBe(false);
   });
 
   it('refetches with all=true when the operator asks for all history', async () => {

@@ -16,7 +16,7 @@ import { parsePeerBoards } from '../supervisor/peerBoardReads';
 import { peerBody, peerTopics } from '../test/fixtures/peerBoards';
 import type * as PeerBoardsModule from '../hooks/usePeerBoards';
 
-const EMPTY_NEEDS: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0 };
+const EMPTY_NEEDS: NeedsModel = { state: 'ready', needs: [], stalls: [], quiet: [], count: 0, questionCount: 0 };
 const needsModel = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../lib/needsFromMe', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/needsFromMe')>()),
@@ -221,7 +221,7 @@ describe('<CockpitHomePage> owner home', () => {
   });
 
   it('needs stay loading while the board read is pending', () => {
-    needsModel.current = { state: 'loading', needs: [], stalls: [], quiet: [], count: 0 };
+    needsModel.current = { state: 'loading', needs: [], stalls: [], quiet: [], count: 0, questionCount: 0 };
     home([], { state: 'loading' });
     expect(screen.queryByText(/Nothing needs you/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Needs from me' })).toBeTruthy();
@@ -235,7 +235,7 @@ describe('<CockpitHomePage> owner home', () => {
   it('a board read that never answers still shows the city diagnostics within 3 s', async () => {
     vi.useFakeTimers();
     try {
-      needsModel.current = { state: 'loading', needs: [], stalls: [], quiet: [], count: 0 };
+      needsModel.current = { state: 'loading', needs: [], stalls: [], quiet: [], count: 0, questionCount: 0 };
       home([cityItem(1)], { state: 'loading' });
       expect(screen.queryByText('City thing 1')).toBeNull();
       await act(async () => {

@@ -35,7 +35,11 @@ function board(): GraphBead[] {
     epic('e13', 'M13', 'M13. Финальная приёмка', false),
     epic('one', null, 'Один тип пользователя вместо наставника и ученика'),
     // L1: a decision gate (no route metadata) holding M03, M04 and «Один тип».
-    bead('l1', 'Окно L1 и ключ Clerk', { issue_type: 'gate' }),
+    bead('l1', 'Окно L1 и ключ Clerk', {
+      issue_type: 'gate',
+      labels: ['needs/operator'],
+      metadata: { 'decision.question_id': 'q-l1', 'owner.link': 'https://discord.com/channels/1/2/3' },
+    }),
     bead('t6', 'M03 #6 — Допуск по своему ящику', { labels: ms('M03'), parent: 'e03', needs: ['l1'] }),
     bead('t7', 'M03 #7 — Портал', { labels: ms('M03'), parent: 'e03', status: 'in_progress', assignee: 'devwork/worker-1' }),
     bead('s3', 'M04 #3 — Не затирать оценку', { labels: ms('M04'), parent: 'e04', dependencies: [blocks('s3', 't6')] }),
@@ -120,7 +124,8 @@ describe('buildBoardGraph', () => {
   it('does not count owner-answer placeholders in the epic progress', () => {
     const beads = [...board(), bead('qa', 'M04 — ответ владельца на ВВ-6', { labels: ms('M04'), parent: 'e04' })];
     const graph = buildBoardGraph(beads, { nowMs: NOW });
-    expect(graph.laneOf.qa).toBe('ask');
+    // a placeholder is a task, never a question (owner 16.11: asked questions only)
+    expect(graph.laneOf.qa).toBe('M04');
     expect(graph.lanes.find((l) => l.key === 'M04')?.total).toBe(2);
   });
 
@@ -261,10 +266,67 @@ describe('buildBoardGraph', () => {
 
   it('gives an in-work task with its own decision a question card in «От тебя»', () => {
     const beads = board().map((b) =>
-      b.id === 't7' ? { ...b, labels: [...ms('M03'), 'needs/operator'], metadata: { 'decision.decide': 'какой портал' } } : b,
+      b.id === 't7' ? {
+            ...b,
+            labels: [...ms('M03'), 'needs/operator'],
+            metadata: { 'decision.decide': 'какой портал', 'decision.question_id': 'q-t7', 'owner.link': 'https://discord.com/channels/1/2/3' },
+          } : b,
     );
     const graph = buildBoardGraph(beads, { nowMs: NOW });
     expect(graph.laneOf[questionNodeId('t7')]).toBe('ask');
     expect(graph.laneOf.t7).toBe('M03');
+  });
+});
+
+// REL17 finding 3 (16.11): while a rig store is unread or still loading the
+// graph is partial, and its «От тебя» count may miss that store's questions.
+describe('the «От тебя» column on a partial graph', () => {
+  const beads = () => [
+    epic('dw-m04', 'M04', 'M04'),
+    bead('dw-q', 'Спросить владельца', {
+      labels: ['needs/operator', ...ms('M04')],
+      metadata: { 'decision.question_id': 'q1', 'decision.chat_url': 'https://discord.com/channels/1/2/3' },
+    }),
+    bead('dw-t', 'задача', { labels: ms('M04'), dependencies: [blocks('dw-t', 'dw-q')] }),
+  ];
+  it('is marked incomplete', () => {
+    const graph = buildBoardGraph(beads(), { nowMs: NOW, partial: true });
+    expect(graph.columns[0]?.title).toBe('От тебя');
+    expect(graph.columns[0]?.incomplete).toBe(true);
+  });
+  // REL17 R2-1: a partial graph during an ordinary refresh is not incomplete
+  // for «От тебя»; the page says which with `ownerIncomplete`.
+  it('follows ownerIncomplete when the page gives it, not partial', () => {
+    const refreshing = buildBoardGraph(beads(), { nowMs: NOW, partial: true, ownerIncomplete: false });
+    expect(refreshing.columns[0]?.incomplete).toBeUndefined();
+    const failed = buildBoardGraph(beads(), { nowMs: NOW, partial: false, ownerIncomplete: true });
+    expect(failed.columns[0]?.incomplete).toBe(true);
+  });
+  it('is not marked when every read is in', () => {
+    const graph = buildBoardGraph(beads(), { nowMs: NOW });
+    expect(graph.columns[0]?.title).toBe('От тебя');
+    expect(graph.columns[0]?.incomplete).toBeUndefined();
+  });
+});
+
+// REL17 finding 4 (16.11): the graph said «Открыто 116» on rel17 and 115 live.
+// The extra one is dw-cs2w «M04 — ответ владельца на ВВ-6», a task the board
+// shows as a card. The old «От тебя» rule drew it as a question card; under
+// the approved rule (asked = needs/operator + question id) it is a task, and
+// the graph counts it as one, as the board does.
+describe('a placeholder task the board shows as a card', () => {
+  it('is counted among the open tasks, not drawn as a question', () => {
+    const beads = [
+      epic('dw-m04', 'M04', 'M04'),
+      bead('dw-cs2w', 'M04 — ответ владельца на ВВ-6 (способ оплаты клиентом)', {
+        labels: ms('M04'),
+        dependencies: [blocks('dw-cs2w', 'dw-x')],
+      }),
+      bead('dw-x', 'обычная задача', { labels: ms('M04') }),
+    ];
+    const graph = buildBoardGraph(beads, { nowMs: NOW });
+    const node = graph.nodes.find((n) => n.id === 'dw-cs2w');
+    expect(node?.kind).toBe('task');
+    expect(graph.headline).toContain('Открыто 2 задачи');
   });
 });
