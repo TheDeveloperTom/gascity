@@ -6,4 +6,5 @@ export const RU_VK11CARD: Readonly<Record<string, string | RuPlural>> = {
   'waits for you': 'ждёт тебя',
   'Assignee: you': 'Исполнитель: ты',
   'Assignee: {who}': 'Исполнитель: {who}',
+  'Assignee: Richard': 'Исполнитель: Ричард',
 };

@@ -166,6 +166,21 @@ describe('buildBoardModel', () => {
     expect(model.idle.state).toBe('busy');
   });
 
+  // Fix C1 (REVIEW 16.11): the board keeps stall alarms out of the rows (they
+  // are noise, lib/boardNoise) and hands them over as service items; the
+  // stopped task must still get its «stopped» mark from them.
+  it('a stall alarm among the service items still marks its task stopped', () => {
+    const alarm = bead('dw-alarm', {
+      title: 'стоит: dw-stalled (M00 #1) с 18:44 UTC',
+      metadata: { 'devwork.stopped_card': 'dw-stalled' },
+    });
+    const stalled = bead('dw-stalled');
+    const model = buildBoardModel(data([stalled], { serviceItems: [alarm] }), RIGS, NO_FILTERS);
+    expect(ids(model.columns.waiting)).toEqual(['dw-stalled']);
+    const card = model.columns.waiting[0]!;
+    expect(card.stage.marks.map((m) => m.kind)).toContain('stopped');
+  });
+
   it('a stop card folds into its visible task', () => {
     const stop = bead('dw-stopcard', { metadata: { 'devwork.stopped_card': 'dw-stopped' } });
     const stopped = bead('dw-stopped');

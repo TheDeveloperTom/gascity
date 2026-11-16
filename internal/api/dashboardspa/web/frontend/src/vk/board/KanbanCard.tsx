@@ -56,6 +56,7 @@ import { cardLabel } from './cardLabel';
 import { PeerKanbanCard } from './PeerKanbanCard';
 import { RelationshipBadge, type RelationshipDisplayType } from './RelationshipBadge';
 import { RunningDots } from './RunningDots';
+import { assigneeTone } from './cardAssignee';
 
 /** Milestone tag colours: the design's dots, picked by a stable hash of the key. */
 const TAG_COLORS = ['#0EA5E9', '#EC4899', '#22C55E', '#F59E0B', '#8B5CF6', '#14B8A6'] as const;
@@ -231,7 +232,7 @@ function OwnKanbanCard({
   const stepAge =
     progress === null || nowMs - progress < 60_000 ? t('now') : ageText(nowMs - progress);
   const routeAttention = stage.marks.find((mark) => mark.tone === 'attention') ?? null;
-  const executor = stage.stage === 'working';
+  const avatar = assigneeTone(bead.assignee, stage.stage === 'working');
 
   return (
     <article
@@ -287,11 +288,9 @@ function OwnKanbanCard({
 
       {/* Row 3: assignee avatar at the right */}
       <div className="flex items-center justify-end text-vk-text-low">
-        {executor ? (
-          <CardAvatar letter="И" label={t('Implementer')} tone="executor" />
-        ) : (
-          <CardAvatar letter="А" label={t('Assignee: you')} tone="owner" />
-        )}
+        {avatar === 'owner' && <CardAvatar letter="А" label={t('Assignee: you')} tone="owner" />}
+        {avatar === 'executor' && <CardAvatar letter="И" label={t('Implementer')} tone="executor" />}
+        {avatar === 'peer' && <CardAvatar letter="Р" label={t('Assignee: Richard')} tone="peer" />}
       </div>
 
       {/* Row 4: chips */}

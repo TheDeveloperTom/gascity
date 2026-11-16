@@ -16,6 +16,21 @@ describe('isBoardNoise (VK 1:1: the board shows work items only)', () => {
     expect(isBoardNoise(bead(title))).toBe(true);
   });
 
+  // Fix I1 (REVIEW 16.11): a PR repair or gate rework an agent is on is live
+  // work; it shows as a normal card while in progress or assigned.
+  it.each([
+    'Repair PR #489: CI красный (unit, web-ui), ветка позади main',
+    'Доработка по провалу ворот Refinery, раунд 1: M04 #3 — Сделать invalid',
+  ])('keeps «%s» while an agent is on it', (title) => {
+    expect(isBoardNoise(bead(title, { status: 'in_progress' }))).toBe(false);
+    expect(isBoardNoise(bead(title, { assignee: 'gcg-session-9570720d' }))).toBe(false);
+    expect(isBoardNoise(bead(title, { assignee: '  ' }))).toBe(true);
+  });
+
+  it('a stall alarm stays noise even when in progress', () => {
+    expect(isBoardNoise(bead('стоит: dw-m53l7 (M00 #1) с 18:44 UTC', { status: 'in_progress' }))).toBe(true);
+  });
+
   it.each(['convoy', 'molecule', 'step', 'gate'])('hides engine type %s', (type) => {
     expect(isBoardNoise(bead('anything', { issue_type: type }))).toBe(true);
   });

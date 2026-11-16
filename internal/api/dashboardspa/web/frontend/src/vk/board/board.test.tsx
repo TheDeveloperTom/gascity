@@ -238,7 +238,7 @@ describe('VK board', () => {
   it('the assignee avatar: «А» for the owner, blue «И» for the executor at work', () => {
     renderBoard(
       [
-        bead('dw-own', 'open', { title: 'mine' }),
+        bead('dw-own', 'open', { title: 'mine', assignee: 'TheDeveloperTom' }),
         bead('dw-run', 'in_progress', { title: 'running', assignee: 'devwork/worker' }),
       ],
       { nowMs: NOW, sessions: [{ id: 's1', session_name: 'devwork/worker', state: 'active' }] },
@@ -249,6 +249,26 @@ describe('VK board', () => {
     const executor = within(run).getByRole('img', { name: 'Исполнитель' });
     expect(executor.textContent).toBe('И');
     expect(executor.className).toContain('bg-[#1D5BD6]');
+  });
+
+  // Fix I2 (REVIEW 16.11): the avatar reads bead.assignee, not the stage.
+  it('the avatar is the real assignee: owner «А», agent «И», Richard «Р», none when unassigned', () => {
+    renderBoard(
+      [
+        bead('dw-none', 'open', { title: 'nobody' }),
+        bead('dw-me', 'open', { title: 'owner task', assignee: 'TheDeveloperTom' }),
+        bead('dw-ag', 'open', { title: 'agent task', assignee: 'gcg-session-9570720d6480982c' }),
+        bead('dw-ri', 'open', { title: 'richard task', assignee: 'RicciRi' }),
+      ],
+      { nowMs: NOW },
+    );
+    const card = (title: string) => screen.getByText(title).closest('article') as HTMLElement;
+    expect(card('nobody').querySelector('[data-avatar]')).toBeNull();
+    expect(within(card('owner task')).getByRole('img', { name: 'Исполнитель: ты' }).textContent).toBe('А');
+    expect(within(card('agent task')).getByRole('img', { name: 'Исполнитель' }).textContent).toBe('И');
+    const richard = within(card('richard task')).getByRole('img', { name: 'Исполнитель: Ричард' });
+    expect(richard.textContent).toBe('Р');
+    expect(richard.getAttribute('data-avatar')).toBe('peer');
   });
 
   it('a selected card keeps its background and gets the brand border (canvas Main)', () => {

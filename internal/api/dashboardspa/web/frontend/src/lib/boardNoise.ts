@@ -19,10 +19,19 @@ const ALARM_METADATA_KEYS: readonly string[] = ['devwork.stopped_card', 'devwork
 
 const NOISE_TITLE_PATTERNS: readonly RegExp[] = [
   /^\s*Ревью плана\s.*круг\s*\d+/iu,
-  /^\s*Repair PR #/i,
-  /^\s*Доработка по провалу ворот/i,
   /^\s*стоит:\s/i,
 ];
+
+// I1 (REVIEW 16.11): PR repairs and gate reworks are real agent work. They are
+// noise only while nobody is on them; in progress or assigned, they are cards.
+const IDLE_ONLY_NOISE_TITLE_PATTERNS: readonly RegExp[] = [
+  /^\s*Repair PR #/i,
+  /^\s*Доработка по провалу ворот/i,
+];
+
+function agentIsOn(bead: SupervisorBead): boolean {
+  return bead.status === 'in_progress' || (bead.assignee?.trim() ?? '').length > 0;
+}
 
 /** True when a bead is engine bookkeeping, not a work item for the board. */
 export function isBoardNoise(bead: SupervisorBead): boolean {
@@ -30,5 +39,6 @@ export function isBoardNoise(bead: SupervisorBead): boolean {
   const metadata = bead.metadata ?? {};
   if (ALARM_METADATA_KEYS.some((key) => (metadata[key] ?? '').trim().length > 0)) return true;
   const title = bead.title ?? '';
-  return NOISE_TITLE_PATTERNS.some((re) => re.test(title));
+  if (NOISE_TITLE_PATTERNS.some((re) => re.test(title))) return true;
+  return !agentIsOn(bead) && IDLE_ONLY_NOISE_TITLE_PATTERNS.some((re) => re.test(title));
 }
