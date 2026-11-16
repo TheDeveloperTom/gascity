@@ -9,7 +9,7 @@
 import { isBoardNoise } from '../../lib/boardNoise';
 import { beadRole } from '../../lib/boardRoles';
 import { milestoneOf } from '../../lib/waitReasons';
-import { beadIdOf, buildGraph, type GraphBead, type GraphColumn, type GraphEdge, type GraphNode } from './model';
+import { askedHoldsOf, beadIdOf, buildGraph, type GraphBead, type GraphColumn, type GraphEdge, type GraphNode } from './model';
 
 export interface Lane {
   key: string;
@@ -249,7 +249,9 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     input.push({ id, title: id, status: 'open', issue_type: 'task', created_at: new Date(opts.nowMs).toISOString() });
   }
 
-  const model = buildGraph(input, { epicId: null, nowMs: opts.nowMs });
+  // «От тебя» from the beads as read (lib/ownerAsked), before epic blockers
+  // turn into lane marks: «держит N» matches «Нужно от меня».
+  const model = buildGraph(input, { epicId: null, nowMs: opts.nowMs, asked: askedHoldsOf(all) });
   const warnings: string[] = [];
   if (opts.partial === true) warnings.push('Прочитано не полностью — часть задач и связей может не попасть на граф.');
 
@@ -392,7 +394,8 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
   nodes
     .filter((n) => n.kind === 'question')
     .map((n) => ({ n, k: bary(downAdj.get(n.id) ?? []) }))
-    .sort((a, b) => a.k - b.k || byLabel(a.n, b.n))
+    // holders first; a question that holds nothing goes to the bottom
+    .sort((a, b) => Number(a.n.holds === 0) - Number(b.n.holds === 0) || a.k - b.k || byLabel(a.n, b.n))
     .forEach((x, i) => (x.n.row = i));
   nodes.sort(
     (a, b) =>
