@@ -29,6 +29,7 @@ go_test(
     srcs = [
         "cmdline_portable_test.go",
         "environ_darwin_test.go",
+        "environ_value_darwin_test.go",
         "listener_test.go",
         "pidutil_test.go",
         "procargs2_test.go",

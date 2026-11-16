@@ -40,7 +40,7 @@ func requireProcFS(t *testing.T) {
 // from /proc.
 func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 	t.Helper()
-	requireProcFS(t)
+	requireOrphanSweepHost(t)
 	args := append([]string{"-c", `"$@" >/dev/null 2>&1 & echo $!`, "gc-orphan-spawner"}, argv...)
 	cmd := exec.Command("sh", args...)
 	cmd.Env = append(os.Environ(), extraEnv...)
@@ -83,7 +83,27 @@ func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 	}
 }
 
+// requireOrphanSweepHost skips tests that need a working orphan sweep: /proc
+// (linux) or the sysctl process table (darwin).
+func requireOrphanSweepHost(t *testing.T) {
+	t.Helper()
+	if _, ok := platformOrphanTable(); ok {
+		return
+	}
+	requireProcFS(t)
+}
+
 func processParentPIDForTest(pid int) (int, error) {
+	if tb, ok := platformOrphanTable(); ok {
+		e, found, err := tb.lookup(pid)
+		if err != nil {
+			return 0, err
+		}
+		if !found {
+			return 0, fmt.Errorf("pid %d is gone", pid)
+		}
+		return e.ppid, nil
+	}
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return 0, err
@@ -113,6 +133,9 @@ func waitProcessGoneForTest(t *testing.T, pid int, timeout time.Duration) bool {
 }
 
 func TestReapOrphanedServiceProcessesKillsPPID1CommandMatch(t *testing.T) {
+	// `sleep` is an Apple platform binary on darwin, whose environment the
+	// kernel withholds; orphan_reap_darwin_test.go covers darwin.
+	requireProcFS(t)
 	marker := fmt.Sprintf("86340.0%d", os.Getpid())
 	stateRoot := t.TempDir()
 	command := []string{"sleep", marker}
@@ -129,6 +152,10 @@ func TestReapOrphanedServiceProcessesKillsPPID1CommandMatch(t *testing.T) {
 }
 
 func TestReapOrphanedServiceProcessesSkipsNonMatches(t *testing.T) {
+	// Linux /proc sweep semantics (service-name scoping, the /proc scan);
+	// the darwin sweep is covered by orphan_reap_table_test.go and
+	// orphan_reap_darwin_test.go.
+	requireProcFS(t)
 	marker := fmt.Sprintf("86341.0%d", os.Getpid())
 	stateRoot := t.TempDir()
 	command := []string{"sleep", marker}
@@ -194,6 +221,10 @@ func TestReapOrphanedServiceProcessesSkipsNonMatches(t *testing.T) {
 // orphans, because pidutil.Cmdline drops such arguments from the process
 // side and newOrphanIdentity applies the same rule to the configured side.
 func TestReapOrphanedServiceProcessesMatchesWhitespaceOnlyCommandArgs(t *testing.T) {
+	// Linux /proc sweep semantics (service-name scoping, the /proc scan);
+	// the darwin sweep is covered by orphan_reap_table_test.go and
+	// orphan_reap_darwin_test.go.
+	requireProcFS(t)
 	marker := fmt.Sprintf("86344.0%d", os.Getpid())
 	stateRoot := t.TempDir()
 	// The two-command script keeps the shell wrapper alive (no single-exec
@@ -217,6 +248,10 @@ func TestReapOrphanedServiceProcessesMatchesWhitespaceOnlyCommandArgs(t *testing
 // entrypoint), ppid 1 marks live supervised children rather than orphans, so
 // the sweep must find nothing instead of matching healthy processes.
 func TestFindOrphanedServiceProcessesSkipsWhenSweeperIsInit(t *testing.T) {
+	// Linux /proc sweep semantics (service-name scoping, the /proc scan);
+	// the darwin sweep is covered by orphan_reap_table_test.go and
+	// orphan_reap_darwin_test.go.
+	requireProcFS(t)
 	marker := fmt.Sprintf("86342.0%d", os.Getpid())
 	stateRoot := t.TempDir()
 	command := []string{"sleep", marker}
@@ -255,6 +290,10 @@ func TestFindOrphanedServiceProcessesSkipsWhenSweeperIsInit(t *testing.T) {
 // command line is visible in /proc, so the keep case cannot race the exec
 // transition.
 func TestLiveMatchingOrphansDropsIdentityMismatch(t *testing.T) {
+	// Linux /proc sweep semantics (service-name scoping, the /proc scan);
+	// the darwin sweep is covered by orphan_reap_table_test.go and
+	// orphan_reap_darwin_test.go.
+	requireProcFS(t)
 	marker := fmt.Sprintf("86343.0%d", os.Getpid())
 	stateRoot := t.TempDir()
 	command := []string{"sleep", marker}

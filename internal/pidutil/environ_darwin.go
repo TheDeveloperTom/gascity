@@ -25,3 +25,20 @@ func Environ(pid int) ([]string, error) {
 	}
 	return env, nil
 }
+
+// EnvironValue returns the value of one environment variable of pid, as it
+// stood when the process started, and whether the variable is set. Unlike
+// Environ it never materializes any other entry, so callers that must not
+// handle a process's secrets can still read one identifying marker. It fails
+// as Environ does for a pid that does not exist or that another user owns.
+func EnvironValue(pid int, key string) (string, bool, error) {
+	data, err := unix.SysctlRaw("kern.procargs2", pid)
+	if err != nil {
+		return "", false, fmt.Errorf("pidutil: reading the environment of PID %d via kern.procargs2: %w", pid, err)
+	}
+	value, ok, err := parseProcArgs2EnvValue(data, key)
+	if err != nil {
+		return "", false, fmt.Errorf("pidutil: parsing the environment of PID %d: %w", pid, err)
+	}
+	return value, ok, nil
+}

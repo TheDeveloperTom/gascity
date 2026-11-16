@@ -5,6 +5,9 @@ go_library(
     srcs = [
         "manager.go",
         "orphan_reap.go",
+        "orphan_reap_darwin.go",
+        "orphan_reap_nodarwin.go",
+        "orphan_reap_table.go",
         "proxy_process.go",
         "proxy_process_linux.go",
         "proxy_process_other.go",
@@ -24,13 +27,23 @@ go_library(
         "//internal/pidutil",
         "//internal/runtime",
         "//internal/supervisor",
-    ],
+    ] + select({
+        "@rules_go//go/platform:darwin": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:ios": [
+            "@org_golang_x_sys//unix",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 go_test(
     name = "workspacesvc_test",
     srcs = [
         "manager_test.go",
+        "orphan_reap_darwin_test.go",
+        "orphan_reap_table_test.go",
         "orphan_reap_test.go",
         "proxy_process_pdeathsig_linux_test.go",
         "proxy_process_ready_test.go",
