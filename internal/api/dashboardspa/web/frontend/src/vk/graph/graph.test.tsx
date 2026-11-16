@@ -1,0 +1,162 @@
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GraphView } from './GraphView';
+import { M04 } from './graphFixture';
+import { whatIfBanner } from './model';
+
+// view lane (16.11 «Граф»): Graph-Epic layout, V1 / V5 hover, V5-Click select, Graph-Phone.
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function setup(selectedId: string | null = null) {
+  const onSelect = vi.fn();
+  const onAnswer = vi.fn();
+  const utils = render(
+    <GraphView model={M04} selectedId={selectedId} onSelect={onSelect} onAnswer={onAnswer} />,
+  );
+  const desk = within(screen.getByTestId('graph-desktop'));
+  const card = (id: string) => screen.getByTestId('graph-desktop').querySelector(`[data-node-id="${id}"]`) as HTMLElement;
+  const edge = (from: string, to: string) =>
+    screen.getByTestId('graph-desktop').querySelector(`[data-edge="${from}>${to}"]`) as SVGPathElement;
+  return { ...utils, onSelect, onAnswer, desk, card, edge };
+}
+
+describe('GraphView layout (Graph-Epic)', () => {
+  it('renders every column with its title, count and verdict, and the headline', () => {
+    const { desk } = setup();
+    for (const c of M04.columns) {
+      const head = desk.getByTestId(`graph-col-${c.title}`);
+      expect(head.textContent).toContain(c.title);
+      expect(head.textContent).toContain(String(c.count));
+      expect(head.textContent).toContain(c.verdict);
+    }
+    expect(desk.getByText(M04.headline)).toBeTruthy();
+    expect(desk.getByText(M04.subline)).toBeTruthy();
+  });
+
+  it('places one card per node and one line per edge', () => {
+    const { card, edge } = setup();
+    for (const n of M04.nodes) expect(card(n.id)).toBeTruthy();
+    for (const e of M04.edges) expect(edge(e.from, e.to)).toBeTruthy();
+  });
+
+  it('question cards carry an «Ответить» button that answers, not selects', () => {
+    const { card, onAnswer, onSelect } = setup();
+    fireEvent.click(within(card('ql1')).getByRole('button', { name: 'Ответить' }));
+    expect(onAnswer).toHaveBeenCalledWith('ql1');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('an outside card is marked «снаружи»', () => {
+    const { card } = setup();
+    expect(card('t6').getAttribute('data-outside')).toBe('true');
+  });
+});
+
+describe('click select (V5-Click)', () => {
+  it('clicking a card calls onSelect with its id', () => {
+    const { card, onSelect } = setup();
+    fireEvent.click(card('s3'));
+    expect(onSelect).toHaveBeenCalledWith('s3');
+  });
+
+  it('exactly one card is selected and it carries aria-current', () => {
+    const { card } = setup('s3');
+    expect(card('s3').getAttribute('aria-current')).toBe('true');
+    const sel = screen.getByTestId('graph-desktop').querySelectorAll('[aria-current="true"]');
+    expect(sel).toHaveLength(1);
+  });
+
+  it('dims cards off the selected chain and keeps the chain lit', () => {
+    const { card, edge } = setup('s3');
+    for (const id of ['m3', 't6', 'qv4', 'ql1', 's1', 'a1', 'gw']) expect(card(id).getAttribute('data-dim')).toBe('false');
+    for (const id of ['qv3', 's9', 'qv6']) expect(card(id).getAttribute('data-dim')).toBe('true');
+    expect(edge('m3', 's3').getAttribute('data-lit')).toBe('held');
+    expect(edge('a1', 'gw').getAttribute('data-lit')).toBe('held');
+    expect(edge('qv3', 's9').getAttribute('data-lit')).toBe('faint');
+  });
+
+  it('with nothing selected nothing is dimmed', () => {
+    const { card } = setup();
+    expect(card('qv3').getAttribute('data-dim')).toBe('false');
+  });
+
+  it('Enter on a focused card selects it', () => {
+    const { card, onSelect } = setup();
+    fireEvent.keyDown(card('a1'), { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith('a1');
+  });
+});
+
+describe('hover (V5-Hover, V1-WhatIf)', () => {
+  it('hovering a middle card shows its whatIfBanner and sweeps lines toward and away', () => {
+    const { card, edge, desk } = setup();
+    fireEvent.mouseEnter(card('s3'));
+    expect(desk.getByRole('status').querySelector('p')?.textContent).toBe(whatIfBanner(M04, 's3'));
+    expect(edge('m3', 's3').getAttribute('data-lit')).toBe('toward');
+    expect(edge('ql1', 't6').getAttribute('data-lit')).toBe('toward');
+    expect(edge('s3', 'a1').getAttribute('data-lit')).toBe('away');
+    expect(edge('a1', 'gw').getAttribute('data-lit')).toBe('away');
+    expect(edge('qv3', 's9').getAttribute('data-lit')).toBe('faint');
+    expect(card('qv3').getAttribute('data-dim')).toBe('true');
+    fireEvent.mouseLeave(card('s3'));
+    expect(desk.queryByRole('status')).toBeNull();
+    expect(desk.getByText(M04.headline)).toBeTruthy();
+  });
+
+  it('hovering «Ответить» runs the what-if wave along the question chain', () => {
+    const { card, edge, desk } = setup();
+    fireEvent.mouseEnter(within(card('ql1')).getByRole('button', { name: 'Ответить' }));
+    expect(desk.getByRole('status').querySelector('p')?.textContent).toBe(whatIfBanner(M04, 'ql1'));
+    expect(edge('ql1', 't6').getAttribute('data-lit')).toBe('wave');
+    expect(edge('s3', 's1').getAttribute('data-lit')).toBe('wave');
+    expect(edge('qv4', 'm3').getAttribute('data-lit')).toBe('faint');
+  });
+
+  it('hover takes over from the selection and gives it back on leave', () => {
+    const { card, edge } = setup('s9');
+    fireEvent.mouseEnter(card('s3'));
+    expect(edge('m3', 's3').getAttribute('data-lit')).toBe('toward');
+    fireEvent.mouseLeave(card('s3'));
+    expect(edge('m3', 's3').getAttribute('data-lit')).toBe('faint');
+    expect(edge('qv3', 's9').getAttribute('data-lit')).toBe('held');
+  });
+});
+
+describe('reduced motion', () => {
+  it('motion is off when the viewer prefers reduced motion', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('reduce'),
+      media: q,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    const { card } = setup();
+    fireEvent.mouseEnter(card('s3'));
+    expect(screen.getByTestId('graph-desktop').getAttribute('data-motion')).toBe('off');
+  });
+
+  it('motion is on by default', () => {
+    setup();
+    expect(screen.getByTestId('graph-desktop').getAttribute('data-motion')).toBe('on');
+  });
+});
+
+describe('phone (Graph-Phone)', () => {
+  it('lists the waves top to bottom with their cards and no lines', () => {
+    const onSelect = vi.fn();
+    const onAnswer = vi.fn();
+    render(<GraphView model={M04} selectedId={null} onSelect={onSelect} onAnswer={onAnswer} />);
+    const phone = screen.getByTestId('graph-phone');
+    const waves = phone.querySelectorAll('[data-wave-title]');
+    expect([...waves].map((w) => w.getAttribute('data-wave-title'))).toEqual(M04.columns.map((c) => c.title));
+    expect(phone.querySelector('[data-edge]')).toBeNull();
+    fireEvent.click(within(phone).getAllByRole('button', { name: 'Ответить' })[0] as HTMLElement);
+    expect(onAnswer).toHaveBeenCalledWith('qv3');
+    fireEvent.click(phone.querySelector('[data-node-id="s3"]') as HTMLElement);
+    expect(onSelect).toHaveBeenCalledWith('s3');
+  });
+});
