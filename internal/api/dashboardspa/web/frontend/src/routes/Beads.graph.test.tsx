@@ -3,6 +3,7 @@ import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeadsPage } from './Beads';
 import { invalidate } from '../api/cache';
+import { resetSupervisorApiForTests } from '../supervisor/client';
 import { setActiveCity } from '../api/cityBase';
 import { AttentionProvider } from '../attention/context';
 import { NowProvider } from '../contexts/NowContext';
@@ -527,6 +528,39 @@ describe('BeadsPage progressive loading and the restarting city', () => {
     await screen.findByTestId('board-graph-view');
     await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
     expect(screen.queryByText('Data still loading…')).toBeNull();
+  });
+
+  // BOARD-LOAD 16.11: the fast paint and the graph's rig reads sit beside the
+  // full board read, whose city-wide in-progress leg (a Live read, slow under
+  // load) covers every rig. With a complete rig window they send no rig-scoped
+  // in-progress read of their own; the full board still sends its leg.
+  it('rig previews send no in-progress read of their own when the rig window is complete', async () => {
+    // The client captures fetch once; rebuild it on this test's stub so the
+    // calls below are this page's requests.
+    resetSupervisorApiForTests();
+    renderPage('/beads?view=graph');
+    await screen.findByTestId('board-graph-view');
+    await vi.waitFor(() => expect(boardCalls.at(-1)?.partial).toBe(false));
+    const beadUrls = () =>
+      vi
+        .mocked(fetch)
+        .mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : String(input), window.location.origin))
+        .filter((url) => url.pathname === '/v0/city/test-city/beads');
+    const isRigWindow = (u: URL) => u.searchParams.get('rig') === 'devwork' && !u.searchParams.has('status');
+    // The old code sent the rig in-progress leg together with the rig window.
+    await vi.waitFor(() => expect(beadUrls().filter(isRigWindow).length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 20));
+    const urls = beadUrls();
+    const rigWindows = urls.filter(isRigWindow);
+    const rigInProgress = urls.filter(
+      (u) => u.searchParams.get('rig') === 'devwork' && u.searchParams.get('status') === 'in_progress',
+    );
+    const cityInProgress = urls.filter(
+      (u) => !u.searchParams.has('rig') && u.searchParams.get('status') === 'in_progress',
+    );
+    expect(rigWindows.length).toBeGreaterThan(0);
+    expect(rigInProgress).toHaveLength(0);
+    expect(cityInProgress.length).toBeGreaterThan(0);
   });
 
   it('a restarting city shows one calm line, not red not_found alerts', async () => {

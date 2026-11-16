@@ -119,10 +119,14 @@ export function useBoardData(): BoardRead {
   const sessionsKey = sessionsCacheKey(city);
   const rigsKey = rigsCacheKey(city);
 
+  // The closed legs need the rig names; they join this hook's own /rigs read
+  // in flight rather than sending a second /rigs beside it (BOARD-LOAD 16.11).
+  const readRigNames = () =>
+    sharedRead(rigsKey, listSupervisorRigs).then((list) => list.items.map((rig) => rig.name));
   const readBoard = () =>
     listSupervisorBeads({
       withRoutes: true,
-      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT },
+      recentClosed: { limit: BOARD_RECENT_CLOSED_LIMIT, rigNames: readRigNames },
     });
   const board = useCachedData(boardKey, () => sharedRead(boardKey, readBoard), {
     refreshFetcher: () => sharedRead(boardKey, readBoard, { fresh: true }),

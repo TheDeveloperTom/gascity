@@ -116,9 +116,34 @@ describe('useBoardData', () => {
     await waitFor(() => expect(screen.getByTestId('beads').textContent).toBe('1/0/0/true/1/1'));
     expect(screen.getByTestId('home').textContent).toBe('1/0/0/true/1/1');
     expect(beads).toHaveBeenCalledTimes(1);
-    expect(beads).toHaveBeenCalledWith({ withRoutes: true, recentClosed: { limit: 100 } });
+    expect(beads).toHaveBeenCalledWith({
+      withRoutes: true,
+      recentClosed: { limit: 100, rigNames: expect.any(Function) },
+    });
     expect(rigs).toHaveBeenCalledTimes(1);
     expect(sessions).toHaveBeenCalledTimes(1);
+  });
+
+  // BOARD-LOAD 16.11: the closed legs' rig list joins the board's own /rigs
+  // read in flight instead of sending a second /rigs request beside it.
+  it('the closed legs read their rigs from the shared rigs read', async () => {
+    let releaseRigs: () => void = () => undefined;
+    rigs.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRigs = () => resolve({ items: [{ name: 'devwork', prefix: 'dw' }, { name: 'east' }] } as never);
+        }),
+    );
+    render(<Consumer name="beads" />);
+    await waitFor(() => expect(beads).toHaveBeenCalledTimes(1));
+    const options = beads.mock.calls[0]?.[0];
+    const rigNames = options?.recentClosed?.rigNames;
+    expect(options?.recentClosed?.limit).toBe(100);
+    expect(rigNames).toBeTypeOf('function');
+    const names = rigNames!();
+    expect(rigs).toHaveBeenCalledTimes(1);
+    releaseRigs();
+    await expect(names).resolves.toEqual(['devwork', 'east']);
   });
 
   // vk integration: TopNav, BottomTabs, the drawer and ⌘K each read the board.

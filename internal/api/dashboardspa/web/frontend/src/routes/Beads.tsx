@@ -232,8 +232,10 @@ export function BeadsPage() {
     fastKey === 'off'
       ? Promise.resolve(null)
       : // No withRoutes: a rig read with routes adds an unscoped route leg, the
-        // very read this one is here to outrun. Routes fill in with it.
-        listSupervisorBeads({ rigFilter: fastKey }),
+        // very read this one is here to outrun. Routes fill in with it. Its own
+        // in-progress leg is a Live read that outlasts the window under load;
+        // the full read's city-wide leg covers this rig (BOARD-LOAD 16.11).
+        listSupervisorBeads({ rigFilter: fastKey, inProgressLeg: 'when-truncated' }),
   );
   const fastData = useMemo(() => boardDataOf(fast.data), [fast.data]);
   const data = showAllHistory ? historyData : (board.data ?? fastData);
@@ -494,7 +496,9 @@ export function BeadsPage() {
       anyGraph && graphRigNames.length > 0
         ? Promise.all(
             graphRigNames.map((rig) =>
-              listSupervisorBeads({ rigFilter: rig })
+              // graphRows merges the full board's rows (city-wide in-progress
+              // leg included) first, so the rig's own leg adds nothing then.
+              listSupervisorBeads({ rigFilter: rig, inProgressLeg: 'when-truncated' })
                 .then((list) => list.items)
                 .catch(() => [] as SupervisorBead[]),
             ),
