@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BoardGraphView, COLHEAD_H, layoutBoard, epicRange } from './BoardGraphView';
+import { BoardGraphView, COLHEAD_H, layoutBoard, epicRange, fitScale } from './BoardGraphView';
 import type { BoardGraph, Lane } from './boardModel';
 import type { GraphNode } from './model';
 
@@ -137,6 +137,41 @@ describe('layoutBoard geometry', () => {
   });
 });
 
+describe('questions stay inside their epic lane', () => {
+  const MANY: BoardGraph = {
+    ...BOARD,
+    nodes: [
+      ...BOARD.nodes,
+      n('q2', 'question', 'вопрос · L2', 0, 1),
+      n('q3', 'question', 'вопрос · L3', 0, 2),
+    ],
+    edges: [...BOARD.edges, { from: 'q2', to: 'a1' }, { from: 'q3', to: 'a2' }],
+    laneOf: { ...BOARD.laneOf, q2: 'ask', q3: 'ask' },
+  };
+
+  it('lane height counts the question rows: max(task rows, question rows)', () => {
+    const l = layoutBoard(MANY, 1400);
+    const m03 = l.lanes.find((x) => x.key === 'M03')!;
+    const m04 = l.lanes.find((x) => x.key === 'M04')!;
+    for (const id of ['q1', 'q2', 'q3']) {
+      const b = l.box.get(id)!;
+      expect(b.x).toBe(l.xs[0]);
+      expect(b.y).toBeGreaterThanOrEqual(m03.top);
+      expect(b.y + b.h).toBeLessThanOrEqual(m03.top + m03.height);
+    }
+    expect(m04.top).toBeGreaterThanOrEqual(m03.top + m03.height);
+  });
+});
+
+describe('fitScale', () => {
+  it('is min(1, available / graph width), floored at 0.6', () => {
+    expect(fitScale(3000, 2000)).toBe(1);
+    expect(fitScale(1500, 2000)).toBe(0.75);
+    expect(fitScale(400, 2000)).toBe(0.6);
+    expect(fitScale(0, 2000)).toBe(1);
+  });
+});
+
 describe('epicRange', () => {
   it('compresses consecutive milestones into a range', () => {
     expect(epicRange(['M05', 'M06', 'M07', 'M08', 'M09', 'M10', 'M11', 'M12'])).toBe('M05–M12');
@@ -241,17 +276,44 @@ describe('BoardGraphView desktop', () => {
     expect(w1).toBeLessThanOrEqual(380);
   });
 
-  it('«вписать в экран» scales the canvas to the viewport, and back', () => {
+  it('«вписать по ширине» scales the canvas to the viewport width (floored at 0.6), and back', () => {
     const { desk } = setup();
     const scroll = desk.getByTestId('board-scroll');
     Object.defineProperty(scroll, 'clientWidth', { configurable: true, value: 400 });
     Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 300 });
-    fireEvent.click(desk.getByRole('button', { name: 'вписать в экран' }));
+    fireEvent.click(desk.getByRole('button', { name: 'вписать по ширине' }));
     const canvas = desk.getByTestId('board-canvas');
     expect(canvas.getAttribute('data-fit')).toBe('on');
-    expect(canvas.style.transform).toMatch(/^scale\(0\.\d+\)$/);
+    expect(canvas.style.transform).toBe('scale(0.600)');
     fireEvent.click(desk.getByRole('button', { name: 'обычный масштаб' }));
     expect(canvas.getAttribute('data-fit')).toBe('off');
+  });
+
+  it('the banner slot is always rendered, empty without hover, so hover never moves the graph', () => {
+    const { desk, card } = setup();
+    const slot = desk.getByTestId('board-banner');
+    expect(slot.textContent).toBe('');
+    expect(desk.getByText(BOARD.headline)).toBeTruthy();
+    fireEvent.mouseEnter(card('a2')!);
+    expect(desk.getByTestId('board-banner')).toBe(slot);
+    expect(slot.textContent).not.toBe('');
+    expect(desk.getByText(BOARD.headline)).toBeTruthy();
+  });
+
+  it('clears hover about 80 ms after the pointer leaves, not at once', () => {
+    vi.useFakeTimers();
+    try {
+      const { desk, card } = setup();
+      fireEvent.mouseEnter(card('a2')!);
+      fireEvent.mouseLeave(card('a2')!);
+      expect(desk.getByTestId('board-banner').textContent).not.toBe('');
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(desk.getByTestId('board-banner').textContent).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows «↓ ещё N ниже» / «→ ещё N правее» for the lit chain off screen and scrolls there', () => {

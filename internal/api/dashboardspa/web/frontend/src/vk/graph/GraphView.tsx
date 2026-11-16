@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type RefObject, type SetStateAction } from 'react';
 import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox, type CardTone } from './GraphCard';
 import { GraphIcon } from './icons';
 import { chainOf, whatIfBanner, type Chain, type GraphModel, type GraphNode } from './model';
@@ -175,8 +175,56 @@ export function cardTone(focus: Focus | null, chain: Chain | null, id: string): 
 
 // ------------------------------------------------------------ view
 
-export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewProps) {
+/** Hover leave is delayed ~80 ms: a pointer grazing a card edge must not
+ *  flicker the lit chain on and off (owner review 16.11). */
+export const HOVER_LEAVE_MS = 80;
+export function useHoverFocus(): {
+  hover: Focus | null;
+  enter: (f: SetStateAction<Focus | null>) => void;
+  leave: () => void;
+  onCardHover: (id: string | null) => void;
+  onAnswerHover: (id: string | null) => void;
+} {
   const [hover, setHover] = useState<Focus | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => cancel, []);
+  const enter = (f: SetStateAction<Focus | null>) => {
+    cancel();
+    setHover(f);
+  };
+  const leave = () => {
+    cancel();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setHover(null);
+    }, HOVER_LEAVE_MS);
+  };
+  const onCardHover = (id: string | null) => (id === null ? leave() : enter({ id, mode: 'card' }));
+  const onAnswerHover = (id: string | null) =>
+    id !== null ? enter({ id, mode: 'answer' }) : enter((h) => (h !== null ? { id: h.id, mode: 'card' } : null));
+  return { hover, enter, leave, onCardHover, onAnswerHover };
+}
+
+/** Always-present one-line banner slot: hover fills it, never resizes it. */
+export function BannerSlot({ text, mode, testId }: { text: string | null; mode: Mode | null; testId: string }) {
+  return (
+    <div className="vkg-banner" role="status" data-testid={testId} data-kind={mode === 'answer' ? 'answer' : 'task'} data-empty={text === null ? 'true' : 'false'}>
+      {text !== null ? (
+        <>
+          <p title={text}>{text}</p>
+          {mode === 'answer' ? <span className="vkg-tag" aria-hidden="true">предпросмотр</span> : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewProps) {
+  const { hover, leave, onCardHover, onAnswerHover } = useHoverFocus();
   const reduced = useReducedMotion();
   const [scrollRef, avail] = useContentWidth<HTMLDivElement>();
   const layout = useMemo(() => layoutGraph(model, avail), [model, avail]);
@@ -191,10 +239,6 @@ export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewPr
   const chain = useMemo(() => (focus === null ? null : chainOf(model, focus.id)), [model, focus?.id]);
   const banner = focus === null ? null : whatIfBanner(model, focus.id);
 
-  const onCardHover = (id: string | null) => setHover(id === null ? null : { id, mode: 'card' });
-  const onAnswerHover = (id: string | null) =>
-    setHover((h) => (id !== null ? { id, mode: 'answer' } : h !== null ? { id: h.id, mode: 'card' } : null));
-
   const colOf = new Map(model.nodes.map((n) => [n.id, n.column]));
   const lit = model.edges.map((e) => ({ e, lit: edgeLit(focus, chain, e.from, e.to) }));
   const moving = lit.filter((x) => x.lit === 'toward' || x.lit === 'away' || x.lit === 'wave');
@@ -207,21 +251,15 @@ export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewPr
         className="vkg-desk hidden md:block"
         data-testid="graph-desktop"
         data-motion={reduced ? 'off' : 'on'}
-        onMouseLeave={() => setHover(null)}
+        onMouseLeave={leave}
       >
-        {/* One reserved slot: the banner replaces the headline without moving the columns. */}
+        {/* Fixed head: the headline stays, the banner fills its own one-line slot, so hover never moves the graph. */}
         <div className="vkg-head" data-testid="graph-head">
-        {banner !== null && focus !== null ? (
-          <div className="vkg-banner" role="status" data-kind={focus.mode === 'answer' ? 'answer' : 'task'}>
-            <p>{banner}</p>
-            {focus.mode === 'answer' ? <span className="vkg-tag" aria-hidden="true">предпросмотр</span> : null}
-          </div>
-        ) : (
           <div className="vkg-concl">
             <p className="vkg-concl-1">{model.headline}</p>
             <p className="vkg-concl-2">{model.subline}</p>
           </div>
-        )}
+          <BannerSlot text={banner} mode={focus?.mode ?? null} testId="graph-banner" />
         </div>
         <div className="vkg-scroll" ref={scrollRef}>
           <div className="vkg-canvas" style={{ width: layout.width, height: layout.height }}>
@@ -251,7 +289,7 @@ export function GraphView({ model, selectedId, onSelect, onAnswer }: GraphViewPr
               width={layout.width}
               height={layout.height}
               viewBox={`0 0 ${layout.width} ${layout.height}`}
-              style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', zIndex: 0 }}
+              style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', zIndex: 0, pointerEvents: 'none' }}
             >
               {lit.map(({ e, lit: l }) => {
                 const key = `${e.from}>${e.to}`;

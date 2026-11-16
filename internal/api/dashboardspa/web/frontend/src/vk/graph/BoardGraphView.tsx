@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { BoardGraph, Lane } from './boardModel';
 import { Avatar, GraphCard, ReasonChip, StateDot, type CardBox } from './GraphCard';
 import { GraphIcon } from './icons';
-import { bez, cardTone, columnColor, edgeLit, useReducedMotion, type Focus } from './GraphView';
+import { BannerSlot, bez, cardTone, columnColor, edgeLit, useHoverFocus, useReducedMotion, type Focus } from './GraphView';
 import { chainOf, whatIfBanner, type GraphNode } from './model';
 import { QuestionCard } from './QuestionCard';
 import './graph.css';
@@ -100,6 +100,14 @@ function ortho(pts: ReadonlyArray<[number, number]>): string {
   return `${d} L ${f(last[0])} ${f(last[1])}`;
 }
 
+/** «вписать по ширине»: min(1, available / graph width), never below 0.6 —
+ *  past that the graph scrolls instead of shrinking into a thumbnail. */
+export const FIT_MIN = 0.6;
+export function fitScale(avail: number, graphW: number): number {
+  if (!(avail > 0) || !(graphW > 0)) return 1;
+  return Math.max(FIT_MIN, Math.min(1, avail / graphW));
+}
+
 export function layoutBoard(graph: BoardGraph, avail: number): BoardLayout {
   const maxCol = graph.nodes.reduce((m, n) => Math.max(m, n.column), 0);
   const cols = Math.max(graph.columns.length, maxCol + 1, 1);
@@ -118,30 +126,55 @@ export function layoutBoard(graph: BoardGraph, avail: number): BoardLayout {
   const box = new Map<string, Box>();
   const lanes: LaneBox[] = [];
   const proxy = new Map<string, Box>(); // hidden node -> its lane's summary row
+
+  // A question sits in the lane of the first task it holds (plan order), so
+  // it never spills into the lanes below; one holding nothing joins lane 1.
+  const laneOrder = new Map(graph.lanes.map((l, i) => [l.key, i]));
+  const asks = [...(byLane.get(ASK) ?? [])].sort((a, b) => a.row - b.row);
+  const askHome = new Map<string, string>();
+  for (const q of asks) {
+    const homes = graph.edges
+      .filter((e) => e.from === q.id)
+      .map((e) => graph.laneOf[e.to])
+      .filter((k): k is string => k !== undefined && laneOrder.has(k))
+      .sort((a, b) => (laneOrder.get(a) ?? 0) - (laneOrder.get(b) ?? 0));
+    const home = homes[0] ?? graph.lanes[0]?.key;
+    if (home !== undefined) askHome.set(q.id, home);
+  }
+  const asksOf = (key: string) => asks.filter((q) => askHome.get(q.id) === key);
+
   let cursor = LANE_GAP;
   for (const lane of graph.lanes) {
     const nodes = byLane.get(lane.key) ?? [];
+    const qs = asksOf(lane.key);
     const top = cursor;
-    let height: number;
-    if (lane.collapsed || nodes.length === 0) {
-      height = SUMMARY_H;
+    const short = lane.collapsed || nodes.length === 0;
+    const taskRows = short ? 0 : nodes.reduce((m, n) => Math.max(m, n.row), 0) + 1;
+    const rows = Math.max(taskRows, qs.length);
+    let height = rows === 0 ? SUMMARY_H : LANE_PAD * 2 + (rows - 1) * PITCH + CARDH;
+    if (short) {
+      height = Math.max(SUMMARY_H, height);
       for (const n of nodes) proxy.set(n.id, { x: xs[n.column] ?? X0, y: top, w: colW, h: SUMMARY_H, col: n.column, lane: lane.key });
     } else {
-      const rows = nodes.reduce((m, n) => Math.max(m, n.row), 0) + 1;
-      height = LANE_PAD * 2 + (rows - 1) * PITCH + CARDH;
       for (const n of nodes) {
         box.set(n.id, { x: xs[n.column] ?? X0, y: top + LANE_PAD + n.row * PITCH, w: colW, h: CARDH, col: n.column, lane: lane.key });
       }
     }
-    lanes.push({ key: lane.key, top, height, collapsed: lane.collapsed || nodes.length === 0 });
+    qs.forEach((q, i) => {
+      box.set(q.id, { x: xs[0] ?? X0, y: top + LANE_PAD + i * PITCH, w: colW, h: CARDH, col: q.column, lane: ASK });
+    });
+    lanes.push({ key: lane.key, top, height, collapsed: short });
     cursor += height + LANE_GAP;
   }
   let bottom = cursor;
-  for (const n of byLane.get(ASK) ?? []) {
-    const b = { x: xs[0] ?? X0, y: LANE_GAP + LANE_PAD + n.row * PITCH, w: colW, h: CARDH, col: n.column, lane: ASK };
-    box.set(n.id, b);
-    bottom = Math.max(bottom, b.y + b.h + LANE_GAP);
-  }
+  // No lanes at all: questions stack in their own column.
+  asks
+    .filter((q) => !box.has(q.id))
+    .forEach((q, i) => {
+      const b = { x: xs[0] ?? X0, y: LANE_GAP + LANE_PAD + i * PITCH, w: colW, h: CARDH, col: q.column, lane: ASK };
+      box.set(q.id, b);
+      bottom = Math.max(bottom, b.y + b.h + LANE_GAP);
+    });
 
   const laneBox = new Map(lanes.map((l) => [l.key, l]));
   const free = (lane: string, col: number, y: number) =>
@@ -236,7 +269,7 @@ function useWidth<T extends HTMLElement>(): Sized<T> {
 
 export function BoardGraphView(props: BoardGraphViewProps) {
   const { graph, selectedId, onSelect, onAnswer, onToggleLane, onOpenEpic } = props;
-  const [hover, setHover] = useState<Focus | null>(null);
+  const { hover, leave, onCardHover, onAnswerHover } = useHoverFocus();
   const [fit, setFit] = useState(false);
   const [vp, setVp] = useState<Viewport>({ left: 0, top: 0, w: 0, h: 0 });
   const reduced = useReducedMotion();
@@ -253,12 +286,8 @@ export function BoardGraphView(props: BoardGraphViewProps) {
 
   const scale = useMemo(() => {
     if (!fit) return 1;
-    const el = scrollRef.current;
-    const w = el?.clientWidth ?? 0;
-    const h = el?.clientHeight ?? 0;
-    if (w <= 0) return 1;
-    return Math.max(0.05, Math.min(1, w / layout.width, h > 0 ? h / fullH : 1));
-  }, [fit, layout.width, fullH]);
+    return fitScale(scrollRef.current?.clientWidth ?? 0, layout.width);
+  }, [fit, layout.width]);
 
   useEffect(measure, [fit, layout, measure]);
 
@@ -307,10 +336,6 @@ export function BoardGraphView(props: BoardGraphViewProps) {
     measure();
   };
 
-  const onCardHover = (id: string | null) => setHover(id === null ? null : { id, mode: 'card' });
-  const onAnswerHover = (id: string | null) =>
-    setHover((h) => (id !== null ? { id, mode: 'answer' } : h !== null ? { id: h.id, mode: 'card' } : null));
-
   const colOf = new Map(graph.nodes.map((n) => [n.id, n.column]));
   const edges = graph.edges.map((e) => ({ e, lit: edgeLit(focus, chain, e.from, e.to) }));
   const moving = edges.filter((x) => x.lit === 'toward' || x.lit === 'away' || x.lit === 'wave');
@@ -324,7 +349,7 @@ export function BoardGraphView(props: BoardGraphViewProps) {
         className="vkg-desk vkgb-desk hidden md:block"
         data-testid="board-desktop"
         data-motion={reduced ? 'off' : 'on'}
-        onMouseLeave={() => setHover(null)}
+        onMouseLeave={leave}
       >
         {graph.warnings.length > 0 ? (
           <div className="vkgb-warn" role="alert">
@@ -334,17 +359,10 @@ export function BoardGraphView(props: BoardGraphViewProps) {
           </div>
         ) : null}
         <div className="vkgb-top">
-          {banner !== null && focus !== null ? (
-            <div className="vkg-banner" role="status" data-kind={focus.mode === 'answer' ? 'answer' : 'task'}>
-              <p>{banner}</p>
-              {focus.mode === 'answer' ? <span className="vkg-tag" aria-hidden="true">предпросмотр</span> : null}
-            </div>
-          ) : (
-            <div className="vkg-concl">
-              <p className="vkg-concl-1">{graph.headline}</p>
-              <p className="vkg-concl-2">{graph.subline}</p>
-            </div>
-          )}
+          <div className="vkg-concl">
+            <p className="vkg-concl-1">{graph.headline}</p>
+            <p className="vkg-concl-2">{graph.subline}</p>
+          </div>
           <button
             type="button"
             className="vkgb-fit"
@@ -353,9 +371,10 @@ export function BoardGraphView(props: BoardGraphViewProps) {
               setFit((f) => !f);
             }}
           >
-            {fit ? 'обычный масштаб' : 'вписать в экран'}
+            {fit ? 'обычный масштаб' : 'вписать по ширине'}
           </button>
         </div>
+        <BannerSlot text={banner} mode={focus?.mode ?? null} testId="board-banner" />
         <div className="vkgb-viewport">
           <div ref={scrollRef} className="vkgb-scroll" data-testid="board-scroll" onScroll={measure}>
             <div className="vkgb-sizer" style={{ width: layout.width * scale, height: fullH * scale }}>
@@ -421,7 +440,7 @@ export function BoardGraphView(props: BoardGraphViewProps) {
                     width={layout.width}
                     height={layout.height}
                     viewBox={`0 0 ${layout.width} ${layout.height}`}
-                    style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', zIndex: 1 }}
+                    style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', zIndex: 1, pointerEvents: 'none' }}
                   >
                     {edges.map(({ e, lit: l }) => {
                       const key = `${e.from}>${e.to}`;
