@@ -336,6 +336,19 @@ describe('BeadsPage selection in the URL', () => {
     expect(probe.key).toBe(before);
   });
 
+  // re-review regression of M-1: a card reached by link (reload, shared URL,
+  // «Нужно от меня»), then another card opened, must still CLOSE on Esc.
+  it('a card reached by link, then another card, closes on Escape and drops ?bead', async () => {
+    renderPage([], '/beads?bead=dw-iy9a');
+    await screen.findByRole('dialog');
+    await screen.findByText('Приёмка города: часть B');
+    fireEvent.click(titleButton('Приёмка города: часть B'));
+    await waitFor(() => expect(new URLSearchParams(probe.search).get('bead')).toBe('dp-dh6'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(new URLSearchParams(probe.search).has('bead')).toBe(false);
+  });
+
   it('re-selecting the open card adds no history entry', async () => {
     renderPage();
     await screen.findByText('M04 — приёмка этапа');

@@ -126,7 +126,10 @@ export function BeadsPage() {
   const selectedId = selectedBeadParam;
   const location = useLocation();
   const navigate = useNavigate();
-  // How many card entries this board pushed since the last closed state.
+  // How many card entries this board pushed since an entry with NO card open.
+  // 0 means «not steppable»: the chain started at a card reached by link (a
+  // reload, a shared URL, «Нужно от меня»), so closing must replace, never go
+  // back (re-review: going back reopened that card).
   const depth = (location.state as { beadDepth?: number } | null)?.beadDepth ?? 0;
   const setSelectedId = useCallback(
     (id: string | null) => {
@@ -142,7 +145,9 @@ export function BeadsPage() {
           else next.set('bead', id);
           return next;
         },
-        id === null ? { replace: true } : { state: { beadDepth: depth + 1 } },
+        id === null
+          ? { replace: true }
+          : { state: { beadDepth: selectedId === null || depth > 0 ? depth + 1 : 0 } },
       );
     },
     [setSearchParams, selectedId, depth, navigate],
