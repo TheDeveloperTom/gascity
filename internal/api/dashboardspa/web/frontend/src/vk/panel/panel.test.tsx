@@ -102,8 +102,9 @@ describe('task drawer', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('a plain task shows «Обсудить с Мэром» and no question block', () => {
+  it('a plain task shows «Обсудить с Мэром», no question block and no empty chips row', () => {
     show(plain);
+    expect(screen.queryByTestId('task-chips')).toBeNull();
     expect(screen.getByRole('button', { name: 'Обсудить с Мэром' })).toBeTruthy();
     expect(screen.queryByTestId('question-card')).toBeNull();
     expect(screen.queryByText('Ответить в Discord')).toBeNull();
@@ -123,11 +124,82 @@ describe('task drawer', () => {
     expect(text).not.toMatch(/раунд/i);
   });
 
-  it('the phone button bar is sticky at the bottom', () => {
-    show(plain);
-    const bar = screen.getByTestId('task-drawer-actions');
-    expect(bar.className).toContain('sticky');
-    expect(bar.className).toContain('bottom-0');
+  // vk-1to1 (canvas Main «Открытая задача»): crumb «M04 #3 / PR #580» with
+  // copy-link, then «···» and close; status row; chips row; one discuss link.
+  const canvasTask = bead({
+    id: 'dw-1baxx4',
+    title: 'Сделать invalidation при изменении вакансии/профиля/предпочтений',
+    status: 'in_progress',
+    assignee: 'Исполнитель',
+    parent: 'dw-epic',
+    labels: ['milestone:M04', 'kind:stage'],
+    description: 'Пересчитывать оценку.\n\n- вакансия\n- профиль',
+    metadata: { 'devwork.step': '3', 'devwork.pr_number': '580', 'devwork.pr_url': 'https://github.com/o/r/pull/580' },
+  });
+
+  it('header: crumb «M04 #3 / PR #580» (not the raw id), copy-link, «Ещё», «Закрыть»', () => {
+    show(canvasTask);
+    const crumb = screen.getByTestId('task-crumb');
+    expect(crumb.textContent).toBe('M04 #3/PR #580');
+    expect(crumb.textContent).not.toContain('dw-1baxx4');
+    expect(crumb.className).toContain('font-vk-mono');
+    expect(crumb.className).toContain('text-[15px]');
+    expect(within(crumb).getByRole('button', { name: 'Скопировать ссылку' })).toBeTruthy();
+    const header = screen.getByTestId('task-drawer-header');
+    expect(header.className).toContain('min-h-[44px]');
+    expect(within(header).getByRole('button', { name: 'Ещё' })).toBeTruthy();
+    expect(within(header).getByRole('button', { name: 'Закрыть' })).toBeTruthy();
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('Открытая задача');
+  });
+
+  it('the crumb takes «#N» from a live title «M04 #1 — …» when no step is stored', () => {
+    show(bead({ id: 'dw-a4e4', title: 'M04 #1 — Перенести sync', labels: ['milestone:M04'] }));
+    expect(screen.getByTestId('task-crumb').textContent).toBe('M04 #1');
+  });
+
+  it('status row «В работе», «И Исполнитель», «Подзадача M04»; chips M04, «Пакет этапа», #580', () => {
+    show(canvasTask);
+    const row = screen.getByTestId('task-status-row');
+    expect(row.textContent).toBe('В работеИИсполнительПодзадача M04');
+    expect((within(row).getByTestId('status-dot') as HTMLElement).style.background).toBe('rgb(245, 158, 11)');
+    const chips = screen.getByTestId('task-chips');
+    expect(chips.textContent).toBe('M04Пакет этапа#580');
+    expect(within(chips).getByText('#580').getAttribute('href')).toBe('https://github.com/o/r/pull/580');
+  });
+
+  it('title, then ONE «Обсудить с Мэром», then the description as markdown with its list', () => {
+    show(canvasTask);
+    const h = screen.getByRole('heading', { level: 2 });
+    expect(h.className).toContain('text-xl');
+    expect(h.className).toContain('font-medium');
+    expect(screen.getAllByRole('button', { name: 'Обсудить с Мэром' })).toHaveLength(1);
+    const md = screen.getByTestId('task-description');
+    expect(md.querySelectorAll('li')).toHaveLength(2);
+    expect(md.querySelector('p')?.textContent).toBe('Пересчитывать оценку.');
+    expect(screen.getByRole('dialog').textContent).not.toContain('Подробности');
+  });
+
+  it('bottom: «Сообщение Мэру про эту задачу», the canvas placeholder, «Уйдёт Мэру в Discord», «Обсудить в Discord»', () => {
+    show(canvasTask);
+    const box = screen.getByTestId('mayor-message');
+    const area = within(box).getByLabelText('Сообщение Мэру про эту задачу');
+    expect(area.getAttribute('placeholder')).toBe('Например: «почему стоит?» или «отложи до завтра»');
+    expect(within(box).getByText('Уйдёт Мэру в Discord')).toBeTruthy();
+    const send = within(box).getByRole('button', { name: 'Обсудить в Discord' });
+    expect(send.className).toContain('bg-[#AC5111]');
+    fireEvent.change(area, { target: { value: 'почему стоит?' } });
+    fireEvent.click(send);
+    expect(mockOpen).toHaveBeenCalledWith('https://discord.com/channels/1/2');
+    expect((area as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('«Работа агентов 1»: «Исполнитель», #580, «Смотреть, что пишет» only when streamable', () => {
+    show(canvasTask);
+    const work = screen.getByTestId('agent-work');
+    expect(within(work).getByText('Работа агентов')).toBeTruthy();
+    expect(within(work).getByText('1')).toBeTruthy();
+    expect(within(work).getByText('Исполнитель')).toBeTruthy();
+    expect(within(work).getByText('#580')).toBeTruthy();
   });
 
   it('a 150-character title without spaces wraps', () => {
@@ -220,7 +292,8 @@ describe('relationships', () => {
     expect(within(section).getAllByText('M04')).toHaveLength(2);
     expect(within(section).getByText('Ждущая 0')).toBeTruthy();
     expect(within(section).getByText('и ещё 20')).toBeTruthy();
-    expect(within(section).getByText('держит 22')).toBeTruthy();
+    // canvas «Связи 4»: the count of relations, not «держит N»
+    expect(within(section).getByText('22')).toBeTruthy();
   });
 
   // H1 16.11 (live drawer at 390 px): the rows were 32 px tall (tap targets
@@ -273,21 +346,18 @@ describe('the drawer is one screen (item 8)', () => {
     expect(screen.queryByRole('group')).toBeNull();
   });
 
-  it('one meta line under the title: «Открыта», the stage, «Исполнитель: нет», the date, the labels', () => {
+  it('the status row replaces the meta line: «Открыта», «Задача M03» ... no raw English', () => {
     show(DISPATCH_CARD, items);
-    const meta = screen.getByTestId('task-meta');
-    const heading = screen.getByRole('heading', { level: 2 });
-    expect(heading.nextElementSibling).toBe(meta);
-    const text = meta.textContent ?? '';
+    expect(screen.queryByTestId('task-meta')).toBeNull();
+    const text = screen.getByTestId('task-status-row').textContent ?? '';
     expect(text).toContain('Открыта');
     expect(text).toContain('M03');
-    expect(text).toContain('Исполнитель: нет');
-    expect(text).toMatch(/создана 28 окт/);
-    expect(text).not.toMatch(/\bopen\b|\btask\b|·$/);
-    // the description comes right after the meta line, before the relations
+    expect(text).not.toMatch(/\bopen\b|\btask\b/);
+    // the description comes after the title, before the relations
+    const h = screen.getByRole('heading', { level: 2 });
     const md = screen.getByTestId('task-description');
     const rel = screen.getByTestId('task-relationships');
-    expect(meta.compareDocumentPosition(md) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(h.compareDocumentPosition(md) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(md.compareDocumentPosition(rel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -302,13 +372,13 @@ describe('the drawer is one screen (item 8)', () => {
   });
 
   // review M-2: «Подробности» used to warn on formula templates; the meta line does now.
-  it('a formula template says in the meta line that it is a recipe, not work', () => {
+  it('a formula template says in the chips row that it is a recipe, not work', () => {
     const recipe = { ...DISPATCH_CARD, id: 'gc-recipe', metadata: { 'gc.kind': 'run' } };
     show(recipe, [recipe]);
-    expect(screen.getByTestId('task-meta').textContent).toContain('Рецепт прогона, а не работа: не закрывай её');
+    expect(screen.getByTestId('task-chips').textContent).toContain('Рецепт прогона, а не работа: не закрывай её');
     cleanup();
     show(DISPATCH_CARD, items);
-    expect(screen.getByTestId('task-meta').textContent).not.toContain('Рецепт');
+    expect(screen.getByTestId('task-chips').textContent).not.toContain('Рецепт');
   });
 
   // review M-3: no links at all reads «Связей нет.»
@@ -330,8 +400,9 @@ describe('the drawer is one screen (item 8)', () => {
   });
 
   // review M-8: «нужен ты» sits in the meta line, not in the phone's back row.
-  it('«нужен ты» is in the meta line, not in the header row', () => {
+  it('«нужен ты» is in the chips row, not in the header row', () => {
     show(question);
-    expect(within(screen.getByTestId('task-meta')).getByText('нужен ты')).toBeTruthy();
+    expect(within(screen.getByTestId('task-chips')).getByText('нужен ты')).toBeTruthy();
+    expect(within(screen.getByTestId('task-drawer-header')).queryByText('нужен ты')).toBeNull();
   });
 });

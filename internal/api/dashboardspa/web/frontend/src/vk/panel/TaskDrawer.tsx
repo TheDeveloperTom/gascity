@@ -6,6 +6,9 @@ import type { OwnerQuestion } from '../../lib/ownerQuestions';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 import { mayorChannelUrl } from '../../lib/mayorLink';
+import type { DiscussContext } from '../../lib/discussWithMayor';
+import { DiscussButton } from '../DiscussButton';
+import { assigneeInitial, statusDot } from './drawerFacts';
 
 // The VK task panel (vk lane 2): a right-side drawer from `md` up, a
 // full-screen card below it. Design frames: Main (right panel),
@@ -42,7 +45,17 @@ export function taskSummary(bead: SupervisorBead, tags: readonly string[]): stri
 export interface TaskDrawerProps {
   open: boolean;
   onClose: () => void;
-  /** Chip row above the title (status, milestone, «нужен ты»). */
+  /**
+   * Header crumb (canvas «M04 #3 / PR #580»): with it the header is the
+   * canvas one (crumb, copy-link, «···», close) and `chips` move to their own
+   * row under the status row. Without it (peer card) `chips` sit in the header.
+   */
+  crumb?: ReactNode;
+  /** The link the copy button copies; defaults to the page URL. */
+  copyHref?: string;
+  /** Canvas status row: dot + status, assignee chip, kind. */
+  statusRow?: ReactNode;
+  /** Chip row (header without `crumb`; own row under the status row with it). */
   chips?: ReactNode;
   /** Top block (the open question), above the title. */
   top?: ReactNode;
@@ -51,6 +64,8 @@ export interface TaskDrawerProps {
   meta?: ReactNode;
   /** Action row: under the title from `md`, a sticky bottom bar below it. */
   actions?: ReactNode;
+  /** The description, right under the actions (canvas: no «Подробности»). */
+  description?: ReactNode;
   children?: ReactNode;
   /**
    * Phone: stop above the bottom tab bar (56 px + safe area) so a pinned
@@ -64,14 +79,58 @@ export interface TaskDrawerProps {
   footer?: ReactNode;
 }
 
+const ICON_BTN =
+  'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-vk-text-low hover:bg-vk-bg-secondary hover:text-vk-text-high focus-mark md:h-7 md:w-7';
+
+function LinkIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M6.6 9.4l2.8-2.8M7.2 4.6l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2M8.8 11.4l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function copyLink(href: string | undefined): void {
+  const text = href ?? (typeof window === 'undefined' ? '' : window.location.href);
+  if (text.length === 0) return;
+  void navigator.clipboard?.writeText(text).catch(() => undefined);
+}
+
 export function TaskDrawer({
   open,
   onClose,
+  crumb,
+  copyHref,
+  statusRow,
   chips,
   top,
   title,
   meta,
   actions,
+  description,
   children,
   aboveTabs = false,
   footer = null,
@@ -86,6 +145,7 @@ export function TaskDrawer({
   }, [open, onClose]);
 
   if (!open) return null;
+  const canvas = crumb !== undefined;
 
   return (
     <div
@@ -95,52 +155,91 @@ export function TaskDrawer({
       <div
         role="dialog"
         aria-modal="true"
+        aria-label={t('Open task')}
         className={cn(
-          'fixed inset-0 flex flex-col bg-vk-bg-primary font-vk-sans text-vk-text-normal shadow-overlay md:inset-y-0 md:left-auto md:right-0 md:w-[560px] md:max-w-full md:border-l md:border-vk-border',
+          'fixed inset-0 flex flex-col bg-vk-bg-primary font-vk-sans text-vk-text-normal shadow-overlay md:inset-y-0 md:left-auto md:right-0 md:w-[580px] md:max-w-full md:border-l md:border-vk-border',
           aboveTabs && 'bottom-[calc(3.5rem+var(--saib))] md:bottom-0',
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex min-h-[52px] items-center justify-between gap-2 border-b border-vk-border px-4">
+        <div
+          data-testid="task-drawer-header"
+          className="flex min-h-[44px] items-center justify-between gap-2 border-b border-vk-border px-2 py-1"
+        >
           {/* vk-final part 5: the phone's full-screen card returns to the board. */}
           <button
             type="button"
             onClick={onClose}
-            className="-ml-2 inline-flex h-11 shrink-0 items-center rounded-sm px-2 text-[15px] text-vk-text-normal focus-mark md:hidden"
+            className="inline-flex h-11 shrink-0 items-center rounded-sm px-2 text-[15px] text-vk-text-normal focus-mark md:hidden"
           >
             {t('← Board')}
           </button>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{chips}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('Close')}
-            className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-vk-text-low hover:bg-vk-bg-secondary hover:text-vk-text-high focus-mark"
-          >
-            <XIcon size={18} weight="bold" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pt-4 md:pb-6">
-          {top}
-          <h2 className="text-xl font-semibold text-vk-text-high [overflow-wrap:anywhere]">
-            {title}
-          </h2>
-          {meta}
-          {actions && (
+          {canvas ? (
             <div
-              data-testid="task-drawer-actions"
-              className="sticky bottom-0 order-last -mx-4 mt-auto flex flex-wrap gap-2 border-t border-vk-border bg-vk-bg-primary px-4 pt-2 md:static md:order-none md:mx-0 md:mt-0 md:border-0 md:p-0"
-              style={{ paddingBottom: 'calc(0.5rem + var(--saib, env(safe-area-inset-bottom)))' }}
+              data-testid="task-crumb"
+              className="flex min-w-0 flex-1 items-center gap-1 font-vk-mono text-[15px] text-vk-text-high"
             >
-              {actions}
+              {crumb}
+              <button
+                type="button"
+                aria-label={t('Copy link')}
+                onClick={() => copyLink(copyHref)}
+                className={ICON_BTN}
+              >
+                <LinkIcon />
+              </button>
+            </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{chips}</div>
+          )}
+          <div className="flex shrink-0 gap-1">
+            {canvas && (
+              <button type="button" aria-label={t('More')} className={ICON_BTN}>
+                <DotsIcon />
+              </button>
+            )}
+            <button type="button" onClick={onClose} aria-label={t('Close')} className={ICON_BTN}>
+              {canvas ? <CloseIcon /> : <XIcon size={18} weight="bold" aria-hidden="true" />}
+            </button>
+          </div>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {statusRow !== undefined && (
+            <div
+              data-testid="task-status-row"
+              className="flex flex-wrap items-center gap-1 border-b border-vk-border p-2"
+            >
+              {statusRow}
             </div>
           )}
-          {children}
+          {canvas && chips !== undefined && chips !== null && (
+            <div
+              data-testid="task-chips"
+              className="flex flex-wrap items-center gap-1 border-b border-vk-border p-2"
+            >
+              {chips}
+            </div>
+          )}
+          <div className="flex flex-col gap-2 px-2 pb-4 pt-2 md:pb-4">
+            {top}
+            <h2 className="mt-2 text-xl font-medium text-vk-text-high [overflow-wrap:anywhere]">{title}</h2>
+            {meta}
+            {actions && (
+              <div
+                data-testid="task-drawer-actions"
+                className="flex flex-wrap gap-2"
+              >
+                {actions}
+              </div>
+            )}
+            {description}
+          </div>
+          <div className="flex flex-col pb-4 [&>*]:border-t [&>*]:border-vk-border [&>*]:p-2">{children}</div>
         </div>
         {footer !== null && (
           <div
             data-testid="task-drawer-footer"
-            className="flex-none border-t border-vk-border bg-vk-bg-primary px-4 pt-2"
+            className="flex-none border-t border-vk-border bg-vk-bg-secondary p-2"
             // above the tab bar the safe area is already the tab bar's
             style={{
               paddingBottom: aboveTabs ? '0.5rem' : 'calc(0.5rem + var(--saib, env(safe-area-inset-bottom)))',
@@ -164,6 +263,84 @@ export function Chip({ children, tone = 'plain' }: { children: ReactNode; tone?:
     >
       {children}
     </span>
+  );
+}
+
+// ---- Canvas rows (vk-1to1) ---------------------------------------------
+
+/** Canvas status row: «● В работе», «И Исполнитель», «Подзадача M04». */
+export function StatusRow({
+  status,
+  assignee,
+  kind,
+  tag,
+}: {
+  status: string;
+  assignee: string | null;
+  kind: string;
+  tag: string | null;
+}) {
+  return (
+    <>
+      <span className="inline-flex items-center gap-1.5 rounded-sm bg-vk-bg-panel px-2 py-1 text-sm">
+        <span
+          aria-hidden="true"
+          data-testid="status-dot"
+          className="h-2 w-2 rounded-full"
+          style={{ background: statusDot(status) }}
+        />
+        {statusLabel(status)}
+      </span>
+      {assignee !== null && assignee.length > 0 && (
+        <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm bg-vk-bg-panel px-2 py-1 text-sm">
+          <span
+            aria-hidden="true"
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#1D5BD6] text-[11px] font-semibold text-white"
+          >
+            {assigneeInitial(assignee)}
+          </span>
+          <span className="truncate">{assignee}</span>
+        </span>
+      )}
+      <span className="whitespace-nowrap text-sm">
+        <span className="text-vk-text-low">{kind}</span>
+        {tag !== null && <span className="font-vk-mono"> {tag}</span>}
+      </span>
+    </>
+  );
+}
+
+/** Canvas chip: 20 px, bg-panel, a colour dot and a medium low-contrast label. */
+export function DotChip({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex h-5 items-center gap-1 rounded-sm bg-vk-bg-panel px-2 text-sm font-medium text-vk-text-low">
+      <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: color }} />
+      {children}
+    </span>
+  );
+}
+
+/** Canvas bottom box: «Сообщение Мэру про эту задачу» + «Обсудить в Discord». */
+export function MayorMessageBox({ ctx }: { ctx: DiscussContext }) {
+  const [text, setText] = useState('');
+  return (
+    <div data-testid="mayor-message" className="flex flex-col gap-2">
+      <label htmlFor="to-mayor" className="text-sm text-vk-text-low">
+        {t('Message to the Mayor about this task')}
+      </label>
+      <textarea
+        id="to-mayor"
+        rows={2}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={t('For example: «why is it stuck?» or «put it off till tomorrow»')}
+        className="box-border w-full resize-none rounded-sm border border-vk-border bg-vk-bg-primary p-2 text-[15px] text-vk-text-normal focus-mark"
+      />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-vk-text-low">{t('Goes to the Mayor in Discord')}</span>
+        <DiscussButton ctx={ctx} variant="primary" message={text} onSent={() => setText('')} />
+      </div>
+    </div>
   );
 }
 

@@ -258,7 +258,8 @@ describe('BeadsPage', () => {
     const selected = await screen.findByTitle('Select gascity-0001');
     expect(selected.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('heading', { name: 'Sample bead' })).toBeTruthy();
-    expect(within(screen.getByRole('dialog')).getByText('gascity-0001')).toBeTruthy();
+    // vk-1to1: the crumb shows the short label; the full id is its hover title
+    expect(within(screen.getByRole('dialog')).getByTitle('gascity-0001')).toBeTruthy();
   });
 
   it('closes beads directly through the supervisor API', async () => {

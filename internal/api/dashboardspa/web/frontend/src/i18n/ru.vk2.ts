@@ -44,4 +44,19 @@ export const RU_VK2: Readonly<Record<string, string | RuPlural>> = {
   'Reading what it does…': 'Смотрю, что он делает…',
   'Unknown right now': 'Сейчас неизвестно',
   'Watch what it writes': 'Смотреть, что пишет',
+  // vk-1to1 drawer (canvas Main right panel)
+  'Open task': 'Открытая задача',
+  'Copy link': 'Скопировать ссылку',
+  'PR #{n}': 'PR #{n}',
+  Subtask: 'Подзадача',
+  Epic: 'Эпик',
+  'Stage package': 'Пакет этапа',
+  'Message to the Mayor about this task': 'Сообщение Мэру про эту задачу',
+  'For example: «why is it stuck?» or «put it off till tomorrow»':
+    'Например: «почему стоит?» или «отложи до завтра»',
+  'Goes to the Mayor in Discord': 'Уйдёт Мэру в Discord',
+  'updated just now': 'обновлено сейчас',
+  'updated {n} min ago': 'обновлено {n} мин назад',
+  'updated {n} h ago': 'обновлено {n} ч назад',
+  'queued, starts after the current session': 'в очереди, начнётся после текущей сессии',
 };
