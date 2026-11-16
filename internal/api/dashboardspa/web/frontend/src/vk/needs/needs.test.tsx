@@ -205,4 +205,29 @@ describe('«Нужно от меня» shelves', () => {
     const row = within(question).getByRole('link', { name: /Удалить mp_assignment после переноса ящика/ });
     expect(row.getAttribute('href')).toBe(`/beads?bead=${HELD_STALL_ID}`);
   });
+
+  // polish2 16.11 (coordinator, needs-2000 shot): no reserved empty half.
+  it('no «Стоит» items: one column, the questions 2 per row from 1440 px, nothing reserved on the right', () => {
+    const base = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
+    const model = { ...base, stalls: [] };
+    const { container } = render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} />
+      </MemoryRouter>,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).not.toContain('xl:grid-cols-2');
+    const list = itemOf(QUESTION_ID).parentElement as HTMLElement;
+    expect(list.className).toContain('min-[1440px]:grid-cols-2');
+  });
+
+  it('while the boards settle, no column is reserved for «Стоит»', () => {
+    const model = needsFromBoard(needsBoard(), [], [], NOW_MS, false, OWNER_ITEMS);
+    const { container } = render(
+      <MemoryRouter>
+        <NeedsShelves model={model} stages={STAGES} settling />
+      </MemoryRouter>,
+    );
+    expect((container.firstElementChild as HTMLElement).className).not.toContain('xl:grid-cols-2');
+  });
 });

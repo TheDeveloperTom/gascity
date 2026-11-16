@@ -160,15 +160,31 @@ export function NeedsShelves({
   // H1 16.11: nothing renders under content that may still grow (the board
   // read, then the peer boards' questions), or it jumps when that lands.
   const holding = settling ?? model.state === 'loading';
+  // polish2 16.11: the right column exists only when «Стоит» has items; with
+  // none (or while the boards settle) nothing is reserved and the questions
+  // take the width, two per row from 1440 px.
+  const twoColumns = !holding && model.stalls.length > 0;
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-2 font-vk-sans xl:grid-cols-2 xl:items-start xl:gap-10">
+    <div
+      className={
+        twoColumns
+          ? 'grid min-w-0 grid-cols-1 gap-2 font-vk-sans xl:grid-cols-2 xl:items-start xl:gap-10'
+          : 'flex min-w-0 flex-col gap-2 font-vk-sans'
+      }
+    >
       <div className="flex min-w-0 flex-col gap-2">
       <Shelf
         title={t('Needs from me')}
         {...(model.state === 'ready' || count > 0 ? { count } : {})}
       >
         {model.needs.length > 0 && (
-          <ul className="flex min-w-0 flex-col gap-2">
+          <ul
+            className={
+              twoColumns
+                ? 'flex min-w-0 flex-col gap-2'
+                : 'flex min-w-0 flex-col gap-2 min-[1440px]:grid min-[1440px]:grid-cols-2 min-[1440px]:items-start min-[1440px]:gap-3'
+            }
+          >
             {model.needs.map((need) => (
               <NeedItem key={need.id} need={need} />
             ))}
