@@ -45,9 +45,11 @@ describe('BeadsPage supervisor reads', () => {
     // stage board's one rig-scoped recent-closed leg — none is the slow
     // closed-history (all=true) path.
     // REVIEW 16.11: the one board read also takes the rig's open work store
-    // (its window and in-progress leg) for the owner model.
-    await waitFor(() => expect(beadFetches()).toHaveLength(5));
-    expect(beadFetches().filter((call) => call.query.has('rig') && call.query.get('status') !== 'closed')).toHaveLength(2);
+    // for the owner model. BOARD-LOAD 16.11: a complete rig window sends no
+    // in-progress leg of its own (the city-wide leg covers the rig).
+    await waitFor(() => expect(beadFetches()).toHaveLength(4));
+    expect(beadFetches().filter((call) => call.query.has('rig') && call.query.get('status') !== 'closed')).toHaveLength(1);
+    expect(beadFetches().filter((call) => call.query.has('rig') && call.query.get('status') === 'in_progress')).toHaveLength(0);
     expect(beadFetches().every((call) => call.query.has('all'))).toBe(false);
     expect(beadFetches().every((call) => call.query.has('type'))).toBe(false);
   });

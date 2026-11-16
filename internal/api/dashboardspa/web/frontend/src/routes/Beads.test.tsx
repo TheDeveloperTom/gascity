@@ -177,9 +177,11 @@ describe('BeadsPage', () => {
     expect(inProgressLeg?.get('status')).toBe('in_progress');
     expect(inProgressLeg?.has('all')).toBe(false);
     expect(inProgressLeg?.has('type')).toBe(false);
-    // REVIEW 16.11: plus each rig's open work store (window + in-progress leg),
-    // never closed history.
-    await waitFor(() => expect(rigStoreQueries.map((q) => q.get('rig')).sort()).toEqual(['east', 'east', 'west', 'west']));
+    // REVIEW 16.11: plus each rig's open work store, never closed history.
+    // BOARD-LOAD 16.11: a complete rig window sends no in-progress leg of its
+    // own (the board read's city-wide leg above covers every rig).
+    await waitFor(() => expect(rigStoreQueries.map((q) => q.get('rig')).sort()).toEqual(['east', 'west']));
+    expect(rigStoreQueries.some((q) => q.get('status') === 'in_progress')).toBe(false);
     expect(rigStoreQueries.some((q) => q.has('all'))).toBe(false);
   });
 
