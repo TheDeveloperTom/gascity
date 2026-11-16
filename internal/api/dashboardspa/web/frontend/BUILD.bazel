@@ -124,6 +124,8 @@ js_test(
     data = glob(["e2e/**"]) + [
         "package.json",
         "playwright.config.ts",
+        # e2e/fixtures/stageBoard.ts imports the B3 idle-board fixture.
+        "src/test/fixtures/m04Idle.ts",
         ":node_modules/@playwright/test",
         "//test/dashport:corpus",
         "//test/dashport/cmd/fakesupervisor",
