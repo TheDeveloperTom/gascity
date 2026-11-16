@@ -85,13 +85,17 @@ export default defineConfig({
         // host:port so the Host-allowlist (127.0.0.1, localhost) passes.
         changeOrigin: true,
         // changeOrigin does NOT rewrite the *Origin* request header — that
-        // still arrives as http://127.0.0.1:5174 (Vite's own origin) and
-        // would 403 against the supervisor's originCheck allow-list of
-        // {http://127.0.0.1:8372, http://localhost:8372}. Rewrite it
-        // explicitly so dev write requests (POST/PATCH/DELETE) clear the
-        // allow-list. In prod the supervisor serves the SPA, so the browser
-        // sends Origin: http://127.0.0.1:8372 natively and this code path
-        // doesn't apply (gascity-dashboard-oi7).
+        // still arrives as http://127.0.0.1:5174 (Vite's own origin). The
+        // supervisor has NO Origin allow-list: the typed /v0 API needs only
+        // the Host allowlist (loopback + `[supervisor] allowed_hosts`) and
+        // `X-GC-Request` (huma_handlers_supervisor.go). The /api plane's
+        // write guard, however, compares the Origin host with the request
+        // Host (dashboardbff/plane.go sameOriginMutation), and changeOrigin
+        // has made that Host 127.0.0.1:8372 — so rewrite Origin to match.
+        // City services behind /v0/.../svc apply their own gate (peer-boards
+        // checks Origin and Sec-Fetch-Site itself). In prod the supervisor
+        // serves the SPA same-origin and this code path doesn't apply
+        // (gascity-dashboard-oi7).
         configure: configureBackendDevProxy,
       },
       // Typed supervisor API. Served same-origin by the supervisor in prod;
@@ -99,8 +103,9 @@ export default defineConfig({
       '/v0': {
         target: BACKEND_TARGET,
         changeOrigin: true,
-        // Same Origin rewrite as /api so dev supervisor mutations clear the
-        // originCheck allow-list.
+        // Same Origin rewrite as /api, so the Origin a dev write carries
+        // matches the rewritten Host (harmless for the typed API, which
+        // checks only Host and X-GC-Request).
         configure: configureBackendDevProxy,
       },
       // Supervisor liveness probe.
