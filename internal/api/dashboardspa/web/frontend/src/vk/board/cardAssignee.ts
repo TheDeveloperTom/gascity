@@ -53,3 +53,39 @@ export function cardAssignee(
   if (peer !== undefined) return { tone: 'peer', letter: peer.initial, who: peer.name };
   return EXECUTOR;
 }
+
+/** owner 17.11: my own card's main avatar is its owner — me — always. */
+export function ownerBadge(identity: SelfIdentity): CardAssignee {
+  return { tone: 'owner', letter: identity.initial, who: null };
+}
+
+export interface CardWorker extends CardAssignee {
+  /** The name as shown: the peer's name, the agent's assignee, or null («Исполнитель»). */
+  name: string | null;
+}
+
+/**
+ * owner 17.11: who works on my card now, the small mark beside the owner.
+ * `worker` is the route step's assignee, else the bead's. An agent counts
+ * only while the card is in a live stage (in work / review / PR); a peer
+ * person always. Me, or nobody outside work, is no mark.
+ */
+export function cardWorker(
+  worker: string | null | undefined,
+  liveStage: boolean,
+  working: boolean,
+  identity: SelfIdentity,
+): CardWorker | null {
+  const name = worker?.trim() ?? '';
+  const who = cardAssignee(name, working, identity);
+  if (who === null || who.tone === 'owner') return null;
+  if (who.tone === 'peer') return { ...who, name: who.who };
+  if (!liveStage) return null;
+  return { ...who, name: name.length > 0 ? name : null };
+}
+
+/** The worker of a card or a task: the route step's assignee, else the bead's; '' for nobody. */
+export function workerOf(stepAssignee: string | null | undefined, beadAssignee: string | null | undefined): string {
+  const step = stepAssignee?.trim() ?? '';
+  return step.length > 0 ? step : (beadAssignee?.trim() ?? '');
+}

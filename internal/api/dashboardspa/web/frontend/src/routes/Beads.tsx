@@ -42,6 +42,7 @@ import { useNow } from '../contexts/NowContext';
 import { READ_ONLY_CONTROL_TITLE, ReadOnlyBadge, useReadOnly } from '../contexts/ReadOnlyContext';
 import { buildBeadGraph } from '../lib/beadGraph';
 import { ALL_PROJECTS, buildBoardModel, CITY_PROJECT_KEY, rigProjectLabel } from '../lib/boardModel';
+import { emptyBoardNote } from '../lib/emptyBoardNote';
 import { isBoardNoise } from '../lib/boardNoise';
 import { splitCityRestarting } from '../lib/cityRestarting';
 import {
@@ -438,6 +439,18 @@ export function BeadsPage() {
     [setSearchParams],
   );
   const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
+  const filtered = project !== ALL_PROJECTS || epic !== ALL_EPICS || ownerFilter !== 'all';
+  // owner 17.11: the open card's route step — its assignee is «Сейчас работает»
+  // in the panel and the session «Смотреть, что пишет» opens.
+  const ownStep = useMemo(() => {
+    if (ownSelectedId === null) return null;
+    for (const column of Object.values(boardModel.columns)) {
+      for (const card of column) {
+        if (card.peer === null && card.node.bead.id === ownSelectedId) return card.stage.step;
+      }
+    }
+    return null;
+  }, [boardModel, ownSelectedId]);
   const epics = useMemo(
     () => epicSummaries(rows, { closedCapped: !showAllHistory }),
     [rows, showAllHistory],
@@ -906,16 +919,19 @@ export function BeadsPage() {
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
           />
         </section>
-      ) : boardModel.matched === 0 &&
-        (search.trim().length > 0 ||
-          project !== ALL_PROJECTS ||
-          epic !== ALL_EPICS ||
-          ownerFilter !== 'all') ? (
+      ) : boardModel.matched === 0 && search.trim().length > 0 ? (
+        // owner 17.11: «Ничего не нашлось» only for a text search with no hits
         <p className="text-body text-fg-muted">{t('No tasks match the search or filter.')}</p>
-      ) : boardModel.matched === 0 ? (
+      ) : boardModel.matched === 0 && !filtered ? (
         <p className="text-body text-fg-muted">{t('Nothing on the board right now.')}</p>
       ) : (
         <section aria-label={t('Board')} className="min-w-0 space-y-4">
+          {/* owner 17.11: a filter that empties the board keeps its columns and says why */}
+          {boardModel.matched === 0 && (
+            <p data-testid="empty-board-note" className="text-sm text-vk-text-low">
+              {emptyBoardNote(ownerFilter, peerSources)}
+            </p>
+          )}
           {boardModel.idle.state !== 'busy' &&
             [...boardModel.columns.working, ...boardModel.columns.review, ...boardModel.columns.pr].filter(
               (card) => card.peer === null,
@@ -1027,6 +1043,7 @@ export function BeadsPage() {
             onClose={() => setSelectedId(null)}
             beadId={ownSelectedId}
             initialBead={selectedBead}
+            step={ownStep}
             extra={ownCard.rig !== null && ownLogin !== null && peerSources.length > 0 ? thread : null}
             footer={ownCard.rig !== null ? composer : null}
             depNode={selectedNode}

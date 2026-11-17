@@ -260,6 +260,7 @@ describe('buildBoardModel with a peer board', () => {
     stale: false,
     live: null,
     fetchedAt: null,
+    fetchError: null,
     runs: null,
     cards: [
       { rig: 'crm-api', bead: bead('dw-iy9a', { title: 'Изменение схемы users', status: 'in_progress' }) },

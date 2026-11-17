@@ -8,7 +8,8 @@ import { cn } from '../cn';
 import { mayorChannelUrl } from '../../lib/mayorLink';
 import type { DiscussContext } from '../../lib/discussWithMayor';
 import { DiscussButton } from '../DiscussButton';
-import { assigneeInitial, statusDot } from './drawerFacts';
+import { statusDot } from './drawerFacts';
+import { CardAvatar } from '../board/CardAvatar';
 
 // The VK task panel (vk lane 2): a right-side drawer from `md` up, a
 // full-screen card below it. Design frames: Main (right panel),
@@ -278,15 +279,28 @@ export function Chip({ children, tone = 'plain' }: { children: ReactNode; tone?:
 
 // ---- Canvas rows (vk-1to1) ---------------------------------------------
 
-/** Canvas status row: «● В работе», «И Исполнитель», «Подзадача M04». */
+/** One «who» on the status row: an avatar letter, its tone, and a name. */
+export interface StatusPerson {
+  letter: string;
+  tone: 'owner' | 'executor' | 'peer';
+  name: string | null;
+}
+
+/**
+ * Canvas status row: «● В работе», «Чья задача А Артём», «Сейчас работает
+ * И devwork/reviewer» (or «Сейчас никто не работает»), «Подзадача M04».
+ * owner 17.11: the panel named neither whose the task is nor who works on it.
+ */
 export function StatusRow({
   status,
-  assignee,
+  owner,
+  worker,
   kind,
   tag,
 }: {
   status: string;
-  assignee: string | null;
+  owner: StatusPerson;
+  worker: StatusPerson | null;
   kind: string;
   tag: string | null;
 }) {
@@ -301,15 +315,28 @@ export function StatusRow({
         />
         {statusLabel(status)}
       </span>
-      {assignee !== null && assignee.length > 0 && (
-        <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm bg-vk-bg-panel px-2 py-1 text-sm">
-          <span
-            aria-hidden="true"
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#1D5BD6] text-[11px] font-semibold text-white"
-          >
-            {assigneeInitial(assignee)}
+      <span
+        data-testid="task-owner"
+        className="inline-flex min-w-0 items-center gap-1.5 rounded-sm bg-vk-bg-panel px-2 py-1 text-sm"
+      >
+        <span className="text-vk-text-low">{t('Whose task')}</span>
+        <CardAvatar letter={owner.letter} label={t('Owner: yours')} tone={owner.tone} />
+        {owner.name !== null && <span className="truncate">{owner.name}</span>}
+      </span>
+      {worker !== null ? (
+        <span
+          data-testid="task-worker"
+          className="inline-flex min-w-0 items-center gap-1.5 rounded-sm bg-vk-bg-panel px-2 py-1 text-sm"
+        >
+          <span className="text-vk-text-low">{t('Working on it now')}</span>
+          <span aria-hidden="true" className="contents">
+            <CardAvatar letter={worker.letter} label="" tone={worker.tone} />
           </span>
-          <span className="truncate">{assignee}</span>
+          {worker.name !== null && <span className="truncate">{worker.name}</span>}
+        </span>
+      ) : (
+        <span data-testid="task-worker" className="whitespace-nowrap text-sm text-vk-text-low">
+          {t('Nobody works on it now')}
         </span>
       )}
       <span className="whitespace-nowrap text-sm">

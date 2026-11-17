@@ -56,7 +56,7 @@ import { cardLabel } from './cardLabel';
 import { PeerKanbanCard } from './PeerKanbanCard';
 import { RelationshipBadge, type RelationshipDisplayType } from './RelationshipBadge';
 import { RunningDots } from './RunningDots';
-import { cardAssignee } from './cardAssignee';
+import { cardWorker, ownerBadge, workerOf } from './cardAssignee';
 import { useSelfIdentity, type SelfIdentity } from '../../lib/selfIdentity';
 
 /** Milestone tag colours: the design's dots, picked by a stable hash of the key. */
@@ -234,7 +234,11 @@ function OwnKanbanCard({
   const stepAge =
     progress === null || nowMs - progress < 60_000 ? t('now') : ageText(nowMs - progress);
   const routeAttention = stage.marks.find((mark) => mark.tone === 'attention') ?? null;
-  const avatar = cardAssignee(bead.assignee, stage.stage === 'working', identity ?? cityIdentity);
+  // owner 17.11: the main avatar is the card's owner (me), like a peer card
+  // shows his; who works on it now is a small mark beside it.
+  const viewer = identity ?? cityIdentity;
+  const owner = ownerBadge(viewer);
+  const worker = cardWorker(workerOf(stage.step?.assignee, bead.assignee), active, stage.stage === 'working', viewer);
 
   return (
     <article
@@ -288,23 +292,19 @@ function OwnKanbanCard({
         </span>
       </button>
 
-      {/* Row 3: assignee avatar at the right */}
-      <div className="flex items-center justify-end text-vk-text-low">
-        {avatar !== null && (
-          <CardAvatar
-            letter={avatar.letter}
-            label={
-              avatar.tone === 'owner'
-                ? t('Assignee: you')
-                : avatar.tone === 'executor'
-                  ? t('Implementer')
-                  : avatar.who !== null
-                    ? t('Assignee: {who}', { who: avatar.who })
-                    : t('Assignee: Richard')
-            }
-            tone={avatar.tone}
-          />
+      {/* Row 3: the owner avatar at the right, «кто работает» as a small mark before it */}
+      <div className="flex items-center justify-end gap-1 text-vk-text-low">
+        {worker !== null && (
+          <span data-worker-mark="" className="flex items-center">
+            <CardAvatar
+              letter={worker.letter}
+              label={t('Working now: {who}', { who: worker.name ?? t('Implementer') })}
+              tone={worker.tone}
+              size="sm"
+            />
+          </span>
         )}
+        <CardAvatar letter={owner.letter} label={t('Owner: yours')} tone="owner" />
       </div>
 
       {/* Row 4: chips */}

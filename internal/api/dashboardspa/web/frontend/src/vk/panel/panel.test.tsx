@@ -22,6 +22,20 @@ vi.mock('../../lib/mayorLink', () => ({
   mayorChannelUrl: vi.fn(() => 'https://discord.com/channels/1/2'),
 }));
 
+// owner 17.11: «Чья задача» is the city's own person (lib/selfIdentity).
+vi.mock('../../lib/selfIdentity', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/selfIdentity')>();
+  return {
+    ...actual,
+    useSelfIdentity: () => ({
+      login: 'TheDeveloperTom',
+      name: 'Артём',
+      initial: 'А',
+      peers: [{ login: 'RicciRi', name: 'Ричард', initial: 'Р', genitive: 'Ричарда' }],
+    }),
+  };
+});
+
 import { DISPATCH_CARD } from './dispatchCardFixture';
 
 const mockDetail = useBeadDetail as unknown as Mock;
@@ -157,14 +171,57 @@ describe('task drawer', () => {
     expect(screen.getByTestId('task-crumb').textContent).toBe('M04 #1');
   });
 
-  it('status row «В работе», «И Исполнитель», «Подзадача M04»; chips M04, «Пакет этапа», #580', () => {
+  it('status row «В работе», «Чья задача А», «Сейчас работает И Исполнитель», «Подзадача M04»; chips', () => {
     show(canvasTask);
     const row = screen.getByTestId('task-status-row');
-    expect(row.textContent).toBe('В работеИИсполнительПодзадача M04');
+    expect(row.textContent).toBe('В работеЧья задачаААртёмСейчас работаетИИсполнительПодзадача M04');
+    expect(within(row).getByRole('img', { name: 'Чья задача: твоя' }).textContent).toBe('А');
     expect((within(row).getByTestId('status-dot') as HTMLElement).style.background).toBe('rgb(245, 158, 11)');
     const chips = screen.getByTestId('task-chips');
     expect(chips.textContent).toBe('M04Пакет этапа#580');
     expect(within(chips).getByText('#580').getAttribute('href')).toBe('https://github.com/o/r/pull/580');
+  });
+
+  // owner 17.11: the panel said neither whose the task is nor who works on it.
+  it('a task with nobody on it still says whose it is, and «Сейчас никто не работает»', () => {
+    show(plain);
+    const row = screen.getByTestId('task-status-row');
+    expect(within(row).getByRole('img', { name: 'Чья задача: твоя' }).textContent).toBe('А');
+    expect(row.textContent).toContain('Сейчас никто не работает');
+  });
+
+  it('«Сейчас работает» is the route step’s assignee, and its session opens the live run', () => {
+    const task = bead({ id: 'dw-st', status: 'in_progress', assignee: 'devwork/worker' });
+    const step = bead({ id: 'dw-st.r1.s2', status: 'in_progress', assignee: 'devwork/reviewer' });
+    const sessions = [
+      {
+        id: 'gcg-9',
+        template: 'reviewer',
+        session_name: 'devwork__reviewer',
+        title: 'reviewer',
+        alias: 'devwork/reviewer',
+        state: 'active',
+        created_at: '2026-11-15T10:00:00Z',
+        attached: false,
+        running: true,
+      },
+    ];
+    mockDetail.mockReturnValue({ bead: task, loading: false, error: null, notFound: false, now: 0 });
+    mockBoard.mockReturnValue({ data: { items: [task] }, sessions: [], rigs: [], loading: false, error: null });
+    render(
+      <BeadDetailModal
+        open
+        onClose={() => {}}
+        beadId={task.id}
+        initialBead={task}
+        step={step}
+        sessions={sessions as never}
+      />,
+    );
+    const row = screen.getByTestId('task-status-row');
+    expect(row.textContent).toContain('Сейчас работаетИdevwork/reviewer');
+    expect(row.textContent).not.toContain('devwork/worker');
+    expect(screen.getByRole('button', { name: 'Смотреть, что пишет' })).toBeTruthy();
   });
 
   it('title, then ONE «Обсудить с Мэром», then the description as markdown with its list', () => {

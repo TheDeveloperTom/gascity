@@ -62,6 +62,7 @@ function peer(cards: { rig: string; bead: Bead }[], runs: PeerRuns | null): Peer
     stale: false,
     live: null,
     fetchedAt: null,
+    fetchError: null,
     cards,
     runs,
   };

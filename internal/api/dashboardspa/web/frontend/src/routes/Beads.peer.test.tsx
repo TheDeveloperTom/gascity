@@ -167,8 +167,8 @@ describe('BeadsPage with Richard’s board', () => {
     await screen.findByText('Изменение схемы users');
     const card = peerCard()!;
     expect(within(card).getByText('Ричарда')).toBeTruthy();
-    // vk11: canvas Main — «Исполнитель: Ричард», filled teal «Р»
-    expect(within(card).getByLabelText('Исполнитель: Ричард').textContent).toBe('Р');
+    // vk11: canvas Main, filled teal «Р»; owner 17.11: it names whose the card is
+    expect(within(card).getByLabelText('Чья задача: Ричарда').textContent).toBe('Р');
     // design Main: the rig heads the card and is its project tag
     expect(within(card).getAllByText('crm-api')).toHaveLength(2);
     expect(within(card).getByText(`на ${clock(at)}`)).toBeTruthy();
@@ -564,6 +564,48 @@ describe('BeadsPage with Richard’s board', () => {
       expect(within(dialog).getByText(/только для чтения/)).toBeTruthy();
       expect(requests.some((p) => p.includes('/bead/dw-ab12') || p.includes('/beads/dw-ab12'))).toBe(false);
     });
+  });
+
+  // owner 17.11: «Ричарда» with 0 cards drew only «Ничего не нашлось». A
+  // filter shows the board with its empty columns and says why it is empty.
+  const columnNames = () => screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+  const LIVE_ON = { version: 3, as_of: minutesAgo(1), connection: { state: 'live', since: minutesAgo(10) } };
+
+  it('«Ричарда» with no cards: the empty board and «Город Ричарда сейчас не передаёт ни одной задачи · связь живая»', async () => {
+    const fetched = minutesAgo(2);
+    peerResponse = () => json(peerBody({ cards: [], live: LIVE_ON, fetchedAt: fetched }));
+    renderPage();
+    await screen.findByText('Моя карточка с тем же id');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Чьи задачи' })).getByRole('button', { name: 'Ричарда' }));
+    const board = await screen.findByRole('region', { name: 'Доска' });
+    expect(columnNames()).toEqual(expect.arrayContaining(['Ждёт', 'В работе', 'Ревью', 'Влито · за 7 дней']));
+    expect(board.querySelectorAll('article')).toHaveLength(0);
+    expect(screen.queryByText('Ничего не нашлось.')).toBeNull();
+    expect(
+      screen.getByText(`Город Ричарда сейчас не передаёт ни одной задачи · связь живая, обновлено ${clock(fetched)}`),
+    ).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('«Ричарда» with no cards and a failed read: «Нет связи с городом Ричарда: …»', async () => {
+    peerResponse = () =>
+      json({
+        ...peerBody({ cards: [] }),
+        peers: [{ ...peerBody({ cards: [] }).peers[0], fetch_error: 'connection refused' }],
+      });
+    renderPage();
+    await screen.findByText('Моя карточка с тем же id');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Чьи задачи' })).getByRole('button', { name: 'Ричарда' }));
+    await screen.findByRole('region', { name: 'Доска' });
+    expect(screen.getByText('Нет связи с городом Ричарда: connection refused')).toBeTruthy();
+  });
+
+  it('a text search with no hits still says «Ничего не нашлось.»', async () => {
+    renderPage();
+    await screen.findByText('Моя карточка с тем же id');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Найти задачу' }), { target: { value: 'zzzz-нет-такого' } });
+    expect(await screen.findByText('Ничего не нашлось.')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Доска' })).toBeNull();
   });
 
   it('no peer service: the owner chips stay off and nothing breaks', async () => {

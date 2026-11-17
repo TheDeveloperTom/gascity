@@ -252,7 +252,10 @@ describe('VK board', () => {
     expect(within(article).getByText('Один тип пользователя')).toBeTruthy();
   });
 
-  it('the assignee avatar: «А» for the owner, blue «И» for the executor at work', () => {
+  // owner 17.11: the card's main avatar is the card's OWNER (my initial on my
+  // cards, like a peer card shows his), never «И» instead of it. Who works on
+  // it now is a separate small mark beside it.
+  it('my card shows my initial «А» as its owner; a running agent is a small separate «И»', () => {
     identityOverride.value = OUR_CITY;
     renderBoard(
       [
@@ -262,15 +265,23 @@ describe('VK board', () => {
       { nowMs: NOW, sessions: [{ id: 's1', session_name: 'devwork/worker', state: 'active' }] },
     );
     const mine = screen.getByText('mine').closest('article') as HTMLElement;
-    expect(within(mine).getByRole('img', { name: 'Исполнитель: ты' }).textContent).toBe('А');
+    const owner = within(mine).getByRole('img', { name: 'Чья задача: твоя' });
+    expect(owner.textContent).toBe('А');
+    expect(owner.getAttribute('data-avatar')).toBe('owner');
+    expect(mine.querySelector('[data-worker-mark]')).toBeNull();
     const run = screen.getByText('running').closest('article') as HTMLElement;
-    const executor = within(run).getByRole('img', { name: 'Исполнитель' });
-    expect(executor.textContent).toBe('И');
-    expect(executor.className).toContain('bg-[#1D5BD6]');
+    const runOwner = within(run).getByRole('img', { name: 'Чья задача: твоя' });
+    expect(runOwner.textContent).toBe('А');
+    const worker = within(run).getByRole('img', { name: 'Сейчас работает: devwork/worker' });
+    expect(worker.textContent).toBe('И');
+    expect(worker.getAttribute('data-avatar')).toBe('executor');
+    expect(worker.closest('[data-worker-mark]')).not.toBeNull();
+    // the owner badge is the main one, the worker mark is smaller
+    expect(worker.className).toContain('h-4');
+    expect(runOwner.className).toContain('h-5');
   });
 
-  // Fix I2 (REVIEW 16.11): the avatar reads bead.assignee, not the stage.
-  it('the avatar is the real assignee: owner «А», agent «И», Richard «Р», none when unassigned', () => {
+  it('owner always; the worker mark only for a live stage or a person: agent, Richard, nobody', () => {
     identityOverride.value = OUR_CITY;
     renderBoard(
       [
@@ -278,16 +289,47 @@ describe('VK board', () => {
         bead('dw-me', 'open', { title: 'owner task', assignee: 'TheDeveloperTom' }),
         bead('dw-ag', 'open', { title: 'agent task', assignee: 'gcg-session-9570720d6480982c' }),
         bead('dw-ri', 'open', { title: 'richard task', assignee: 'RicciRi' }),
+        bead('dw-wk', 'in_progress', { title: 'working nobody' }),
       ],
       { nowMs: NOW },
     );
     const card = (title: string) => screen.getByText(title).closest('article') as HTMLElement;
-    expect(card('nobody').querySelector('[data-avatar]')).toBeNull();
-    expect(within(card('owner task')).getByRole('img', { name: 'Исполнитель: ты' }).textContent).toBe('А');
-    expect(within(card('agent task')).getByRole('img', { name: 'Исполнитель' }).textContent).toBe('И');
-    const richard = within(card('richard task')).getByRole('img', { name: 'Исполнитель: Ричард' });
+    for (const title of ['nobody', 'owner task', 'agent task', 'richard task', 'working nobody']) {
+      expect(within(card(title)).getByRole('img', { name: 'Чья задача: твоя' }).textContent).toBe('А');
+    }
+    expect(card('nobody').querySelector('[data-worker-mark]')).toBeNull();
+    expect(card('owner task').querySelector('[data-worker-mark]')).toBeNull();
+    // a claimed-but-idle agent on an open card is not «working now»
+    expect(card('agent task').querySelector('[data-worker-mark]')).toBeNull();
+    const richard = within(card('richard task')).getByRole('img', { name: 'Сейчас работает: Ричард' });
     expect(richard.textContent).toBe('Р');
     expect(richard.getAttribute('data-avatar')).toBe('peer');
+    // in work with nobody named: an agent's run, «И»
+    expect(within(card('working nobody')).getByRole('img', { name: 'Сейчас работает: Исполнитель' }).textContent).toBe('И');
+  });
+
+  it('the worker mark names the route step’s assignee before the bead’s', () => {
+    identityOverride.value = OUR_CITY;
+    const model = buildBoardModel(
+      boardData([bead('dw-st', 'in_progress', { title: 'stepped', assignee: 'devwork/worker' })]),
+      [],
+      { project: ALL_PROJECTS, search: '', showTests: false },
+    );
+    const card = model.columns.working.find((c) => c.node.bead.id === 'dw-st');
+    if (card === undefined) throw new Error('no dw-st card');
+    const step = bead('dw-st.r1.s2', 'in_progress', { title: 'review', assignee: 'devwork/reviewer' });
+    render(
+      <MemoryRouter>
+        <KanbanCard card={{ ...card, stage: { ...card.stage, step } }} nowMs={NOW} selected={false} onSelect={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('img', { name: 'Сейчас работает: devwork/reviewer' })).toBeTruthy();
+  });
+
+  it('an unknown viewer still owns its cards: the neutral «?» owner badge', () => {
+    renderBoard([bead('dw-q', 'open', { title: 'whose' })], { nowMs: NOW });
+    const card = screen.getByText('whose').closest('article') as HTMLElement;
+    expect(within(card).getByRole('img', { name: 'Чья задача: твоя' }).textContent).toBe('?');
   });
 
   it('a selected card keeps its background and gets the brand border (canvas Main)', () => {

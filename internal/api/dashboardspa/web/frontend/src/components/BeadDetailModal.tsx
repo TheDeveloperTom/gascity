@@ -24,9 +24,12 @@ import {
   TaskDrawer,
   taskSummary,
   type Answer,
+  type StatusPerson,
 } from '../vk/panel/TaskDrawer';
 import { taskKind, taskPr, taskShortLabel } from '../vk/panel/drawerFacts';
 import { tagColor } from '../vk/board/KanbanCard';
+import { cardAssignee, ownerBadge, workerOf } from '../vk/board/cardAssignee';
+import { useSelfIdentity, type SelfIdentity } from '../lib/selfIdentity';
 import { ExternalLink } from '../vk/ExternalLink';
 import { BeadLiveRunModal } from './beads/BeadLiveRunModal';
 import { isSessionStreamable } from './LiveSessionPeek';
@@ -72,6 +75,11 @@ interface BeadDetailModalProps {
   graphChain?: { cameFrom: string | null } | null;
   /** Graph sprint: «← <previous>» after a jump along the chain. */
   backCrumb?: { label: string; onBack: () => void } | null;
+  /**
+   * owner 17.11: the route step the card is at (TaskStage.step). Its assignee
+   * is who works now («Сейчас работает») and the live run it opens.
+   */
+  step?: SupervisorBead | null;
 }
 
 export function BeadDetailModal({
@@ -89,7 +97,9 @@ export function BeadDetailModal({
   onShowOnGraph,
   graphChain = null,
   backCrumb = null,
+  step = null,
 }: BeadDetailModalProps) {
+  const identity = useSelfIdentity();
   const { bead, loading, error, notFound, now } = useBeadDetail(open, beadId, initialBead);
   const links = useEntityLinks(open ? beadId : null);
   const board = useBoardData();
@@ -100,10 +110,10 @@ export function BeadDetailModal({
   // An answer belongs to one bead; re-centring on another clears it.
   useEffect(() => setAnswer(null), [beadId]);
 
-  const session =
-    bead && sessions && bead.assignee && bead.assignee.length > 0
-      ? resolveSessionForTarget(bead.assignee, sessions)
-      : null;
+  // owner 17.11: who works now is the route step's assignee, else the bead's.
+  const worker = bead ? workerOf(step?.assignee, bead.assignee) : '';
+  const workBead = bead && step !== null && (step.assignee?.trim() ?? '').length > 0 ? step : bead;
+  const session = sessions && worker.length > 0 ? resolveSessionForTarget(worker, sessions) : null;
   const liveRunnable = isSessionStreamable(session);
   const question = useMemo(() => (bead ? ownerQuestionOf(bead) : null), [bead]);
   const discussCtx = useMemo(
@@ -185,7 +195,8 @@ export function BeadDetailModal({
           bead ? (
             <StatusRow
               status={bead.status}
-              assignee={bead.assignee ?? null}
+              owner={{ ...ownerBadge(identity), name: identity.name }}
+              worker={statusWorker(worker, identity)}
               kind={taskKind(bead)}
               tag={milestone}
             />
@@ -250,7 +261,7 @@ export function BeadDetailModal({
               />
             </Relationships>
             <AgentWork
-              bead={bead}
+              bead={workBead ?? bead}
               sessions={board.sessions}
               pr={pr}
               {...(liveRunnable ? { onWatch: () => setRunOpen(true) } : {})}
@@ -273,6 +284,14 @@ export function BeadDetailModal({
       )}
     </>
   );
+}
+
+/** «Сейчас работает»: the worker's avatar and name; null for nobody (or only me). */
+function statusWorker(worker: string, identity: SelfIdentity): StatusPerson | null {
+  if (worker.length === 0) return null;
+  const who = cardAssignee(worker, false, identity);
+  if (who === null) return { letter: worker.charAt(0).toUpperCase(), tone: 'executor', name: worker };
+  return { letter: who.letter, tone: who.tone, name: who.tone === 'owner' ? identity.name ?? worker : (who.who ?? worker) };
 }
 
 /** Canvas «Пакет этапа»: the stage-package chip when the task is a stage bead. */

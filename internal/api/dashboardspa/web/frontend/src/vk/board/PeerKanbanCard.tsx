@@ -162,7 +162,7 @@ export function PeerKanbanCard({
             </span>
           )}
         </div>
-        <CardAvatar letter={peer.avatar} label={t('Assignee: {who}', { who: peer.name })} tone="peer" />
+        <CardAvatar letter={peer.avatar} label={t('Owner: {whose}', { whose: peer.label })} tone="peer" />
       </div>
 
       {note !== null && (

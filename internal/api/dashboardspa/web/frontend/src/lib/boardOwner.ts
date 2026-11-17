@@ -36,6 +36,8 @@ export interface PeerBoardSource extends BoardSource {
   live: PeerLive | null;
   /** When our client last received the board (our clock). */
   fetchedAt: string | null;
+  /** The service's last read of this board failed (`fetch_error`); null when it read. */
+  fetchError: string | null;
   /**
    * PEER-STAGE: the peer's open runs of its shared cards, placed with the same
    * stage rules as ours; null for a city that sends none (status placement).
@@ -72,6 +74,7 @@ export function peerSourcesOf(result: PeerBoardsResult, nowMs: number): PeerBoar
       cards: peer.cards,
       live: peer.live,
       fetchedAt: peer.fetchedAt,
+      fetchError: peer.fetchError,
       runs: peer.runs,
     };
   });
