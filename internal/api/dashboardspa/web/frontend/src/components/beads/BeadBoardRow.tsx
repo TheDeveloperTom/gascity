@@ -121,6 +121,8 @@ function waitWord(card: BoardCard): ReactNode {
       return t('waits for a decision: «{title}»', { title: wait.gate.title });
     case 'held':
       return t('waits for another task');
+    case 'paused':
+      return t('⏸ Paused');
   }
 }
 

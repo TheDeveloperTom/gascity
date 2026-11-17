@@ -7,6 +7,7 @@ import { useEntityLinks } from '../hooks/useEntityLinks';
 import { t } from '../i18n';
 import { getActiveCity } from '../api/cityBase';
 import { ownerQuestionOf } from '../lib/ownerQuestions';
+import { pauseOf } from '../lib/pause';
 import { milestoneOf } from '../lib/waitReasons';
 import type { SupervisorBead } from '../supervisor/beadReads';
 import type { SupervisorSession } from '../supervisor/sessionReads';
@@ -199,6 +200,7 @@ export function BeadDetailModal({
               worker={statusWorker(worker, identity)}
               kind={taskKind(bead)}
               tag={milestone}
+              pause={bead.status === 'closed' ? null : pauseOf(bead)}
             />
           ) : undefined
         }

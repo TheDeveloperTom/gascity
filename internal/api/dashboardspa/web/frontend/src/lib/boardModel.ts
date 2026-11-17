@@ -307,8 +307,9 @@ function withLandPrs(
         out[stage.id].push(card);
         continue;
       }
+      // A paused card stays in Waiting with its land PR (owner 17.11).
       const target =
-        (STAGE_ORDER.get(card.stage.stage) ?? 0) < (STAGE_ORDER.get('pr') ?? 3)
+        card.stage.pause === undefined && (STAGE_ORDER.get(card.stage.stage) ?? 0) < (STAGE_ORDER.get('pr') ?? 3)
           ? 'pr'
           : card.stage.stage;
       out[target].push({ ...card, stage: { ...card.stage, stage: target, pr } });

@@ -1,5 +1,6 @@
 import type { SupervisorBead } from '../supervisor/beadReads';
 import type { BeadNode } from './beadGraph';
+import { pauseOf, type PauseInfo } from './pause';
 
 // The Beads board as route stages (owner ruling 2026-11-15): every product task
 // travels one route from created to merged, and the board shows where it is.
@@ -101,6 +102,8 @@ export interface TaskStage {
   stepLabel: string | null;
   pr: { number: string | null; url: string | null } | null;
   marks: StageMark[];
+  /** Set when the Mayor paused the open task (`hold:mayor` / `hold:external`): it waits. */
+  pause?: PauseInfo;
 }
 
 export interface StageCard {
@@ -310,6 +313,9 @@ export function deriveTaskStage(
   const task = node.bead;
   const route = index.routesFor(task.id)[0] ?? null;
   const marks: StageMark[] = [];
+  // owner 17.11: a paused card keeps in_progress but nothing runs on it; it
+  // waits («⏸ На паузе»), never «route stopped» in Working.
+  const pause = task.status === 'closed' ? null : pauseOf(task);
 
   let stage: StageId;
   let step: SupervisorBead | null = null;
@@ -339,7 +345,7 @@ export function deriveTaskStage(
         label: 'route failed',
         title: `Run ${route.root.id} ended failed; the task is still open.`,
       });
-    } else if (task.status === 'in_progress' && (route !== null || index.routesComplete)) {
+    } else if (pause === null && task.status === 'in_progress' && (route !== null || index.routesComplete)) {
       // Our route marks the task in progress (mark-in-progress) and closes it
       // at the end; a scope abort closes the root and every step. So an
       // in-progress task that no live run names had its run stop under it.
@@ -369,6 +375,7 @@ export function deriveTaskStage(
   // line says what is happening (for example the review of the fix).
   const pr = prOf(task, route);
   if (task.status !== 'closed' && pr !== null && STAGE_RANK[stage] < STAGE_RANK.pr) stage = 'pr';
+  if (pause !== null) stage = 'waiting';
 
   if (task.status === 'blocked') marks.push({ kind: 'blocked', tone: 'warn', label: 'blocked' });
 
@@ -401,7 +408,15 @@ export function deriveTaskStage(
     stepLabel = label.length > 0 ? label : step.title;
   }
 
-  return { stage, root: route?.root ?? null, step, stepLabel, pr, marks };
+  return {
+    stage,
+    root: route?.root ?? null,
+    step,
+    stepLabel,
+    pr,
+    marks,
+    ...(pause === null ? {} : { pause }),
+  };
 }
 
 /**

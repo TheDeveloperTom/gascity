@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { t } from '../../i18n';
 import { openExternal } from '../../lib/openExternal';
 import type { OwnerQuestion } from '../../lib/ownerQuestions';
+import { pauseSummary, pauseTooltip, type PauseInfo } from '../../lib/pause';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { cn } from '../cn';
 import { mayorChannelUrl } from '../../lib/mayorLink';
@@ -297,12 +298,15 @@ export function StatusRow({
   worker,
   kind,
   tag,
+  pause = null,
 }: {
   status: string;
   owner: StatusPerson;
   worker: StatusPerson | null;
   kind: string;
   tag: string | null;
+  /** owner 17.11: «На паузе: <reason> (кто, когда)» next to the status. */
+  pause?: PauseInfo | null;
 }) {
   return (
     <>
@@ -315,6 +319,15 @@ export function StatusRow({
         />
         {statusLabel(status)}
       </span>
+      {pause !== null && (
+        <span
+          data-testid="task-pause"
+          title={pauseTooltip(pause)}
+          className="inline-flex min-w-0 items-center rounded-sm bg-vk-bg-panel px-2 py-1 text-sm"
+        >
+          {t('Paused: {summary}', { summary: pauseSummary(pause) })}
+        </span>
+      )}
       <span
         data-testid="task-owner"
         className="inline-flex min-w-0 items-center gap-1.5 rounded-sm bg-vk-bg-panel px-2 py-1 text-sm"

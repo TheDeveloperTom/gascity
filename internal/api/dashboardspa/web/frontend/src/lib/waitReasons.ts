@@ -66,7 +66,9 @@ export type CardWait =
   | { kind: 'queued' }
   | { kind: 'tasks'; count: number }
   | { kind: 'decision'; gate: { id: string; title: string } }
-  | { kind: 'held' };
+  | { kind: 'held' }
+  /** The Mayor paused it (`hold:mayor` / `hold:external`); not free to take. */
+  | { kind: 'paused' };
 
 function meta(bead: SupervisorBead, key: string): string {
   return bead.metadata?.[key]?.trim() ?? '';
@@ -223,6 +225,7 @@ export function cardWait(
   byId: ReadonlyMap<string, SupervisorBead>,
 ): CardWait | null {
   if (stage.stage !== 'waiting') return null;
+  if (stage.pause !== undefined) return { kind: 'paused' };
   if (stage.stepLabel === 'Queued' && stage.root !== null) return { kind: 'queued' };
   if (task.is_blocked !== true && task.status !== 'blocked') return { kind: 'ready' };
   const ids = blockerIds(task);

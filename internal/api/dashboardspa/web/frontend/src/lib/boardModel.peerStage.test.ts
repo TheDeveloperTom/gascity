@@ -214,3 +214,13 @@ describe('PEER-STAGE: a peer card lands where its home board puts it', () => {
     expect(reviewKeys({ epic: 'M04' })).toEqual([]);
   });
 });
+
+describe('a paused peer card (hold:mayor in the share frame) waits on our board too', () => {
+  it('lands in Waiting with its pause, no «route stopped»', () => {
+    const paused = task({ labels: ['hold:mayor'], metadata: { 'devwork.pause_reason': 'mayor, 2026-11-16T08:12:00Z: стоп' } });
+    const { card } = onPeerBoard(paused, [], true);
+    expect(card?.stage.stage).toBe('waiting');
+    expect(card?.stage.pause?.reason).toBe('стоп');
+    expect(card?.stage.marks.map((m) => m.kind)).not.toContain('route-stopped');
+  });
+});

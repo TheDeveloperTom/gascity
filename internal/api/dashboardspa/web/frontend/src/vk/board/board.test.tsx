@@ -409,3 +409,68 @@ describe('PhoneBoard', () => {
     expect(screen.getByText('Здесь пусто')).toBeTruthy();
   });
 });
+
+// owner 17.11: a card the Mayor paused (hold:mayor + devwork.pause_reason)
+// kept in_progress sat in «В работе» with «прогон остановился · стоит 26 ч».
+describe('a paused card', () => {
+  const REASON = 'mayor, 2026-11-14T08:12:00Z: ждём решения по схеме БД';
+
+  it('sits in «Ждёт» with «⏸ На паузе», the reason and who/when, and no alarm chips', () => {
+    renderBoard(
+      [
+        bead('dw-pz', 'in_progress', {
+          title: 'paused task',
+          labels: ['hold:mayor'],
+          metadata: { 'devwork.pause_reason': REASON },
+          updated_at: ago(26 * HOUR),
+        }),
+      ],
+      { nowMs: NOW },
+    );
+    expect(within(column('В работе')).queryByText('paused task')).toBeNull();
+    const card = within(column('Ждёт')).getByText('paused task').closest('article') as HTMLElement;
+    const chip = within(card).getByText('⏸ На паузе');
+    const titled = chip.closest('[title]') as HTMLElement;
+    expect(titled.getAttribute('title')).toContain('ждём решения по схеме БД');
+    expect(titled.getAttribute('title')).toContain('mayor');
+    expect(titled.getAttribute('title')).toContain('14.11 08:12 UTC');
+    expect(within(card).getByText('ждём решения по схеме БД')).toBeTruthy();
+    expect(within(card).queryByText('прогон остановился')).toBeNull();
+    expect(within(card).queryByText(/^стоит /)).toBeNull();
+  });
+
+  it('a peer card with hold:mayor in its frame shows the same chip', () => {
+    const t = bead('dw-pp', 'in_progress', {
+      title: 'peer paused',
+      labels: ['hold:external'],
+      metadata: { 'devwork.pause_reason': 'mayor, 2026-11-14T08:12:00Z: ждём ключ' },
+    });
+    const model = buildBoardModel(boardData([]), [], { project: ALL_PROJECTS, search: '', showTests: false }, [
+      {
+        owner: 'peer:rich',
+        login: 'rich',
+        label: 'Ричарда',
+        name: 'Ричард',
+        dative: null,
+        avatar: 'Р',
+        available: true,
+        asOf: '2026-11-15T10:00:00Z',
+        stale: false,
+        live: null,
+        fetchedAt: null,
+        fetchError: null,
+        cards: [{ rig: 'devwork', bead: t }],
+        runs: { complete: true, beads: [] },
+      },
+    ]);
+    const card = model.columns.waiting.find((c) => c.node.bead.id === 'dw-pp');
+    if (card === undefined) throw new Error('peer paused card not in waiting');
+    render(
+      <MemoryRouter>
+        <KanbanCard card={card} nowMs={NOW} selected={false} onSelect={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const chip = screen.getByText('⏸ На паузе');
+    expect((chip.closest('[title]') as HTMLElement).getAttribute('title')).toContain('ждём ключ');
+  });
+});

@@ -7,6 +7,7 @@ import { cn } from '../cn';
 import { ExternalLink } from '../ExternalLink';
 import { CardAvatar } from './CardAvatar';
 import { KanbanBadge } from './KanbanBadge';
+import { PauseChip, PauseLine } from './PauseChip';
 
 // vk-final part 3: a card from a peer's board (design Main, «Изменение схемы
 // users»). Read-only: rig on top, the title, then «● Ричарда», the project,
@@ -121,6 +122,7 @@ export function PeerKanbanCard({
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <KanbanBadge name={peer.label} color={PEER_COLOR} />
           <KanbanBadge name={peer.rig} color={PROJECT_COLOR} />
+          {card.stage.pause !== undefined && <PauseChip pause={card.stage.pause} />}
           {/* review M-12: «срочно», the one priority tag the owner kept, as on our cards */}
           {bead.priority != null && bead.priority <= 1 && card.stage.stage !== 'merged' && (
             <KanbanBadge name={t('urgent')} tone="error" />
@@ -164,6 +166,8 @@ export function PeerKanbanCard({
         </div>
         <CardAvatar letter={peer.avatar} label={t('Owner: {whose}', { whose: peer.label })} tone="peer" />
       </div>
+
+      {card.stage.pause !== undefined && <PauseLine pause={card.stage.pause} />}
 
       {note !== null && (
         <div data-step-panel="" className="mt-1 flex min-w-0 flex-col gap-1 rounded-sm bg-vk-bg-panel p-2">

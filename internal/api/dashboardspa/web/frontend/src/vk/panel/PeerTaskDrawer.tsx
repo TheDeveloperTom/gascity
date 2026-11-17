@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
+import { pauseOf, pauseSummary, pauseTooltip } from '../../lib/pause';
 import { safeExternalUrl } from '../../lib/stageBoard';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { ExternalLink } from '../ExternalLink';
@@ -56,6 +57,7 @@ export function PeerTaskDrawer({
   const prNumber = bead.metadata?.['devwork.pr_number']?.trim() ?? '';
   const prUrl = safeExternalUrl(bead.metadata?.['devwork.pr_url']?.trim() ?? '');
   const clock = asOfClock(asOf);
+  const pause = bead.status === 'closed' ? null : pauseOf(bead);
   const chips = (
     <span className="flex min-w-0 items-center gap-1 font-vk-mono text-[15px] text-vk-text-normal">
       <span>{name}</span>
@@ -75,6 +77,11 @@ export function PeerTaskDrawer({
             <span aria-hidden="true" className="mr-1.5 h-2 w-2 rounded-full bg-vk-text-low" />
             {statusLabel(bead.status)}
           </Chip>
+          {pause !== null && (
+            <span data-testid="task-pause" title={pauseTooltip(pause)}>
+              <Chip>{t('Paused: {summary}', { summary: pauseSummary(pause) })}</Chip>
+            </span>
+          )}
           <Chip>
             <span className="mr-1.5">
               <PeerAvatar letter={avatar} />

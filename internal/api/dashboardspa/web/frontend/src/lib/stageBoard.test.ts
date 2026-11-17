@@ -619,3 +619,35 @@ describe('stepNoteOf (PEER-STAGE: one step note for our cards and the peer\'s)',
     expect(stepNoteOf(stage('working', null))).toBeNull();
   });
 });
+
+describe('a card the Mayor paused (hold:mayor / hold:external) waits, it is not a stopped run', () => {
+  function stageWith(t: SupervisorBead, routeBeads: SupervisorBead[] = []) {
+    const graph = buildBeadGraph([t]);
+    const node = graph.nodes.get(t.id);
+    if (!node) throw new Error('missing node');
+    return deriveTaskStage(node, buildRouteIndex(routeBeads, { routesComplete: true }), new Map());
+  }
+  const REASON = 'mayor, 2026-11-16T08:12:00Z: ждём решения по схеме';
+
+  it('an in-progress paused task sits in Waiting with its pause and no «route stopped»', () => {
+    const result = stageWith(
+      task({ status: 'in_progress', labels: ['hold:mayor'], metadata: { 'devwork.pause_reason': REASON } }),
+    );
+    expect(result.stage).toBe('waiting');
+    expect(result.marks.map((m) => m.kind)).not.toContain('route-stopped');
+    expect(result.pause).toMatchObject({ hold: 'mayor', who: 'mayor', reason: 'ждём решения по схеме' });
+  });
+
+  it('hold:external is a pause too, even with a live run left over', () => {
+    const result = stageWith(task({ status: 'in_progress', labels: ['hold:external'] }), [root(), ...routeFrom(3)]);
+    expect(result.stage).toBe('waiting');
+    expect(result.pause?.hold).toBe('external');
+  });
+
+  it('hold:plan and hold:cleared are not a pause; a closed paused task is merged', () => {
+    expect(stageWith(task({ status: 'in_progress', labels: ['hold:cleared'] })).stage).toBe('working');
+    expect(stageWith(task({ status: 'in_progress', labels: ['hold:cleared'] })).pause ?? null).toBeNull();
+    expect(stageWith(task({ labels: ['hold:plan'] })).pause ?? null).toBeNull();
+    expect(stageWith(task({ status: 'closed', labels: ['hold:mayor'] })).stage).toBe('merged');
+  });
+});

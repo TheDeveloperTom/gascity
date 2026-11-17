@@ -45,6 +45,7 @@ import { t } from '../../i18n';
 import { ageText, lastProgressMs, STUCK_AFTER_MS } from '../../lib/boardFacts';
 import type { BoardCard } from '../../lib/boardModel';
 import { OWNER_QUESTION_LABEL } from '../../lib/ownerQuestions';
+import { PauseChip, PauseLine } from './PauseChip';
 import { routeRunHref, stepNoteOf } from '../../lib/stageBoard';
 import { blockerIds, milestoneOf } from '../../lib/waitReasons';
 import type { SupervisorBead } from '../../supervisor/beadReads';
@@ -186,7 +187,9 @@ function OwnKanbanCard({
   const running = isRunning(card, sessions);
   const active = stage.stage === 'working' || stage.stage === 'review' || stage.stage === 'pr';
   const progress = active ? lastProgressMs(card, sessions) : null;
-  const stalledFor = progress !== null && nowMs - progress > STUCK_AFTER_MS ? nowMs - progress : null;
+  const pause = stage.pause ?? null;
+  // A paused card raises no «стоит N ч» (owner 17.11): nothing is meant to run.
+  const stalledFor = pause === null && progress !== null && nowMs - progress > STUCK_AFTER_MS ? nowMs - progress : null;
   const needsYou = (bead.labels ?? []).includes(OWNER_QUESTION_LABEL);
   const urgent = bead.priority != null && bead.priority <= 1 && stage.stage !== 'merged';
 
@@ -309,6 +312,7 @@ function OwnKanbanCard({
 
       {/* Row 4: chips */}
       {(epicChip !== null ||
+        pause !== null ||
         needsYou ||
         urgent ||
         stalledFor !== null ||
@@ -323,6 +327,7 @@ function OwnKanbanCard({
               {...(epicTitle !== null && milestone === null ? { title: epicTitle } : {})}
             />
           )}
+          {pause !== null && <PauseChip pause={pause} />}
           {needsYou && <KanbanBadge name={t('waits for you')} color={NEEDS_YOU_COLOR} />}
           {pr !== null &&
             (pr.url !== null ? (
@@ -362,6 +367,8 @@ function OwnKanbanCard({
           )}
         </div>
       )}
+
+      {pause !== null && <PauseLine pause={pause} />}
 
       {/* What the agent does now (canvas: «Исполнитель пишет код» / dots · сейчас) */}
       {stepLabel !== null && (

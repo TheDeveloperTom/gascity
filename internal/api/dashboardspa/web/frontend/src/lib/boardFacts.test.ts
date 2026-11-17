@@ -238,11 +238,17 @@ describe('stuckItems', () => {
     expect(items[0]?.sinceMs).toBe(NOW - 3 * 60 * MIN);
   });
 
-  it('mayor knows from hold:mayor', () => {
-    const model = modelOf({ items: [{ ...MQFCX13, labels: ['hold:mayor'] }, LAND] });
+  it('mayor knows from needs/operator', () => {
+    const model = modelOf({ items: [{ ...MQFCX13, labels: ['needs/operator'] }, LAND] });
     const item = stuckItems(model, ctx())[0];
     expect(item?.mayor).toBe('knows');
-    expect(item?.mayorEvidence).toBe('hold:mayor');
+    expect(item?.mayorEvidence).toBe('needs/operator');
+  });
+
+  // owner 17.11: a card the Mayor paused waits; it is not «stuck» in work.
+  it('a card on hold:mayor is paused, not stuck', () => {
+    const model = modelOf({ items: [{ ...MQFCX13, labels: ['hold:mayor'] }, LAND] });
+    expect(stuckItems(model, ctx()).filter((i) => i.key.includes(MQFCX13.id))).toEqual([]);
   });
 
   it('a label merely containing «escalat» is not the escalation label', () => {
