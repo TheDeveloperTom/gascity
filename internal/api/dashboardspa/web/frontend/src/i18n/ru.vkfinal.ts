@@ -100,6 +100,9 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'Nobody has written about this card yet.': 'Пока никто не писал по этой карточке.',
   'Comment on the card': 'Комментарий к карточке',
   'Write to the Mayors…': 'Написать Мэрам…',
+  // owner 17.11: `@` suggestions in the card conversation box (vk/comments/mentions)
+  Mention: 'Упомянуть',
+  'Your Mayor': 'Твой Мэр',
   To: 'Кому',
   'Choose a city…': 'Выбери город…',
   'Choose whom to write to.': 'Выбери, кому писать.',

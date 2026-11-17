@@ -38,6 +38,7 @@ import { t } from '../../i18n';
 import { withApiBase } from '../../lib/apiBase';
 import { asOfClock } from '../../lib/boardOwner';
 import type { CommentAuthor, PeerComment } from '../../supervisor/peerBoardReads';
+import { activeMention, filterMentions, insertMention, type MentionOption } from './mentions';
 import { cn } from '../cn';
 
 const JUST_NOW_MS = 60_000;
@@ -343,6 +344,8 @@ export interface CommentComposerProps {
   textareaRef?: Ref<HTMLTextAreaElement>;
   /** Nothing can be sent yet (e.g. no recipient chosen). */
   disabled?: boolean;
+  /** Owner 17.11: `@` suggests these tokens (./mentions); absent = no list. */
+  mentions?: readonly MentionOption[];
 }
 
 /** The VK comment box: textarea, hint and the round send button; Ctrl/⌘+Enter sends. */
@@ -355,12 +358,39 @@ export function CommentComposer({
   className,
   textareaRef,
   disabled = false,
+  mentions,
 }: CommentComposerProps) {
   const id = useId();
+  const listId = useId();
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const empty = value.trim().length === 0 || disabled;
+  // owner 17.11: the `@word` under the caret and the matching suggestions
+  const [caret, setCaret] = useState(0);
+  const [pick, setPick] = useState(0);
+  const [closedAt, setClosedAt] = useState<number | null>(null);
+  const mention = mentions ? activeMention(value, caret) : null;
+  const shown = mention && mention.start !== closedAt ? filterMentions(mentions ?? [], mention.query) : [];
+  const highlighted = Math.min(pick, Math.max(shown.length - 1, 0));
+
+  const edit = (next: string, at: number) => {
+    setValue(next);
+    setCaret(at);
+    setPick(0);
+  };
+
+  const choose = (option: MentionOption) => {
+    if (!mention) return;
+    const next = insertMention(value, mention.start, caret, option.token);
+    edit(next.value, next.caret);
+    setClosedAt(null);
+    const area = document.getElementById(id) as HTMLTextAreaElement | null;
+    if (area) {
+      area.focus();
+      requestAnimationFrame(() => area.setSelectionRange(next.caret, next.caret));
+    }
+  };
 
   const send = async () => {
     if (empty || sending) return;
@@ -377,6 +407,24 @@ export function CommentComposer({
   };
 
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (shown.length > 0 && mention) {
+      const plain = !event.metaKey && !event.ctrlKey;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        setPick((highlighted + (event.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length);
+        return;
+      }
+      if ((event.key === 'Enter' || event.key === 'Tab') && plain) {
+        event.preventDefault();
+        choose(shown[highlighted]!);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setClosedAt(mention.start);
+        return;
+      }
+    }
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       void send();
@@ -393,14 +441,44 @@ export function CommentComposer({
       <label htmlFor={id} className="sr-only">
         {label}
       </label>
+      {shown.length > 0 && (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label={t('Mention')}
+          className="absolute bottom-full left-0 z-10 mb-1 flex max-w-full flex-col rounded-sm border border-vk-border bg-vk-bg-panel py-1 text-sm shadow"
+        >
+          {shown.map((o, i) => (
+            <li
+              key={o.token}
+              role="option"
+              aria-selected={i === highlighted}
+              onMouseDown={(e) => {
+                e.preventDefault(); // keep the caret in the box
+                choose(o);
+              }}
+              className={cn(
+                'flex min-h-11 cursor-pointer items-center gap-2 px-3 md:min-h-0 md:py-1',
+                i === highlighted && 'bg-vk-bg-secondary',
+              )}
+            >
+              <span className="text-vk-text-high">@{o.token}</span>
+              <span className="text-vk-text-low">{o.caption}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <textarea
         id={id}
         ref={textareaRef}
         rows={2}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => edit(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
         onKeyDown={onKey}
+        {...(mentions ? { 'aria-autocomplete': 'list' as const } : {})}
+        {...(shown.length > 0 ? { 'aria-controls': listId } : {})}
         className="min-h-[20px] resize-none border-0 bg-transparent p-0 text-base text-vk-text-high outline-none placeholder:text-vk-text-low"
       />
       {error !== null && (

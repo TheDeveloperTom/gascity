@@ -9,6 +9,7 @@ import { commentErrorText, postCardMessage } from '../../supervisor/peerCommentW
 import { TopicQuestionCard } from '../needs/TopicQuestion';
 import { CardTopics } from './CardTopics';
 import { CommentComposer, CommentList } from './CommentThread';
+import { mentionOptions } from './mentions';
 
 // vk-final (owner, 15.11, refined): every card — ours and the peer's — gets a
 // plain comment box pinned at the bottom of its drawer, vibe-kanban style.
@@ -119,6 +120,8 @@ export function CardConversation({
           ? picked
           : null;
   const toPeer = peers.find((p) => p.login === toLogin) ?? null;
+  // owner 17.11: `@` suggests мэр, мэр-<peer> and <peer person> (the people we already have)
+  const mentions = useMemo(() => mentionOptions(peers), [peers]);
   const cardCity = card.city;
   const canSend = cardCity !== null && toLogin !== null && peers.some((p) => p.login === toLogin);
 
@@ -223,6 +226,7 @@ export function CardConversation({
           toPeer !== null ? t('both Mayors and {name} will see it', { name: toPeer.name }) : t('Choose whom to write to.')
         }
         disabled={!canSend}
+        mentions={mentions}
         onSubmit={submit}
         errorText={commentErrorText}
       />
