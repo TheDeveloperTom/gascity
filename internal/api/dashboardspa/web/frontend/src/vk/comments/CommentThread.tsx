@@ -345,7 +345,11 @@ export interface CommentComposerProps {
   disabled?: boolean;
 }
 
-/** The VK comment box: textarea, hint and the round send button; Ctrl/⌘+Enter sends. */
+/**
+ * The VK comment box: textarea, hint and the round send button. Enter sends
+ * (owner 17.11), Shift+Enter is a new line; Enter while an IME is composing
+ * is left to the IME.
+ */
 export function CommentComposer({
   label,
   placeholder,
@@ -377,7 +381,7 @@ export function CommentComposer({
   };
 
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void send();
     }

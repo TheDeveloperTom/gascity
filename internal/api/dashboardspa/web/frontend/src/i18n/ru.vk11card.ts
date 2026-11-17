@@ -23,4 +23,8 @@ export const RU_VK11CARD: Readonly<Record<string, string | RuPlural>> = {
   'Who you are: not read': 'кто ты — не прочиталось',
   "Owner: neighbour's": 'Соседа',
   "Appears after sync with the neighbour's city": 'Появится после синхронизации с городом соседа',
+  // owner 17.11: a card's description reads as a document
+  'More details': 'Подробнее',
+  'Screenshot {n}': 'Скриншот {n}',
+  'Screenshots': 'Скриншоты',
 };

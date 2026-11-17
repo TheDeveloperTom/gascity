@@ -199,4 +199,24 @@ describe('CommentComposer', () => {
     expect(box.value).toBe('ещё');
     expect(collectMissing()).toEqual([]);
   });
+
+  it('plain Enter sends; Shift+Enter keeps a new line; Enter while composing (IME) does not send', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<CommentComposer label="Комментарий" placeholder="…" onSubmit={onSubmit} />);
+    const box = screen.getByRole('textbox', { name: 'Комментарий' }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'строка' } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter' });
+    });
+    expect(onSubmit).toHaveBeenCalledWith('строка');
+    expect(box.value).toBe('');
+  });
 });

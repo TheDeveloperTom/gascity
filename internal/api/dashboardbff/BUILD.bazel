@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "dashboardbff",
     srcs = [
+        "attachments.go",
         "builds.go",
         "clienterrors.go",
         "config.go",
@@ -52,6 +53,7 @@ go_library(
 go_test(
     name = "dashboardbff_test",
     srcs = [
+        "attachments_test.go",
         "config_test.go",
         "dashboard_endpoints_test.go",
         "enrichment_cache_test.go",

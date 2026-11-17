@@ -1,12 +1,11 @@
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { asOfClock } from '../../lib/boardOwner';
-import { renderMiniMarkdown } from '../../lib/miniMarkdown';
-import { structureDescription } from '../../lib/structureDescription';
 import { safeExternalUrl } from '../../lib/stageBoard';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { ExternalLink } from '../ExternalLink';
 import { PEER_COLOR, PeerAvatar, PROJECT_COLOR } from '../board/PeerKanbanCard';
+import { CardDescription } from './CardDescription';
 import { Chip, statusLabel, TaskDrawer } from './TaskDrawer';
 
 // vk-final part 3: a peer's card, opened (design Peer-Card / Phone-Peer-Card).
@@ -107,9 +106,13 @@ export function PeerTaskDrawer({
           {t('A task from {owner} city, read only. Only {name} can change it.', { owner: label, name })}
         </p>
         {bead.description !== undefined && bead.description.length > 0 && (
-          <div className="text-[15px] text-vk-text-normal [overflow-wrap:anywhere]">
-            {renderMiniMarkdown(structureDescription(bead.description))}
-          </div>
+          <CardDescription
+            text={bead.description}
+            beadId={bead.id}
+            metadata={bead.metadata}
+            headingFrom={3}
+            className="text-[15px] text-vk-text-normal"
+          />
         )}
         {children}
       </div>
