@@ -1,0 +1,188 @@
+{
+  "containers": [
+    {
+      "name": "gc CLI",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "The cobra command tree of the gc binary: ~70 built-in commands registered on one root, plus pack-defined commands discovered from the city's packs. Most commands are thin front doors onto the subsystems below (mail, sling, order, doctor, bd, ...); the ones listed as components here are the cross-cutting ones agents and hooks call. Source: cmd/gc/main.go:33 (main), cmd/gc/main.go:314 (newRootCmdWithOptions), cmd/gc/main.go:359 (AddCommand), cmd/gc/cmd_pack_commands.go:145 (resolvePackCommandFallback).",
+      "technologies": ["Go", "cobra CLI"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#1168bd", "shape": "box"},
+      "components": [
+        {
+          "name": "RootCommand",
+          "type": "controller",
+          "description": "Builds the root `gc` command, the persistent --city/--rig/--context/--city-url flags and registers every built-in subcommand. Source: cmd/gc/main.go:314 (newRootCmdWithOptions), cmd/gc/main.go:347 (cityFlag), cmd/gc/main.go:359 (AddCommand)."
+        },
+        {
+          "name": "PackCommandDispatch",
+          "type": "adapter",
+          "description": "Runs commands that packs declare under commands/ (city verbs); an unknown first argument falls back to a fresh pack-command discovery. Source: cmd/gc/main.go:333 (resolvePackCommandFallback), cmd/gc/cmd_pack_commands.go:145 (resolvePackCommandFallback)."
+        },
+        {
+          "name": "StartCommand",
+          "type": "controller",
+          "description": "`gc start`: fetches packs, registers the city with the machine-wide supervisor, ensures the supervisor runs and triggers reconciliation; also runs stage-1 skill materialisation. Source: cmd/gc/cmd_start.go:429 (newStartCmd), cmd/gc/cmd_start.go:435 (Start the city), cmd/gc/cmd_start.go:967 (runStage1SkillMaterialization)."
+        },
+        {
+          "name": "PrimeCommand",
+          "type": "controller",
+          "description": "`gc prime [agent]` (and `--hook` from Claude's SessionStart): resolves the agent and renders its prompt template to stdout; reports the prompt delivery budget. Source: cmd/gc/cmd_prime.go:65 (newPrimeCmd), cmd/gc/cmd_prime.go:287 (doPrimeWithHookFormatOpts), cmd/gc/cmd_prime.go:1150 (renderPromptWithMeta), cmd/gc/cmd_prime.go:184 (promptDelivery)."
+        },
+        {
+          "name": "HookCommand",
+          "type": "controller",
+          "description": "`gc hook [agent]` finds routed work for an agent (the work-discovery front door used in prompts and hooks); `gc hook run` wraps hook commands with a timeout. Source: cmd/gc/cmd_hook.go:28 (newHookCmd), cmd/gc/cmd_hook.go:36 (Find routed work), cmd/gc/cmd_hook.go:121 (newHookRunCmd), cmd/gc/cmd_hook.go:300 (cmdHook)."
+        },
+        {
+          "name": "HandoffCommand",
+          "type": "controller",
+          "description": "`gc handoff`: sends handoff mail to self and, for a controller-restartable session, requests a restart and pokes the controller. Wired to Claude's PreCompact hook as `gc handoff --auto \"context cycle\"`. Source: cmd/gc/cmd_handoff.go:22 (newHandoffCmd), cmd/gc/cmd_handoff.go:31 (Send handoff mail), cmd/gc/cmd_handoff.go:171 (cmdHandoff)."
+        }
+      ]
+    },
+    {
+      "name": "Supervisor",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "The machine-wide long-running process (`gc supervisor run`): reads the city registry, starts/stops one CityRuntime per registered city, hosts the unified API mux, and is kept alive by launchd/systemd. Source: cmd/gc/cmd_supervisor.go:46 (newSupervisorCmd), cmd/gc/cmd_supervisor.go:1496 (runSupervisor), cmd/gc/cmd_supervisor.go:1975 (reconcileCities), cmd/gc/cmd_supervisor.go:1621 (NewSupervisorMux).",
+      "technologies": ["Go"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "SupervisorMain",
+          "type": "service",
+          "description": "runSupervisor: refuses a second live supervisor, loads supervisor.toml, opens the registry, builds the API mux and loops reconcileCities. Source: cmd/gc/cmd_supervisor.go:1496 (runSupervisor), cmd/gc/cmd_supervisor.go:1500 (supervisorAlive), cmd/gc/cmd_supervisor.go:346 (supervisorLoadConfig)."
+        },
+        {
+          "name": "CityRegistry",
+          "type": "repository",
+          "description": "~/.gc/cities.toml registry of cities (supervisor.Registry) plus the in-process cityRegistry of managed cities. Source: internal/supervisor/registry.go:72 (NewRegistry), internal/supervisor/config.go:300 (RegistryPath), cmd/gc/city_registry.go:198 (Add)."
+        },
+        {
+          "name": "CityReconciler",
+          "type": "controller",
+          "description": "reconcileCities: diffs registry entries against running cities and starts a CityRuntime for each new one (newCityRuntime). Source: cmd/gc/cmd_supervisor.go:1975 (reconcileCities), cmd/gc/cmd_supervisor.go:2487 (newCityRuntime)."
+        },
+        {
+          "name": "ServiceManagerIntegration",
+          "type": "adapter",
+          "description": "launchd/systemd awareness for `gc supervisor` lifecycle commands: detects unsupervised runs and prints remedies. Source: cmd/gc/cmd_supervisor_lifecycle.go:310 (supervisorLaunchdSupervisionWarning), cmd/gc/cmd_supervisor_lifecycle.go:342 (supervisorLaunchdRemedy)."
+        }
+      ]
+    },
+    {
+      "name": "City controller (CityRuntime)",
+      "parent_system": "Gas City engine",
+      "type": "worker",
+      "description": "One reconciler per city: a patrol-tick loop that reloads config on file change, builds desired state (which sessions should exist, with which TemplateParams), reconciles session beads against runtimes (start/stop/drain), runs orders, nudges, convergence and wisp GC, and accepts commands on a per-city Unix socket. Source: cmd/gc/controller.go:1375 (controllerLoop), cmd/gc/city_runtime.go:519 (newCityRuntime), cmd/gc/city_runtime.go:690 (run), cmd/gc/city_runtime.go:1456 (tick).",
+      "technologies": ["Go", "fsnotify", "Unix socket"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "PatrolTickLoop",
+          "type": "controller",
+          "description": "CityRuntime.run / tick: runs the ordered tick phases (config reload, pool deaths, session snapshot, reaping, desired state + sync, bead reconcile, wisp GC, convergence ...) under a panic guard. Source: cmd/gc/city_runtime.go:690 (run), cmd/gc/city_runtime.go:1456 (tick), cmd/gc/city_runtime.go:1438 (runTickPhases), cmd/gc/city_runtime.go:1157 (safeTick)."
+        },
+        {
+          "name": "ConfigWatchAndReload",
+          "type": "service",
+          "description": "fsnotify watch of city.toml, includes and pack convention dirs; on change the tick re-runs the full config load (bundled packs refreshed first) and applies it, then re-materialises skills. Source: cmd/gc/controller.go:788 (watchConfigTargets), cmd/gc/controller.go:961 (tryReloadConfig), cmd/gc/controller.go:978 (LoadWithIncludes), cmd/gc/city_runtime.go:1559 (tickConfigReload), cmd/gc/city_runtime.go:3179 (runStage1SkillMaterialization)."
+        },
+        {
+          "name": "ControllerSocket",
+          "type": "handler",
+          "description": "Per-city control socket: reload, converge, session circuit reset and identity probes sent by CLI commands. Source: cmd/gc/controller.go:117 (controllerSocketPath), cmd/gc/controller.go:147 (startControllerSocket), cmd/gc/controller.go:194 (handleControllerConn), cmd/gc/controller.go:553 (sendControllerCommand)."
+        },
+        {
+          "name": "DesiredStateBuilder",
+          "type": "service",
+          "description": "buildDesiredState: for every configured agent/pool/named session computes the desired session set and resolves its TemplateParams (prompt, command, env, pre_start, work dir) via resolveTemplate; installs provider hooks into work dirs on the way. Source: cmd/gc/build_desired_state.go:449 (buildDesiredState), cmd/gc/build_desired_state.go:7765 (resolveTemplate), cmd/gc/build_desired_state.go:7669 (InstallWithResolver)."
+        },
+        {
+          "name": "SessionReconciler",
+          "type": "controller",
+          "description": "Bead-driven wake/sleep reconciliation: one session bead per session; computes whether each should be awake and drives lifecycle transitions; launches go through startLaunch which calls the runtime provider's Start. Source: cmd/gc/session_reconciler.go:1 (session_reconciler.go implements), cmd/gc/session_reconciler.go:1896 (reconcileSessionBeadsAtPathWithNamedDemand), cmd/gc/city_runtime.go:1890 (tickBeadReconcile), cmd/gc/reconcile_effect_launch.go:317 (startLaunch), cmd/gc/reconcile_effect_launch.go:353 (leaf.Start)."
+        },
+        {
+          "name": "OrdersLaneTick",
+          "type": "job",
+          "description": "Tick lane that runs the city's order dispatcher each patrol and rescans orders when packs change. Source: cmd/gc/orders_lane.go:313 (cr.od.dispatch), cmd/gc/city_runtime.go:2155 (rescanOrderDispatcher)."
+        },
+        {
+          "name": "NudgeDispatchTick",
+          "type": "job",
+          "description": "Tick step that drains the durable nudge queue into live sessions. Source: cmd/gc/city_runtime.go:3748 (runNudgeDispatchTick), cmd/gc/nudge_dispatcher.go:115 (dispatchAllQueuedNudges)."
+        },
+        {
+          "name": "ConvergenceTick",
+          "type": "job",
+          "description": "Tick step that processes convergence-loop requests and evaluates their gates. Source: cmd/gc/city_runtime.go:2000 (tickProcessConvergenceRequests), cmd/gc/city_runtime.go:2008 (tickConvergence)."
+        }
+      ]
+    },
+    {
+      "name": "Op journal and work ladder",
+      "parent_system": "Gas City engine",
+      "type": "worker",
+      "description": "Durable controller bookkeeping on beads: the conversation operation journal (op/fact/runtime rows in the sessions class store, swept by the controller) and the per-seat work-progress ladder that decides nudge / recycle / release of claimed work with a never-zero backoff. Source: internal/opjournal/doc.go:1 (Package opjournal), cmd/gc/op_sweep.go:158 (startOpSweep), internal/workladder/decide.go:35 (Decide), cmd/gc/work_ladder_lane.go:73 (workladder.Decide).",
+      "technologies": ["Go"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "OpJournalStore",
+          "type": "repository",
+          "description": "Op rows (gc:op), fact rows (gc:fact) and one runtime row per conversation, stored as beads of type op in the sessions class; ready-excluded so they never reach work queries. Source: internal/opjournal/doc.go:12 (Rows), internal/opjournal/doc.go:15 (L1 rows), internal/opjournal/store.go:1 (package opjournal)."
+        },
+        {
+          "name": "OpSweeper",
+          "type": "job",
+          "description": "Controller goroutine that sweeps the op journal under rollout flags (off/auto/require modes). Source: cmd/gc/op_sweep.go:123 (newOpSweeper), cmd/gc/op_sweep.go:158 (startOpSweep), cmd/gc/op_sweep.go:301 (sweep)."
+        },
+        {
+          "name": "WorkLadderPolicy",
+          "type": "config",
+          "description": "Ladder parameters: grace 90s, base 3m doubling to a 60m cap, 24h wait cap, recycle/claim/started thresholds. Source: internal/workladder/policy.go:8 (DefaultGrace), internal/workladder/policy.go:10 (DefaultCap), internal/workladder/policy.go:17 (DefaultTriggerThreshold)."
+        },
+        {
+          "name": "WorkLadderLane",
+          "type": "controller",
+          "description": "Per seat and pass: observe claim/row/runtime/turns, decide (pure workladder.Decide), CAS the cell, then nudge, post a recycle or release an unstarted claim. Source: cmd/gc/work_ladder_lane.go:3 (work-progress ladder), cmd/gc/work_ladder_lane.go:73 (workladder.Decide), internal/workladder/decide.go:35 (Decide)."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "StartCommand", "to": "CityRegistry", "label": "Registers the city in ~/.gc/cities.toml and ensures the supervisor runs. Source: cmd/gc/cmd_start.go:438 (registers the city).", "type": "writes_to", "technologies": ["TOML"]},
+    {"from": "CityRegistry", "to": "GC home (~/.gc)", "label": "Registry file lives at <GC_HOME>/cities.toml. Source: internal/supervisor/config.go:300 (RegistryPath).", "type": "reads_from", "technologies": ["TOML"]},
+    {"from": "SupervisorMain", "to": "CityReconciler", "label": "Each supervisor pass reconciles registered cities against running ones. Source: cmd/gc/cmd_supervisor.go:1975 (reconcileCities).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityReconciler", "to": "CityRegistry", "label": "Lists registry entries to decide which cities to run. Source: cmd/gc/cmd_supervisor.go:1982 (reg.List).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "CityReconciler", "to": "City controller (CityRuntime)", "label": "Starts one CityRuntime per registered city. Source: cmd/gc/cmd_supervisor.go:2487 (newCityRuntime).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SupervisorMain", "to": "API server and dashboard", "label": "Builds and serves the unified supervisor API mux (typed /v0, dashboard SPA, BFF). Source: cmd/gc/cmd_supervisor.go:1621 (NewSupervisorMux).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "OS service manager (launchd/systemd)", "to": "SupervisorMain", "label": "Keeps `gc supervisor run` alive; gc supervisor lifecycle commands inspect and repair the unit. Source: cmd/gc/cmd_supervisor_lifecycle.go:310 (supervisorLaunchdSupervisionWarning).", "type": "calls", "technologies": ["launchd/systemd"]},
+    {"from": "ConfigWatchAndReload", "to": "City directory", "label": "Watches city.toml, includes and pack convention dirs for changes. Source: cmd/gc/controller.go:788 (watchConfigTargets), cmd/gc/city_runtime.go:3233 (configWatcherTargets).", "type": "reads_from", "technologies": ["fsnotify"]},
+    {"from": "ConfigWatchAndReload", "to": "CityConfigLoader", "label": "Reload re-runs the full composition (city.toml + includes + packs + patches). Source: cmd/gc/controller.go:978 (LoadWithIncludes).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ConfigWatchAndReload", "to": "BuiltinPacksBootstrap", "label": "Refreshes bundled pack caches before the loader validates. Source: cmd/gc/controller.go:971 (EnsureBundledPacksCurrent), cmd/gc/controller.go:975 (ensureBuiltinPacksForConfigLoad).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ConfigWatchAndReload", "to": "Stage1SkillMaterializer", "label": "After a reload, re-materialises skills into scope-root sinks. Source: cmd/gc/city_runtime.go:3179 (runStage1SkillMaterialization).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PatrolTickLoop", "to": "DesiredStateBuilder", "label": "Every tick refreshes desired state and syncs session beads. Source: cmd/gc/city_runtime.go:1819 (tickDemandDesiredStateAndSync), cmd/gc/city_runtime.go:1869 (tickRefreshDesiredState).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PatrolTickLoop", "to": "SessionReconciler", "label": "Bead reconcile phase. Source: cmd/gc/city_runtime.go:1890 (tickBeadReconcile), cmd/gc/city_runtime.go:3375 (beadReconcileTick).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "DesiredStateBuilder", "to": "TemplateResolver", "label": "Resolves each desired session's TemplateParams (prompt, launch command, env, pre_start). Source: cmd/gc/build_desired_state.go:7765 (resolveTemplate).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "DesiredStateBuilder", "to": "ProviderHookInstaller", "label": "Installs managed provider hooks into the agent work dir while building desired state. Source: cmd/gc/build_desired_state.go:7669 (InstallWithResolver), cmd/gc/build_desired_state.go:7842 (InstallWithResolver).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SessionReconciler", "to": "RuntimeProviderRegistry", "label": "Launch effect starts the session through the runtime provider chosen for the agent. Source: cmd/gc/reconcile_effect_launch.go:353 (leaf.Start).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SessionReconciler", "to": "Bead store integration", "label": "Session lifecycle state is one session bead per session (sessions class). Source: cmd/gc/session_reconciler.go:1 (bead-driven reconciliation), cmd/gc/session_beads.go:1799 (syncSessionBeadsWithSnapshotAndRigStores).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "OrdersLaneTick", "to": "OrderDispatcher", "label": "Runs order dispatch once per patrol. Source: cmd/gc/orders_lane.go:313 (cr.od.dispatch).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "NudgeDispatchTick", "to": "NudgeQueueDispatcher", "label": "Drains queued nudges each tick. Source: cmd/gc/city_runtime.go:3748 (runNudgeDispatchTick).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ConvergenceTick", "to": "ConvergenceGate", "label": "Convergence tick evaluates loop gates (manual / condition / hybrid). Source: cmd/gc/city_runtime.go:2008 (tickConvergence), internal/convergence/gate.go:17 (GateConfig).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "OpSweeper", "to": "OpJournalStore", "label": "Sweeps op rows in the sessions class store. Source: cmd/gc/op_sweep.go:301 (sweep).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "WorkLadderLane", "to": "WorkLadderPolicy", "label": "Decide uses the default ladder policy. Source: cmd/gc/work_ladder_lane.go:73 (workladder.DefaultPolicy).", "type": "uses", "technologies": ["Go function call"]},
+    {"from": "WorkLadderLane", "to": "SessionNudgeDelivery", "label": "A due ladder step nudges the seat (or posts a recycle / release). Source: cmd/gc/work_ladder_lane.go:15 (nudge).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ControllerSocket", "to": "PatrolTickLoop", "label": "Reload/converge requests from the CLI are queued to the runtime and handled in the tick. Source: cmd/gc/controller.go:390 (handleReloadSocketCmd), cmd/gc/city_runtime.go:2515 (handleReloadRequest).", "type": "sends_to", "technologies": ["Unix socket"]},
+    {"from": "HandoffCommand", "to": "ControllerSocket", "label": "Self-handoff of a restartable session pokes the controller for an immediate reconcile. Source: cmd/gc/cmd_handoff.go:34 (pokes the controller).", "type": "sends_to", "technologies": ["Unix socket"]},
+    {"from": "HandoffCommand", "to": "MailSendCommand", "label": "Handoff is mail to self. Source: cmd/gc/cmd_handoff.go:33 (sends mail to self).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PrimeCommand", "to": "PromptRenderer", "label": "Renders the agent's prompt template to stdout. Source: cmd/gc/cmd_prime.go:1150 (renderPromptWithMeta).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "HookCommand", "to": "Bead store integration", "label": "Looks up work routed to the agent in the work store. Source: cmd/gc/cmd_hook.go:36 (Find routed work).", "type": "reads_from", "technologies": ["Go function call"]}
+  ]
+}

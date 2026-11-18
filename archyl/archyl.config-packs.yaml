@@ -1,0 +1,107 @@
+{
+  "containers": [
+    {
+      "name": "City config composition",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "internal/config: turns city.toml + include fragments + imported packs + [[patches.agent]] into one *config.City with provenance. Order inside LoadWithIncludesOptions: parse root, merge includes, add implicit imports, expand packs (agents get SourceDir = the pack dir), apply patches, inject implicit provider agents, compute formula layers, then fill agent-local assets (skills/, mcp/) from SourceDir. Patches never touch SourceDir, SkillsDir or MCPDir, so a pack-defined agent that the city only patches keeps reading its role skills from the pack (live fact 18.11). Source: internal/config/compose.go:147 (LoadWithIncludesOptions), internal/config/compose.go:550 (expandPacks), internal/config/compose.go:616 (ApplyPatches), internal/config/compose.go:778 (populateAgentLocalAssetDirs), internal/config/compose.go:1012-1036 (populateAgentLocalAssetDirs).",
+      "technologies": ["Go", "TOML"],
+      "tags": ["source: code 918a0c252", "fact 18.11: pack agent skills from SourceDir"],
+      "style": {"background_color": "#85bbf0", "shape": "box"},
+      "components": [
+        {
+          "name": "CityConfigLoader",
+          "type": "service",
+          "description": "LoadWithIncludes / LoadWithIncludesOptions: the single composition entry used by the controller reload and by CLI commands (via loadCityConfig). Non-recursive includes; extra -f includes appended. Source: internal/config/compose.go:142 (LoadWithIncludes), internal/config/compose.go:147 (LoadWithIncludesOptions), internal/config/compose.go:418 (mergeIncludeFragments), cmd/gc/cmd_agent.go:44 (loadCityConfig)."
+        },
+        {
+          "name": "PackExpansion",
+          "type": "service",
+          "description": "expandPacks: resolves each [imports.*] / include ref to a pack directory and loads its pack.toml, convention-discovered agents, named sessions, providers, services and orders; stamps every loaded agent with SourceDir = that pack dir (topoDir). Source: internal/config/pack.go:109 (expandPacks), internal/config/pack.go:148 (resolvePackRef), internal/config/pack.go:1237 (loadPackWithCacheOptionsLocked), internal/config/pack.go:1576 (SourceDir = topoDir)."
+        },
+        {
+          "name": "PackAgentDiscovery",
+          "type": "module",
+          "description": "Convention discovery of agents from <pack>/agents/<name>/ and their convention defaults (prompt template, namepool, skills/ and mcp/ dirs). Source: internal/config/agent_discovery.go:25 (DiscoverPackAgents), internal/config/pack.go:1525 (DiscoverPackAgents), internal/config/agent_discovery.go:90 (applyAgentConventionDefaults), internal/config/agent_discovery.go:125 (SkillsDir)."
+        },
+        {
+          "name": "AgentPatchApplier",
+          "type": "module",
+          "description": "ApplyPatches: [[patches.agent]] / rig overrides mutate an existing agent field by field (work_dir, prompt_template, pre_start(_append), session, env, ...). The patch field set has no SourceDir, SkillsDir or MCPDir, so a city patch cannot redirect where a pack agent's skills come from. Source: internal/config/patch.go:357 (ApplyPatches), internal/config/compose.go:616 (ApplyPatches), internal/config/patch.go:479 (applyAgentPatch), internal/config/patch.go:537 (applyAgentMutation)."
+        },
+        {
+          "name": "ImplicitAgentInjector",
+          "type": "module",
+          "description": "Injects implicit agents for built-in providers not already defined, then applies the patches deferred for them. Source: internal/config/config.go:4245 (InjectImplicitAgents), internal/config/compose.go:667 (InjectImplicitAgents), internal/config/compose.go:683 (ApplyPatches)."
+        },
+        {
+          "name": "AgentLocalAssetDirs",
+          "type": "module",
+          "description": "populateAgentLocalAssetDirs: for every agent, base = agent.SourceDir (the pack dir, a cache checkout for remote imports), falling back to the city root only for inline agents; sets SkillsDir = base/agents/<name>/skills and MCPDir = base/agents/<name>/mcp when they exist and are unset. This is the flow hit live on 18.11: a pack-defined agent the city only patches gets its role skills from the pack, not from <city>/agents/<name>/skills. Source: internal/config/compose.go:1005 (populateAgentLocalAssetDirs), internal/config/compose.go:1018 (base := a.SourceDir), internal/config/compose.go:1024 (skillsDir), internal/config/config.go:3966-3969 (SourceDir), internal/config/config.go:3978-3983 (SkillsDir)."
+        },
+        {
+          "name": "FormulaLayerResolver",
+          "type": "module",
+          "description": "ComputeFormulaLayers: ordered formula search dirs per scope (pack formulas, city-local formulas, rig layers); later layers shadow earlier ones. Source: internal/config/pack.go:1031 (ComputeFormulaLayers), internal/config/compose.go:660 (ComputeFormulaLayers), internal/config/config.go:339 (FormulaLayers)."
+        }
+      ]
+    },
+    {
+      "name": "Packs, imports and repo cache",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "Pack source management: resolving pack refs (local dirs, remote git sources, bundled packs), the packs.lock, the machine-wide repo cache under GC_HOME/cache/repos, `gc import` editing city imports, and the packs embedded in the binary (core pack with its orders, skills, formulas). Source: internal/config/pack_include.go:101 (resolvePackRef), internal/packman/cache.go:103 (EnsureRepoInCache), internal/packman/install.go:166 (SyncLock), internal/importsvc/importsvc.go:315 (AddImport), internal/bootstrap/packs/core/embed.go:12 (go:embed).",
+      "technologies": ["Go", "git CLI", "go:embed"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#85bbf0", "shape": "box"},
+      "components": [
+        {
+          "name": "PackRefResolver",
+          "type": "module",
+          "description": "resolvePackRef: maps an include/import ref to a directory: a local path, a locked remote import's cache checkout, or a bundled source at its canonical pin. Source: internal/config/pack_include.go:101 (resolvePackRef), internal/config/pack_include.go:155 (resolveLockedRemoteImport), internal/config/pack_include.go:381 (resolveInstalledRemoteImport), internal/config/pack_include.go:343 (resolveBundledSourceWithoutLock)."
+        },
+        {
+          "name": "RepoCache",
+          "type": "repository",
+          "description": "Machine-wide cache of pack repos keyed by source+commit; clones or repairs a drifted checkout under a lock. Source: internal/config/implicit.go:109 (GlobalRepoCacheRoot), internal/packman/cache.go:91 (RepoCachePath), internal/packman/cache.go:103 (EnsureRepoInCache), internal/packman/cache.go:230 (checkoutExistingCache)."
+        },
+        {
+          "name": "PackLockSync",
+          "type": "service",
+          "description": "packs.lock maintenance: resolve semver constraints against remote tags, install locked commits into the cache. Source: internal/packman/install.go:89 (InstallLocked), internal/packman/install.go:166 (SyncLock), internal/packman/resolve.go:26 (ResolveVersion), internal/packman/resolve.go:95 (listRemoteTags)."
+        },
+        {
+          "name": "ImportService",
+          "type": "service",
+          "description": "`gc import add/remove/list`: edits [imports.*] in city/pack TOML and syncs the lock. Source: cmd/gc/cmd_import.go:105 (newImportCmd), internal/importsvc/importsvc.go:315 (AddImport), internal/importsvc/importsvc.go:408 (RemoveImport), internal/importsvc/importsvc.go:124 (syncLock)."
+        },
+        {
+          "name": "BuiltinPacksBootstrap",
+          "type": "service",
+          "description": "Packs embedded in the gc binary (core pack: agents, assets, doctor, formulas, orders, overlay, skills, template-fragments) are materialised as synthetic caches and kept current before each config load. Source: internal/bootstrap/packs/core/embed.go:12 (go:embed), cmd/gc/embed_builtin_packs.go:44 (ensureBuiltinPacksForConfigLoad), cmd/gc/embed_builtin_packs.go:70 (EnsureBuiltinRuntimeAssets), internal/packman/install.go:123 (EnsureBundledPacksCurrent), internal/builtinpacks/registry.go:29 (Repository)."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "CityConfigLoader", "to": "City directory", "label": "Parses city.toml and its include fragments. Source: internal/config/compose.go:147 (LoadWithIncludesOptions), internal/config/compose.go:905 (resolvePackRef).", "type": "reads_from", "technologies": ["TOML"]},
+    {"from": "CityConfigLoader", "to": "PackExpansion", "label": "Expands imported packs into agents, sessions, providers, services. Source: internal/config/compose.go:550 (expandPacks).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityConfigLoader", "to": "AgentPatchApplier", "label": "Applies [[patches.agent]] after packs are expanded. Source: internal/config/compose.go:616 (ApplyPatches).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityConfigLoader", "to": "ImplicitAgentInjector", "label": "Injects provider-derived implicit agents after patches. Source: internal/config/compose.go:667 (InjectImplicitAgents).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityConfigLoader", "to": "FormulaLayerResolver", "label": "Computes formula search layers for the city and every rig. Source: internal/config/compose.go:660 (ComputeFormulaLayers).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityConfigLoader", "to": "AgentLocalAssetDirs", "label": "Last composition step fills SkillsDir/MCPDir from each agent's SourceDir. Source: internal/config/compose.go:778 (populateAgentLocalAssetDirs).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PackExpansion", "to": "PackRefResolver", "label": "Resolves every import ref to a pack directory before loading it. Source: internal/config/pack.go:148 (resolvePackRef), internal/config/pack.go:600 (resolvePackRef).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PackExpansion", "to": "PackAgentDiscovery", "label": "Discovers convention agents under <pack>/agents/. Source: internal/config/pack.go:1525 (DiscoverPackAgents).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PackExpansion", "to": "Packs repo cache", "label": "Loads pack.toml, agents/, orders/ and formulas/ from the resolved pack dir, which for a remote import is a cache checkout; stamps agents with SourceDir = that dir. Source: internal/config/pack.go:1237 (loadPackWithCacheOptionsLocked), internal/config/pack.go:1576 (SourceDir = topoDir).", "type": "reads_from", "technologies": ["filesystem"]},
+    {"from": "AgentLocalAssetDirs", "to": "Packs repo cache", "label": "For a pack-defined agent (even one the city only patches) the role skills/ and mcp/ dirs are looked up under SourceDir = the pack dir, i.e. the cache checkout of a remote pack. Source: internal/config/compose.go:1018 (base := a.SourceDir), internal/config/compose.go:1022 (applyAgentConventionDefaults), internal/config/compose.go:1024 (skillsDir).", "type": "reads_from", "technologies": ["filesystem"]},
+    {"from": "AgentLocalAssetDirs", "to": "City directory", "label": "Only agents with no SourceDir (inline in city.toml) fall back to <city>/agents/<name>/skills and mcp. Source: internal/config/compose.go:1019-1021 (cityRoot).", "type": "reads_from", "technologies": ["filesystem"]},
+    {"from": "PackRefResolver", "to": "RepoCache", "label": "A locked or installed remote import resolves to its cache dir. Source: internal/config/pack_include.go:174 (GlobalRepoCacheRoot), internal/config/pack_include.go:355 (GlobalRepoCacheRoot).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "RepoCache", "to": "Packs repo cache", "label": "Owns the checkouts under <GC_HOME>/cache/repos/<key>. Source: internal/packman/cache.go:91 (RepoCachePath).", "type": "writes_to", "technologies": ["filesystem"]},
+    {"from": "RepoCache", "to": "GitHub", "label": "Clones / fetches pack repos with hardened network git. Source: internal/packman/cache.go:167 (ensureRepoInCacheLocked), internal/packman/cache.go:386 (defaultRunNetworkGit).", "type": "reads_from", "technologies": ["git CLI"]},
+    {"from": "PackLockSync", "to": "GitHub", "label": "Lists remote tags to resolve version constraints. Source: internal/packman/resolve.go:95 (listRemoteTags).", "type": "reads_from", "technologies": ["git CLI"]},
+    {"from": "PackLockSync", "to": "RepoCache", "label": "Installs each locked commit into the cache. Source: internal/packman/install.go:89 (InstallLocked).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "ImportService", "to": "PackLockSync", "label": "After editing imports, syncs packs.lock. Source: internal/importsvc/importsvc.go:124 (syncLock).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ImportService", "to": "City directory", "label": "Writes [imports.*] into the city or pack TOML. Source: internal/importsvc/importsvc.go:320 (AddImportWith).", "type": "writes_to", "technologies": ["TOML"]},
+    {"from": "BuiltinPacksBootstrap", "to": "Packs repo cache", "label": "Materialises the embedded packs as synthetic cache checkouts. Source: internal/packman/cache.go:124 (ensureBundledRepoInCacheLocked), internal/packman/cache.go:207 (materializeBundledRepoInCacheLocked).", "type": "writes_to", "technologies": ["go:embed", "filesystem"]}
+  ]
+}

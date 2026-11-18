@@ -1,0 +1,166 @@
+{
+  "containers": [
+    {
+      "name": "Formula engine and molecules",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "Formulas v2: TOML formulas found through layered search paths are parsed, resolved (extends/compose), compiled into a Recipe (steps, needs, checks, retries, drains, gates) and instantiated as a molecule of beads in the graph class store; graph.v2 control beads (checks, retries, fan-out, drain) are executed by the control dispatcher; step routing targets agents via gc.run_target. Source: internal/formula/parser.go:65 (NewParser), internal/formula/compile.go:37 (Compile), internal/molecule/molecule.go:865 (Instantiate), internal/dispatch/runtime.go:218 (ProcessControl), internal/graphroute/graphroute.go:160 (GraphStepRouteTarget).",
+      "technologies": ["Go", "TOML"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "FormulaParser",
+          "type": "module",
+          "description": "Finds a formula by name across layers (last layer wins), parses TOML and resolves extends/compose. Source: internal/formula/resolve.go:25 (Resolve), internal/formula/parser.go:65 (NewParser), internal/formula/parser.go:119 (ParseFile), internal/formula/parser.go:245 (Resolve)."
+        },
+        {
+          "name": "FormulaCompiler",
+          "type": "module",
+          "description": "Compile: formula + vars -> Recipe of steps and dependency edges, with runtime var validation; formula v2 switch. Source: internal/formula/compile.go:37 (Compile), internal/formula/compile.go:47 (CompileWithoutRuntimeVarValidation), internal/formula/compile.go:629 (SetFormulaV2Enabled)."
+        },
+        {
+          "name": "MoleculeInstantiator",
+          "type": "service",
+          "description": "Instantiates a compiled Recipe as beads (root, steps, gates, deps) in a molecule target store; Cook = compile + instantiate; Attach grafts a recipe onto an existing bead. Source: internal/molecule/molecule.go:1 (Package molecule), internal/molecule/molecule.go:166 (Cook), internal/molecule/molecule.go:293 (Attach), internal/molecule/molecule.go:865 (Instantiate)."
+        },
+        {
+          "name": "GraphStepRouter",
+          "type": "module",
+          "description": "Resolves each step's target from assignee or gc.run_target (compile-time routing intent) into a concrete agent/pool or the control-dispatcher queue. Source: internal/graphroute/graphroute.go:160 (GraphStepRouteTarget), internal/graphroute/graphroute.go:181 (ApplyGraphRouteBinding), internal/graphroute/graphroute.go:757 (gc.run_target)."
+        },
+        {
+          "name": "ControlDispatcher",
+          "type": "controller",
+          "description": "Executes graph.v2 control beads (`gc convoy control [bead]`): ralph checks with retries via convergence.RunCondition, fan-out, drain, scope settling. Source: cmd/gc/cmd_convoy_dispatch.go:74 (control [bead-id]), cmd/gc/cmd_convoy_dispatch.go:350 (dispatch.ProcessControl), internal/dispatch/runtime.go:218 (ProcessControl), internal/dispatch/ralph.go:75 (processRalphCheck), internal/dispatch/ralph.go:414 (convergence.RunCondition)."
+        },
+        {
+          "name": "FormulaCommand",
+          "type": "controller",
+          "description": "`gc formula` list/show/cook/attach: compiles and instantiates formulas from the CLI. Source: cmd/gc/cmd_formula.go:28 (newFormulaCmd), cmd/gc/cmd_formula.go:949 (molecule.Instantiate), cmd/gc/cmd_formula.go:1033 (molecule.Attach)."
+        }
+      ]
+    },
+    {
+      "name": "Sling and convoys",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "Work hand-off: `gc sling` routes a bead (or launches a formula on it) to an agent/pool, creating an auto-convoy for plain beads; convoys group work beads and track progress. Source: cmd/gc/cmd_sling.go:64 (newSlingCmd), internal/sling/sling_core.go:64 (DoSling), internal/sling/sling_core.go:934 (Auto-convoy), internal/convoy/convoy.go:50 (ConvoyCreate).",
+      "technologies": ["Go"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "SlingCommand",
+          "type": "controller",
+          "description": "`gc sling <target> <bead|formula>`: builds SlingDeps (work store, graph store, sessions) and calls the sling core. Source: cmd/gc/cmd_sling.go:64 (newSlingCmd), cmd/gc/cmd_sling.go:1072 (sling.New), cmd/gc/cmd_sling.go:1090 (sling.DoSling)."
+        },
+        {
+          "name": "SlingCore",
+          "type": "service",
+          "description": "DoSling: validates the target, routes the bead, launches or attaches a formula (InstantiateSlingFormula -> molecule.Instantiate on the graph store), and creates an auto-convoy for a plain bead. Source: internal/sling/sling_core.go:64 (DoSling), internal/sling/sling.go:1419 (InstantiateSlingFormula), internal/sling/sling.go:1517 (molecule.Instantiate), internal/sling/sling.go:1056 (SlingFormulaSearchPaths)."
+        },
+        {
+          "name": "ConvoyService",
+          "type": "service",
+          "description": "Convoy create / add items / progress / close over the work store; convoys are always work-class beads. Source: internal/convoy/convoy.go:50 (ConvoyCreate), internal/convoy/convoy.go:89 (ConvoyProgress), internal/convoy/convoy.go:123 (ConvoyAddItems), internal/convoy/convoy.go:171 (ConvoyClose), cmd/gc/cmd_convoy.go:47 (newConvoyCmd)."
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "parent_system": "Gas City engine",
+      "type": "worker",
+      "description": "Declarative recurring work: orders/*.toml from packs and the city with trigger cooldown, cron, condition, event, manual or webhook, and an action that is either an exec script (run by the controller, no LLM) or a formula (instantiated as a molecule). Dispatched by the controller every patrol; tracking beads live in the orders class. Source: internal/orders/order.go:18 (Order), internal/orders/triggers.go:126 (CheckTriggerWithOptions), cmd/gc/order_dispatch.go:667 (dispatch), cmd/gc/cmd_order.go:32 (newOrderCmd).",
+      "technologies": ["Go", "TOML", "os/exec"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#8b5cf6", "shape": "box"},
+      "components": [
+        {
+          "name": "OrderDiscovery",
+          "type": "module",
+          "description": "Scans city and rig order roots (and each pack's orders/ during pack load) into Order values; honours orders.skip. Source: internal/orders/scanner.go:40 (ScanRoots), internal/orderdiscovery/discovery.go:54 (ScanRoots), internal/config/pack.go:1560 (orders.ScanRoots)."
+        },
+        {
+          "name": "OrderTriggers",
+          "type": "module",
+          "description": "CheckTrigger: cooldown (interval since last run), cron, condition (script exit), event (events after a cursor), manual and webhook (never due on patrol). Source: internal/orders/triggers.go:126 (CheckTriggerWithOptions), internal/orders/triggers.go:148 (checkCooldown), internal/orders/triggers.go:233 (checkCron), internal/orders/triggers.go:337 (checkCondition), internal/orders/triggers.go:476 (checkEvent)."
+        },
+        {
+          "name": "OrderDispatcher",
+          "type": "controller",
+          "description": "memoryOrderDispatcher: per patrol evaluates candidates, fires due orders, runs exec actions through the shell runner with order env, instantiates formula actions as molecules, and records tracking beads. Source: cmd/gc/order_dispatch.go:445 (buildOrderDispatcher), cmd/gc/order_dispatch.go:667 (dispatch), cmd/gc/order_dispatch.go:979 (fireCandidate), cmd/gc/order_dispatch.go:169 (shellExecRunner), cmd/gc/order_dispatch.go:2849 (molecule.Instantiate)."
+        },
+        {
+          "name": "OrderCommand",
+          "type": "controller",
+          "description": "`gc order list/show/run/check`: manual runs, including formula orders instantiated from the CLI. Source: cmd/gc/cmd_order.go:32 (newOrderCmd), cmd/gc/cmd_order.go:943 (molecule.Instantiate)."
+        },
+        {
+          "name": "WebhookReceiver",
+          "type": "handler",
+          "description": "API handler that admits signed webhook requests and dispatches webhook-triggered orders. Source: internal/api/handler_webhook.go:85 (resolveWebhookRequest), internal/api/handler_webhook.go:114 (admitWebhookRequest)."
+        }
+      ]
+    },
+    {
+      "name": "Gates",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "Things that hold work until something external happens. Formula [steps.gate] compiles to a gate bead that blocks the step (type stored verbatim in gc.gate_type, no engine-side resolver); human gates are served by two core-pack exec orders that mail+nudge the addressee on creation and re-nudge while open; durable session waits (gc wait / gc session wait) are gate beads in the sessions class; convergence loops have manual/condition/hybrid gates. Source: internal/formula/compile.go:515 (step.Gate), internal/beadmeta/keys.go:241 (gc.gate_type), internal/bootstrap/packs/core/orders/notify-on-human-gate-creation.toml:27-31 (bead.created), internal/coordclass/class.go:79 (gc:wait), internal/convergence/gate.go:17 (GateConfig).",
+      "technologies": ["Go", "TOML"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#8b5cf6", "shape": "box"},
+      "components": [
+        {
+          "name": "GateStepCompiler",
+          "type": "module",
+          "description": "For a step with [steps.gate] emits a gate RecipeStep <parent>.gate-<step> of type gate with gc.gate_type = declared type; it blocks the gated step. Source: internal/formula/compile.go:515 (step.Gate), internal/formula/compile.go:526 (Type:        \"gate\"), internal/formula/compile.go:534 (GateTypeMetadataKey)."
+        },
+        {
+          "name": "HumanGateOrders",
+          "type": "workflow",
+          "description": "Core pack orders: notify-on-human-gate-creation (trigger event bead.created, exec script: gc bd show, then gc mail send --notify to the addressee) and renudge-stale-human-gates (cooldown 5m, gc bd gate list, re-mail past threshold). Anyone can close the gate bead; nothing authenticates who. Source: internal/bootstrap/packs/core/orders/notify-on-human-gate-creation.toml:29-31 (trigger), internal/bootstrap/packs/core/orders/renudge-stale-human-gates.toml:36-39 (cooldown), internal/bootstrap/packs/core/assets/scripts/notify-on-human-gate-creation.sh:208 (gc mail send), internal/bootstrap/packs/core/assets/scripts/renudge-stale-human-gates.sh:234 (gc mail send)."
+        },
+        {
+          "name": "DurableSessionWaits",
+          "type": "module",
+          "description": "`gc wait` inspects/cancels durable session waits; a wait is a gate bead with gc:wait in the sessions class. Source: cmd/gc/cmd_wait.go:162 (newWaitCmd), internal/coordclass/class.go:79 (gc:wait)."
+        },
+        {
+          "name": "ConvergenceGate",
+          "type": "module",
+          "description": "Gate of a convergence loop: mode manual / condition / hybrid; a condition is a script run with a whitelisted env and a 5m default timeout. Source: internal/convergence/gate.go:17 (GateConfig), internal/convergence/gate.go:44 (ParseGateConfig), internal/convergence/condition.go:488 (RunCondition), internal/convergence/reconcile.go:55 (ReconcileBeads)."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "FormulaParser", "to": "FormulaLayerResolver", "label": "Formula lookup walks the layers computed during composition (pack formulas, city formulas, rig layers). Source: internal/formula/resolve.go:25 (Resolve), internal/config/pack.go:1031 (ComputeFormulaLayers).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "FormulaCompiler", "to": "FormulaParser", "label": "Compile parses and resolves the named formula first. Source: internal/formula/compile.go:37 (Compile).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "FormulaCompiler", "to": "GateStepCompiler", "label": "Gate steps are synthesised during compilation. Source: internal/formula/compile.go:515 (step.Gate).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "MoleculeInstantiator", "to": "FormulaCompiler", "label": "Cook compiles before instantiating. Source: internal/molecule/molecule.go:166 (Cook).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "MoleculeInstantiator", "to": "GraphStepRouter", "label": "Step beads carry the route binding resolved from assignee / gc.run_target. Source: internal/graphroute/graphroute.go:181 (ApplyGraphRouteBinding).", "type": "uses", "technologies": ["Go function call"]},
+    {"from": "MoleculeInstantiator", "to": "Bead store integration", "label": "Writes root, step, gate and dependency beads into the graph class store. Source: internal/molecule/molecule.go:865 (Instantiate), internal/coordclass/class.go:66 (ClassGraph).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "ControlDispatcher", "to": "Bead store integration", "label": "Reads and settles control beads in the graph store. Source: internal/dispatch/runtime.go:218 (ProcessControl).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "ControlDispatcher", "to": "ConvergenceGate", "label": "Ralph checks run their check script through convergence.RunCondition. Source: internal/dispatch/ralph.go:414 (convergence.RunCondition).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "FormulaCommand", "to": "MoleculeInstantiator", "label": "gc formula cook/attach instantiate molecules. Source: cmd/gc/cmd_formula.go:949 (molecule.Instantiate), cmd/gc/cmd_formula.go:1033 (molecule.Attach).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SlingCommand", "to": "SlingCore", "label": "Delegates routing to the sling core. Source: cmd/gc/cmd_sling.go:1090 (sling.DoSling).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SlingCore", "to": "MoleculeInstantiator", "label": "Launching a formula on a target instantiates it on the graph store. Source: internal/sling/sling.go:1517 (molecule.Instantiate).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SlingCore", "to": "ConvoyService", "label": "A plain bead slung without --no-convoy gets an auto-convoy. Source: internal/sling/sling_core.go:934 (Auto-convoy).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SlingCore", "to": "Bead store integration", "label": "Routes the bead to the target in the work store. Source: internal/sling/sling.go:353 (RouteBead), internal/sling/sling.go:160 (Store beads.WorkStore).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "ConvoyService", "to": "Bead store integration", "label": "Convoys and their members are work-class beads. Source: internal/convoy/convoy.go:50 (ConvoyCreate), internal/coordclass/class.go:59 (ClassWork).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "OrderDispatcher", "to": "OrderDiscovery", "label": "The dispatcher is built from the discovered order set and rescanned on change. Source: cmd/gc/order_dispatch.go:505 (buildOrderDispatcherFromOrderSet).", "type": "uses", "technologies": ["Go function call"]},
+    {"from": "OrderDispatcher", "to": "OrderTriggers", "label": "Each candidate's trigger is evaluated against last run, events and conditions. Source: internal/orders/triggers.go:126 (CheckTriggerWithOptions), cmd/gc/order_dispatch.go:632 (prefetchConditionResults).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "OrderDispatcher", "to": "City directory", "label": "Exec orders run their script ($PACK_DIR/...) through the shell runner. Source: cmd/gc/order_dispatch.go:169 (shellExecRunner), cmd/gc/order_dispatch.go:558 (shellExecRunner).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "OrderDispatcher", "to": "MoleculeInstantiator", "label": "Formula orders are instantiated as molecules. Source: cmd/gc/order_dispatch.go:2849 (molecule.Instantiate).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "OrderDispatcher", "to": "Bead store integration", "label": "Order tracking beads live in the orders class store. Source: internal/coordclass/class.go:83 (ClassOrders), cmd/gc/order_dispatch.go:396 (orderDispatchTrackingIndex).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "OrderTriggers", "to": "EventRecorder", "label": "Event-triggered orders read events after their cursor (e.g. bead.created). Source: internal/orders/triggers.go:476 (checkEvent).", "type": "reads_from", "technologies": ["JSONL file"]},
+    {"from": "OrderCommand", "to": "MoleculeInstantiator", "label": "gc order run of a formula order instantiates it. Source: cmd/gc/cmd_order.go:943 (molecule.Instantiate).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "HumanGateOrders", "to": "OrderDispatcher", "label": "The two human-gate orders ship in the embedded core pack and run as exec orders on the controller. Source: internal/bootstrap/packs/core/orders/notify-on-human-gate-creation.toml:31 (exec), internal/bootstrap/packs/core/orders/renudge-stale-human-gates.toml:39 (exec).", "type": "depends_on", "technologies": ["TOML"]},
+    {"from": "HumanGateOrders", "to": "MailSendCommand", "label": "The scripts notify the addressee with gc mail send --notify. Source: internal/bootstrap/packs/core/assets/scripts/notify-on-human-gate-creation.sh:208 (gc mail send), internal/bootstrap/packs/core/assets/scripts/renudge-stale-human-gates.sh:234 (gc mail send).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "HumanGateOrders", "to": "BdPassthrough", "label": "The scripts read gates with gc bd show / gc bd gate list. Source: internal/bootstrap/packs/core/assets/scripts/notify-on-human-gate-creation.sh:165 (gc bd show), internal/bootstrap/packs/core/assets/scripts/renudge-stale-human-gates.sh:16 (gc bd gate list).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "BuiltinPacksBootstrap", "to": "HumanGateOrders", "label": "The core pack (orders/ included) is embedded in the binary. Source: internal/bootstrap/packs/core/embed.go:12 (go:embed).", "type": "depends_on", "technologies": ["go:embed"]},
+    {"from": "DurableSessionWaits", "to": "Bead store integration", "label": "Waits are gate beads with gc:wait in the sessions class. Source: internal/coordclass/class.go:79 (gc:wait).", "type": "reads_from", "technologies": ["Go function call"]}
+  ]
+}

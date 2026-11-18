@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "gascity-engine — наша карта 918a0c252",
+    "description": "Hand-built architecture map of the Gas City engine (gc binary) in the owner's fork TheDeveloperTom/gascity at commit 918a0c252 (the ENGINE_PIN both cities run). Built from the code, not from docs: every element and relationship cites path:line (Token) at 918a0c252; the Token is the identifier found on or right after that line."
+  },
+  "include": [
+    "archyl/archyl.context.yaml",
+    "archyl/archyl.cli-control.yaml",
+    "archyl/archyl.config-packs.yaml",
+    "archyl/archyl.sessions.yaml",
+    "archyl/archyl.work.yaml",
+    "archyl/archyl.messaging-store.yaml",
+    "archyl/archyl.surface.yaml"
+  ]
+}

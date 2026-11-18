@@ -1,0 +1,124 @@
+{
+  "containers": [
+    {
+      "name": "Doctor",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "`gc doctor`: a registry of health checks over config, packs, skills, stores, Dolt, sessions, orders and prompt delivery, with optional --fix; packs contribute script checks through [[doctor]] entries or doctor/<name>/doctor.toml. Source: cmd/gc/cmd_doctor.go:34 (newDoctorCmd), cmd/gc/cmd_doctor.go:249 (buildDoctorChecks), internal/doctor/doctor.go:39 (Doctor), internal/doctor/pack_checks.go:31 (PackScriptCheck).",
+      "technologies": ["Go"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#999999", "shape": "box"},
+      "components": [
+        {
+          "name": "DoctorFramework",
+          "type": "module",
+          "description": "Check interface, registration and run/collect with fix support. Source: internal/doctor/types.go:36 (Check), internal/doctor/doctor.go:39 (Doctor), internal/doctor/doctor.go:61 (Register), internal/doctor/doctor.go:81 (Run)."
+        },
+        {
+          "name": "DoctorCommand",
+          "type": "controller",
+          "description": "Builds the check list for a city (built-in + pack checks), runs it, prints the report. Source: cmd/gc/cmd_doctor.go:34 (newDoctorCmd), cmd/gc/cmd_doctor.go:249 (buildDoctorChecks), cmd/gc/cmd_doctor.go:713 (doDoctor)."
+        },
+        {
+          "name": "PackScriptChecks",
+          "type": "adapter",
+          "description": "Pack-declared check scripts (and optional fix scripts) run with the pack env; can opt into the gc start warm-up scan. Source: internal/doctor/pack_checks.go:31 (PackScriptCheck), cmd/gc/cmd_doctor.go:683 (doctor.PackScriptCheck)."
+        },
+        {
+          "name": "SkillCollisionCheck",
+          "type": "module",
+          "description": "Detects skills from different catalogs that collide in one sink. Source: internal/doctor/skill_checks.go:19 (SkillCollisionCheck), internal/doctor/skill_checks.go:27 (NewSkillCollisionCheck)."
+        },
+        {
+          "name": "StoreAndDoltChecks",
+          "type": "module",
+          "description": "Checks over Dolt topology, backups, journal/log size, store liveness and proxied endpoints. Source: cmd/gc/cmd_doctor.go:150 (newDoltTopologyCheck), internal/doctor/store_liveness.go:1 (package doctor), internal/doctor/checks_dolt_backup.go:1 (package doctor)."
+        }
+      ]
+    },
+    {
+      "name": "API server and dashboard",
+      "parent_system": "Gas City engine",
+      "type": "web_app",
+      "description": "HTTP surface hosted by the supervisor: the typed huma /v0 API per city (sessions, mail, sling, orders, beads, events, formulas, packs, webhooks) with SSE streams, the dashboard SPA embedded in the binary and a host-side /api BFF plane (config projection, git/builds reads, health). Source: internal/api/supervisor.go:180 (NewSupervisorMux), internal/api/server.go:282 (New), internal/api/sse.go:359 (text/event-stream), internal/api/dashboardspa/embed.go:10 (go:embed), internal/api/dashboardbff/plane.go:90 (New).",
+      "technologies": ["Go", "HTTP/SSE (huma)", "go:embed"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#1168bd", "shape": "box"},
+      "components": [
+        {
+          "name": "SupervisorMux",
+          "type": "gateway",
+          "description": "One mux for all cities: resolves the city per request, builds the cross-city event multiplexer, mounts SPA, BFF and /svc proxy. Source: internal/api/supervisor.go:180 (NewSupervisorMux), internal/api/supervisor.go:580 (buildMultiplexer)."
+        },
+        {
+          "name": "CityAPIServer",
+          "type": "service",
+          "description": "Per-city typed handlers, e.g. POST /v0/sling (builds SlingDeps and calls the sling core), mail send/list, session create (same launch-command composition as the controller), events list. Source: internal/api/server.go:53 (Server), internal/api/handler_sling.go:224 (sling.New), internal/api/huma_handlers_mail.go:388 (humaHandleMailSend), internal/api/session_create_agent.go:33 (BuildProviderTemplateLaunchCommand), internal/api/huma_handlers_events.go:23 (humaHandleEventList)."
+        },
+        {
+          "name": "SSEStreams",
+          "type": "handler",
+          "description": "Server-sent event streams (events, session output, convoys). Source: internal/api/sse.go:359 (text/event-stream), internal/api/event_stream_pump.go:1 (package api)."
+        },
+        {
+          "name": "DashboardSPA",
+          "type": "web_app",
+          "description": "Dashboard single-page app embedded from dist/ and served same-origin by the supervisor; `gc dashboard` only opens its URL. Source: internal/api/dashboardspa/embed.go:10 (go:embed all:dist), cmd/gc/cmd_dashboard.go:24 (newDashboardCmd)."
+        },
+        {
+          "name": "DashboardBFF",
+          "type": "service",
+          "description": "Host-side /api/* plane replacing the former Node BFF: config projection, git/builds reads (git subprocess), run diffs, health probes. Source: internal/api/dashboardbff/plane.go:1 (Package dashboardbff), internal/api/dashboardbff/plane.go:90 (New), internal/api/dashboardbff/exec.go:285 (git)."
+        }
+      ]
+    },
+    {
+      "name": "GitHub integration",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "`gc github` PR readiness monitors: lists open pull requests through the GitHub GraphQL API and evaluates them against [github_pr_monitor] config. Source: cmd/gc/cmd_github.go:96 (newGitHubCmd), internal/githubmonitor/client.go:45 (NewGraphQLClient), internal/githubmonitor/monitor.go:91 (EvaluatePullRequests), internal/config/github_pr_monitor.go:24 (GitHubPRMonitor).",
+      "technologies": ["Go", "GitHub GraphQL API"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#999999", "shape": "box"},
+      "components": [
+        {
+          "name": "GitHubCommand",
+          "type": "controller",
+          "description": "`gc github` subcommands: builds a GraphQL client from a token and evaluates monitors. Source: cmd/gc/cmd_github.go:96 (newGitHubCmd), cmd/gc/cmd_github.go:29 (NewGraphQLClient), cmd/gc/cmd_github.go:208 (EvaluatePullRequestsWithAllowedAuthors)."
+        },
+        {
+          "name": "PRMonitorClient",
+          "type": "adapter",
+          "description": "GraphQL client listing open PRs of owner/repo. Source: internal/githubmonitor/client.go:14 (defaultGraphQLEndpoint), internal/githubmonitor/client.go:45 (NewGraphQLClient), internal/githubmonitor/client.go:62 (ListOpenPullRequests)."
+        },
+        {
+          "name": "PRMonitorEvaluator",
+          "type": "module",
+          "description": "Pure evaluation of PR readiness against a monitor config (base branches, authors, labels). Source: internal/githubmonitor/monitor.go:91 (EvaluatePullRequests), internal/githubmonitor/monitor.go:106 (EvaluatePullRequestsWithAllowedAuthors)."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "DoctorCommand", "to": "DoctorFramework", "label": "Registers and runs the city's checks. Source: cmd/gc/cmd_doctor.go:249 (buildDoctorChecks), internal/doctor/doctor.go:81 (Run).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "DoctorCommand", "to": "CityConfigLoader", "label": "Doctor loads the composed config to decide which checks apply. Source: cmd/gc/cmd_doctor.go:713 (doDoctor), internal/config/compose.go:1892 (LoadPackGraphDirsForDoctor).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PackScriptChecks", "to": "Packs repo cache", "label": "Check scripts live in the pack dir (cache checkout for remote packs). Source: internal/doctor/pack_checks.go:31 (PackScriptCheck), cmd/gc/cmd_doctor.go:683 (doctor.PackScriptCheck).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "SkillCollisionCheck", "to": "SkillCatalogs", "label": "Validates the same catalogs the materialiser uses. Source: internal/doctor/skill_checks.go:27 (NewSkillCollisionCheck).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "StoreAndDoltChecks", "to": "Dolt sql-server", "label": "Probes Dolt topology and health. Source: cmd/gc/cmd_doctor.go:150 (newDoltTopologyCheck).", "type": "reads_from", "technologies": ["Dolt SQL (beads library)"]},
+    {"from": "Web browser", "to": "DashboardSPA", "label": "Operator opens the supervisor URL. Source: cmd/gc/cmd_dashboard.go:32 (embedded in the gc binary).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "DashboardSPA", "to": "CityAPIServer", "label": "The SPA calls /v0/* directly, same-origin. Source: internal/api/dashboardbff/plane.go:6 (the SPA calls /v0/* directly).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "DashboardSPA", "to": "DashboardBFF", "label": "Host-side reads (config projection, git, health) go to /api/*. Source: internal/api/dashboardbff/plane.go:1 (Package dashboardbff).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "SupervisorMux", "to": "CityAPIServer", "label": "Routes /v0/city/{name}/... to the city's server. Source: internal/api/supervisor.go:180 (NewSupervisorMux).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "SupervisorMux", "to": "EventMultiplexer", "label": "Builds the cross-city multiplexer for the global event stream. Source: internal/api/supervisor.go:580 (buildMultiplexer).", "type": "uses", "technologies": ["Go function call"]},
+    {"from": "CityAPIServer", "to": "SlingCore", "label": "POST /v0/sling runs the same sling core as the CLI. Source: internal/api/handler_sling.go:224 (sling.New).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityAPIServer", "to": "MailProvider", "label": "Mail endpoints go through the city's mail providers. Source: internal/api/huma_handlers_mail.go:388 (humaHandleMailSend).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityAPIServer", "to": "SessionManager", "label": "Session create/chat endpoints use the session manager and the shared launch composition. Source: internal/api/session_create_agent.go:33 (BuildProviderTemplateLaunchCommand).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "CityAPIServer", "to": "WebhookReceiver", "label": "Webhook route admits signed requests for webhook-triggered orders. Source: internal/api/handler_webhook.go:85 (resolveWebhookRequest).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "SSEStreams", "to": "EventMultiplexer", "label": "Streams events with cursors to clients. Source: internal/api/sse.go:359 (text/event-stream).", "type": "reads_from", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "DashboardBFF", "to": "City directory", "label": "Runs git in the repo for builds/diffs views. Source: internal/api/dashboardbff/exec.go:285 (git).", "type": "reads_from", "technologies": ["git CLI"]},
+    {"from": "EventsCommand", "to": "CityAPIServer", "label": "On a running city, gc events reads the typed API. Source: internal/api/huma_handlers_events.go:23 (humaHandleEventList).", "type": "calls", "technologies": ["HTTP/SSE (huma)"]},
+    {"from": "GitHubCommand", "to": "PRMonitorClient", "label": "Lists open PRs for each monitor. Source: cmd/gc/cmd_github.go:29 (NewGraphQLClient).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "GitHubCommand", "to": "PRMonitorEvaluator", "label": "Evaluates readiness. Source: cmd/gc/cmd_github.go:208 (EvaluatePullRequestsWithAllowedAuthors).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PRMonitorClient", "to": "GitHub", "label": "GraphQL queries to api.github.com. Source: internal/githubmonitor/client.go:14 (defaultGraphQLEndpoint), internal/githubmonitor/client.go:62 (ListOpenPullRequests).", "type": "reads_from", "technologies": ["GitHub GraphQL API"]}
+  ]
+}

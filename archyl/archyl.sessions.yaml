@@ -1,0 +1,186 @@
+{
+  "containers": [
+    {
+      "name": "Agent launch assembly",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "Turns one configured agent into a launchable session spec (TemplateParams -> runtime.Config): renders the prompt template with fragments and the assigned-skills appendix, builds the provider launch command (claude ... --settings <city>/.gc/settings.json), appends gc's own pre_start steps for skill and MCP delivery, and decides how the prompt is delivered (argv, flag or nudge, argv capped at 100 000 raw bytes). Source: cmd/gc/template_resolve.go:202 (resolveTemplate), cmd/gc/prompt.go:116 (renderPrompt), internal/config/launch_command.go:31 (BuildProviderLaunchCommand), cmd/gc/prompt_delivery.go:174 (promptDelivery).",
+      "technologies": ["Go"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "TemplateResolver",
+          "type": "service",
+          "description": "resolveTemplate: per agent and session computes work dir, env, launch command, rendered prompt, pre_start (authored + gc-appended), fingerprint inputs. Source: cmd/gc/template_resolve.go:202 (resolveTemplate), cmd/gc/template_resolve.go:466 (renderPrompt), cmd/gc/template_resolve.go:724 (appendMaterializeSkillsPreStart), cmd/gc/template_resolve.go:791 (appendProjectMCPPreStart), cmd/gc/template_resolve.go:1013 (templateParamsToConfigWithDelivery)."
+        },
+        {
+          "name": "PromptRenderer",
+          "type": "module",
+          "description": "Renders prompt.template.md (Go template) with the agent's pack root, shared template-fragments, inject/append/global fragments; plain .md is returned literally. Source: cmd/gc/prompt.go:116 (renderPrompt), cmd/gc/prompt.go:124 (renderPromptWithMeta), cmd/gc/prompt.go:262 (promptSourcePackRoot), cmd/gc/prompt.go:347 (effectivePromptFragments)."
+        },
+        {
+          "name": "AssignedSkillsAppendix",
+          "type": "module",
+          "description": "When the provider has a skills sink, appends to the prompt a list of the skills this agent will see: the shared catalog plus the agent catalog loaded from agent.SkillsDir (so for a pack agent, the pack's role skills). Source: cmd/gc/template_resolve.go:534 (SkillsDir), cmd/gc/template_resolve.go:540 (LoadAgentCatalog), cmd/gc/skill_integration.go:323 (buildAssignedSkillsPromptFragment)."
+        },
+        {
+          "name": "ProviderLaunchCommand",
+          "type": "module",
+          "description": "Builds the provider command line from the resolved provider spec and options, and for Claude appends --settings pointing at the managed settings file. Source: internal/config/launch_command.go:31 (BuildProviderLaunchCommand), internal/config/launch_command.go:238 (appendProviderSettings), internal/config/launch_command.go:241 (--settings)."
+        },
+        {
+          "name": "BuiltinProviderProfiles",
+          "type": "config",
+          "description": "Built-in provider specs: command, option defaults, prompt mode, readiness markers. Claude: command claude, permission_mode unrestricted, effort max, PromptMode arg. Source: internal/worker/builtin/profiles.go:246 (builtinProviderSpecs), internal/worker/builtin/profiles.go:247 (claude), internal/worker/builtin/profiles.go:259 (PromptMode), internal/worker/builtin/profiles.go:1024 (BuiltinProviders)."
+        },
+        {
+          "name": "PromptDeliveryPlanner",
+          "type": "module",
+          "description": "Chooses argv suffix, flag or nudge for the startup prompt; refuses argv at >= 100 000 raw or 128 000 quoted bytes (a runtime can opt into nudge-fallback). Source: cmd/gc/prompt_delivery.go:21 (maxPromptSuffixRawBytes), cmd/gc/prompt_delivery.go:174 (promptDelivery), cmd/gc/prompt_delivery.go:102 (promptDeliverySupportFor)."
+        }
+      ]
+    },
+    {
+      "name": "Session runtime providers",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "The runtime.Provider abstraction and its registered implementations (tmux default; subprocess, acp, k8s, herdr, hybrid, t3bridge, fake/fail for tests) that actually start, observe, nudge and stop agent processes; plus the session Manager used by chat/API session operations. Source: internal/runtime/runtime.go:506 (Provider), cmd/gc/runtime_registry.go:33 (buildRuntimeRegistry), internal/runtime/tmux/adapter.go:110 (Start), internal/session/manager.go:647 (Manager).",
+      "technologies": ["Go", "tmux CLI", "os/exec"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "box"},
+      "components": [
+        {
+          "name": "RuntimeProviderRegistry",
+          "type": "module",
+          "description": "Registry of runtime factories with declared host capabilities (shares host filesystem, runs host pre_start); those capabilities gate skill/MCP materialisation. Source: cmd/gc/runtime_registry.go:33 (buildRuntimeRegistry), cmd/gc/runtime_registry.go:47 (StaticHostCapabilities), cmd/gc/runtime_registry.go:63 (subprocess), cmd/gc/runtime_registry.go:140 (tmux), cmd/gc/runtime_registry.go:189 (runtimeRegistryForCity)."
+        },
+        {
+          "name": "TmuxProvider",
+          "type": "adapter",
+          "description": "Default runtime: creates a tmux session per agent, stages overlays/copy files, runs pre_start on the host, sends nudges as keystrokes, captures pane state. Source: internal/runtime/tmux/adapter.go:85 (NewProvider), internal/runtime/tmux/adapter.go:110 (Start), internal/runtime/tmux/adapter.go:882 (Nudge), internal/runtime/tmux/tmux.go:466 (exec.CommandContext)."
+        },
+        {
+          "name": "SubprocessProvider",
+          "type": "adapter",
+          "description": "Headless runtime: runs the agent command as a child process; stages copy files and overlays but does not execute pre_start. Source: internal/runtime/subprocess/subprocess.go:130 (Start), cmd/gc/runtime_registry.go:61 (without executing cfg.PreStart)."
+        },
+        {
+          "name": "OtherRuntimeAdapters",
+          "type": "adapter",
+          "description": "acp (Agent Client Protocol, transcripts under the city), k8s, herdr, hybrid and t3bridge runtimes. Source: cmd/gc/runtime_registry.go:72 (acp), cmd/gc/runtime_registry.go:90 (k8s), cmd/gc/runtime_registry.go:98 (herdr), cmd/gc/runtime_registry.go:105 (hybrid)."
+        },
+        {
+          "name": "SessionManager",
+          "type": "service",
+          "description": "internal/session Manager: create/attach/chat session operations used by the API and CLI; starts sessions through the same runtime provider. Source: internal/session/manager.go:647 (Manager), internal/session/chat.go:494 (m.sp.Start)."
+        }
+      ]
+    },
+    {
+      "name": "Skill and MCP materialisation",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "Delivers skills and MCP servers to agents without translating them: skills are symlinked from catalogs (shared pack skills/ + agent-local agents/<name>/skills from agent.SkillsDir) into the provider's sink (.claude/skills, .agents/skills, ...); MCP definitions from pack mcp/ dirs and agent.MCPDir are projected into the provider's native file (.mcp.json for Claude). Stage 1 runs in the controller on the scope root; stage 2 runs in the session's pre_start (`gc internal materialize-skills`, `gc internal project-mcp`). Source: cmd/gc/skill_supervisor.go:35 (runStage1SkillMaterialization), internal/materialize/skills.go:512 (Run), internal/materialize/mcp_runtime.go:25 (EffectiveMCPForSession), internal/materialize/mcp_project.go:49 (BuildMCPProjection).",
+      "technologies": ["Go", "symlink", "JSON"],
+      "tags": ["source: code 918a0c252", "fact 18.11: pack agent skills from SourceDir"],
+      "style": {"background_color": "#85bbf0", "shape": "box"},
+      "components": [
+        {
+          "name": "SkillCatalogs",
+          "type": "repository",
+          "description": "Shared city catalog (pack skills/ dirs, rig-import skills only in that rig) and the agent catalog loaded from agent.SkillsDir; EffectiveSet merges them, agent entries win on a name clash. Source: cmd/gc/skill_catalog.go:10 (sharedSkillCatalogInputs), internal/materialize/skills.go:211 (LoadCityCatalog), internal/materialize/skills.go:319 (LoadAgentCatalog), internal/materialize/skills.go:338 (EffectiveSet)."
+        },
+        {
+          "name": "Stage1SkillMaterializer",
+          "type": "job",
+          "description": "Controller-side pass over all agents whose runtime shares the host filesystem: loads LoadAgentCatalog(agent.SkillsDir), merges with the shared catalog and symlinks into <scope root>/<vendor sink>. Called from gc start, the supervisor and every config reload. Source: cmd/gc/skill_supervisor.go:35 (runStage1SkillMaterialization), cmd/gc/skill_supervisor.go:77 (stage1SkillRequests), cmd/gc/skill_supervisor.go:117 (LoadAgentCatalog), cmd/gc/skill_integration.go:82 (canStage1Materialize)."
+        },
+        {
+          "name": "Stage2SkillMaterializer",
+          "type": "job",
+          "description": "`gc internal materialize-skills`, appended to the session's pre_start, materialises the same effective set into the session work dir when it differs from the scope root. Source: cmd/gc/cmd_internal_materialize_skills.go:43 (newInternalMaterializeSkillsCmd), cmd/gc/cmd_internal_materialize_skills.go:165 (materializeSkillsIntoWorkdir), cmd/gc/cmd_internal_materialize_skills.go:196 (LoadAgentCatalog), cmd/gc/skill_integration.go:418 (appendMaterializeSkillsPreStart)."
+        },
+        {
+          "name": "SkillSinkWriter",
+          "type": "module",
+          "description": "materialize.Run: writes owned symlinks into the vendor sink with an ownership manifest; vendor map claude -> .claude/skills, codex/pi -> .agents/skills, gemini, opencode, mimocode. Source: internal/materialize/skills.go:93 (vendorSinks), internal/materialize/skills.go:106 (VendorSink), internal/materialize/skills.go:512 (Run), internal/materialize/skills.go:451 (ownershipManifest)."
+        },
+        {
+          "name": "MCPCatalogResolver",
+          "type": "module",
+          "description": "Effective MCP catalog for a session: city/pack layers plus the agent layer from agent.MCPDir (TOML files rendered as templates). Source: internal/materialize/mcp_runtime.go:25 (EffectiveMCPForSession), internal/materialize/mcp_resolve.go:79 (agent.MCPDir), internal/materialize/mcp.go:120 (LoadMCPDir), cmd/gc/mcp_integration.go:103 (loadEffectiveMCPForAgent)."
+        },
+        {
+          "name": "MCPProjectionWriter",
+          "type": "module",
+          "description": "Builds the provider-native MCP file (Claude .mcp.json, Codex .codex/config.toml, Gemini .gemini/settings.json, Cursor .cursor/mcp.json) and applies it; run in pre_start via `gc internal project-mcp`. Source: internal/materialize/mcp_project.go:49 (BuildMCPProjection), internal/materialize/mcp_project.go:71 (.mcp.json), internal/materialize/mcp_project.go:120 (Apply), cmd/gc/cmd_internal_project_mcp.go:18 (newInternalProjectMCPCmd), cmd/gc/mcp_integration.go:197 (appendProjectMCPPreStart)."
+        }
+      ]
+    },
+    {
+      "name": "Managed hooks and Claude settings",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "gc installs provider hook files into work dirs and writes the city's managed Claude settings <city>/.gc/settings.json (embedded defaults merged with <city>/.claude/settings.json, else hooks/claude.json), passed to every gc-launched Claude by --settings. The managed hooks call back into gc: SessionStart(startup) -> gc prime --hook; PreCompact -> gc handoff --auto; UserPromptSubmit -> nudge drain --inject and mail check --inject. Source: internal/hooks/hooks.go:265 (InstallWithResolver), internal/hooks/hooks.go:660 (installClaude), internal/hooks/config/claude.json:7 (SessionStart), internal/config/launch_command.go:241 (--settings).",
+      "technologies": ["Go", "JSON", "Claude Code hooks"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#85bbf0", "shape": "box"},
+      "components": [
+        {
+          "name": "ProviderHookInstaller",
+          "type": "service",
+          "description": "Install / InstallWithResolver: per provider family writes managed hook files or overlays (claude, codex, gemini, cursor, opencode, pi, omp, kiro ...), upgrading stale generated copies. Source: internal/hooks/hooks.go:186 (SupportedProviders), internal/hooks/hooks.go:256 (Install), internal/hooks/hooks.go:265 (InstallWithResolver), internal/hooks/hooks.go:323 (installOverlayManaged)."
+        },
+        {
+          "name": "ClaudeSettingsWriter",
+          "type": "service",
+          "description": "installClaude: picks the user source (.claude/settings.json, then hooks/claude.json, then .gc/settings.json), merges it over the embedded defaults (hook events unioned) and writes <city>/.gc/settings.json. Source: internal/hooks/hooks.go:653-656 (.claude/settings.json), internal/hooks/hooks.go:660 (installClaude), internal/hooks/hooks.go:662 (runtimeDst), internal/hooks/hooks.go:768 (desiredClaudeSettings), internal/overlay/merge.go:111 (MergeSettingsJSON)."
+        },
+        {
+          "name": "EmbeddedClaudeHooks",
+          "type": "config",
+          "description": "Embedded default Claude settings: skipDangerousModePermissionPrompt, enableAllProjectMcpServers; SessionStart(matcher startup) gc prime --hook; PreCompact gc handoff --auto \"context cycle\"; UserPromptSubmit gc hook run -- nudge drain --inject and -- mail check --inject. Source: internal/hooks/config/claude.json:2-3 (skipDangerousModePermissionPrompt), internal/hooks/config/claude.json:7-13 (SessionStart), internal/hooks/config/claude.json:18-24 (PreCompact), internal/hooks/config/claude.json:29-39 (UserPromptSubmit)."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "TemplateResolver", "to": "PromptRenderer", "label": "Renders the agent's prompt template. Source: cmd/gc/template_resolve.go:466 (renderPrompt).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "TemplateResolver", "to": "AssignedSkillsAppendix", "label": "Appends the assigned-skills list to the prompt when a sink will deliver skills. Source: cmd/gc/template_resolve.go:544 (buildAssignedSkillsPromptFragment).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "TemplateResolver", "to": "ProviderLaunchCommand", "label": "Builds the provider launch command for the session, then projects the managed Claude settings and adds --settings before fingerprinting. Source: cmd/gc/template_resolve.go:242 (ProviderTemplateCommand), cmd/gc/template_resolve.go:268 (ensureClaudeSettingsArgs), cmd/gc/template_resolve.go:5-7 (.gc/settings.json).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "TemplateResolver", "to": "Stage2SkillMaterializer", "label": "Appends `gc internal materialize-skills` to the session's pre_start (after authored pre_start). Source: cmd/gc/template_resolve.go:724 (appendMaterializeSkillsPreStart).", "type": "depends_on", "technologies": ["os/exec"]},
+    {"from": "TemplateResolver", "to": "MCPProjectionWriter", "label": "Appends `gc internal project-mcp` to pre_start and fingerprints the projection. Source: cmd/gc/template_resolve.go:791 (appendProjectMCPPreStart).", "type": "depends_on", "technologies": ["os/exec"]},
+    {"from": "TemplateResolver", "to": "PromptDeliveryPlanner", "label": "Session config carries the delivery decision (argv / flag / nudge). Source: cmd/gc/template_resolve.go:1013 (templateParamsToConfigWithDelivery).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "AssignedSkillsAppendix", "to": "SkillCatalogs", "label": "Loads the agent catalog from agent.SkillsDir (pack dir for pack agents). Source: cmd/gc/template_resolve.go:540 (LoadAgentCatalog).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "PromptRenderer", "to": "Packs repo cache", "label": "Prompt templates and template-fragments of pack agents are read from the pack dir. Source: cmd/gc/prompt.go:262 (promptSourcePackRoot), cmd/gc/prompt.go:311 (loadSharedTemplates).", "type": "reads_from", "technologies": ["filesystem"]},
+    {"from": "ProviderLaunchCommand", "to": "BuiltinProviderProfiles", "label": "Resolved provider = builtin profile + city/pack provider overrides. Source: internal/config/launch_command.go:159 (providerLaunchBaseCommand).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "ProviderLaunchCommand", "to": "ClaudeSettingsWriter", "label": "Claude is launched with --settings <city>/.gc/settings.json written by installClaude. Source: internal/config/launch_command.go:239 (ProviderSettingsSource), internal/hooks/hooks.go:662 (runtimeDst).", "type": "depends_on", "technologies": ["filesystem"]},
+    {"from": "RuntimeProviderRegistry", "to": "TmuxProvider", "label": "Registers tmux as a host-filesystem + host-pre_start runtime. Source: cmd/gc/runtime_registry.go:140 (tmux).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "RuntimeProviderRegistry", "to": "SubprocessProvider", "label": "Registers subprocess (host filesystem, no host pre_start). Source: cmd/gc/runtime_registry.go:63 (subprocess).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "RuntimeProviderRegistry", "to": "OtherRuntimeAdapters", "label": "Registers acp, k8s, herdr, hybrid, t3bridge. Source: cmd/gc/runtime_registry.go:72 (acp), cmd/gc/runtime_registry.go:105 (hybrid).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "TmuxProvider", "to": "tmux", "label": "Every session operation is a tmux CLI call. Source: internal/runtime/tmux/tmux.go:466 (exec.CommandContext).", "type": "calls", "technologies": ["tmux CLI"]},
+    {"from": "TmuxProvider", "to": "Claude Code", "label": "The tmux pane runs the provider launch command (claude ... --settings ...). Source: internal/runtime/tmux/adapter.go:110 (Start).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "TmuxProvider", "to": "Other agent CLIs", "label": "Same launch path for every non-Claude provider command. Source: internal/runtime/tmux/adapter.go:110 (Start).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "SubprocessProvider", "to": "Claude Code", "label": "Runs the provider command as a child process. Source: internal/runtime/subprocess/subprocess.go:130 (Start).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "SessionManager", "to": "RuntimeProviderRegistry", "label": "API/CLI session operations start sessions through the provider. Source: internal/session/chat.go:494 (m.sp.Start).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "Stage1SkillMaterializer", "to": "SkillCatalogs", "label": "Loads the shared catalog and LoadAgentCatalog(agent.SkillsDir); merges with EffectiveSet. Source: cmd/gc/skill_supervisor.go:117 (LoadAgentCatalog), cmd/gc/skill_supervisor.go:127 (EffectiveSet).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "Stage1SkillMaterializer", "to": "SkillSinkWriter", "label": "Materialises the effective set into <scope root>/<vendor sink>. Source: cmd/gc/skill_supervisor.go:140 (sinkDir).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "Stage1SkillMaterializer", "to": "RuntimeProviderRegistry", "label": "Only runtimes declaring a shared host filesystem are eligible for stage 1. Source: cmd/gc/skill_integration.go:82 (canStage1Materialize), cmd/gc/runtime_registry.go:47 (StaticHostCapabilities).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "Stage2SkillMaterializer", "to": "SkillCatalogs", "label": "Loads the agent catalog from agent.SkillsDir in the session's pre_start. Source: cmd/gc/cmd_internal_materialize_skills.go:196 (LoadAgentCatalog).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "Stage2SkillMaterializer", "to": "SkillSinkWriter", "label": "Writes symlinks into <workdir>/<vendor sink>. Source: cmd/gc/cmd_internal_materialize_skills.go:165 (materializeSkillsIntoWorkdir).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "SkillCatalogs", "to": "Packs repo cache", "label": "Shared skills/ of imported packs and the role skills of pack agents (agent.SkillsDir = <pack dir>/agents/<name>/skills, set from SourceDir) live in the pack checkout. Source: internal/materialize/skills.go:319 (LoadAgentCatalog), internal/config/compose.go:1024 (skillsDir).", "type": "reads_from", "technologies": ["filesystem"]},
+    {"from": "SkillCatalogs", "to": "AgentLocalAssetDirs", "label": "The agent catalog root is whatever composition put in agent.SkillsDir. Source: internal/config/compose.go:1026 (a.SkillsDir = skillsDir), cmd/gc/skill_supervisor.go:117 (agent.SkillsDir).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "SkillSinkWriter", "to": "City directory", "label": "Creates symlinks in .claude/skills (or another vendor sink) under the scope root / work dir. Source: internal/materialize/skills.go:94 (.claude/skills), internal/materialize/skills.go:512 (Run).", "type": "writes_to", "technologies": ["symlink"]},
+    {"from": "MCPProjectionWriter", "to": "MCPCatalogResolver", "label": "Projects the effective MCP catalog of the agent. Source: cmd/gc/mcp_integration.go:129 (resolveAgentMCPProjection).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "MCPCatalogResolver", "to": "AgentLocalAssetDirs", "label": "Agent MCP layer comes from agent.MCPDir set during composition. Source: internal/materialize/mcp_resolve.go:79 (agent.MCPDir).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "MCPProjectionWriter", "to": "Claude Code", "label": "Writes <workdir>/.mcp.json, which Claude loads (enableAllProjectMcpServers in managed settings). Source: internal/materialize/mcp_project.go:71 (.mcp.json), internal/hooks/config/claude.json:3 (enableAllProjectMcpServers).", "type": "writes_to", "technologies": ["JSON"]},
+    {"from": "ProviderHookInstaller", "to": "ClaudeSettingsWriter", "label": "Claude family install writes the managed settings file. Source: internal/hooks/hooks.go:660 (installClaude).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ClaudeSettingsWriter", "to": "City directory", "label": "Reads <city>/.claude/settings.json (or hooks/claude.json) and writes <city>/.gc/settings.json. Source: internal/hooks/hooks.go:826 (readClaudeSettingsOverride), internal/hooks/hooks.go:662 (runtimeDst).", "type": "writes_to", "technologies": ["JSON"]},
+    {"from": "ClaudeSettingsWriter", "to": "EmbeddedClaudeHooks", "label": "Embedded defaults are the merge base, so new default hooks land even with custom settings. Source: internal/hooks/hooks.go:768 (desiredClaudeSettings).", "type": "reads_from", "technologies": ["JSON"]},
+    {"from": "Claude Code", "to": "PrimeCommand", "label": "SessionStart(startup) hook runs gc prime --hook. Source: internal/hooks/config/claude.json:13 (gc prime --hook).", "type": "calls", "technologies": ["Claude Code hooks"]},
+    {"from": "Claude Code", "to": "HandoffCommand", "label": "PreCompact hook runs gc handoff --auto \"context cycle\". Source: internal/hooks/config/claude.json:24 (gc handoff --auto).", "type": "calls", "technologies": ["Claude Code hooks"]},
+    {"from": "Claude Code", "to": "NudgeDrainCommand", "label": "UserPromptSubmit hook injects queued nudges. Source: internal/hooks/config/claude.json:35 (nudge drain --inject).", "type": "calls", "technologies": ["Claude Code hooks"]},
+    {"from": "Claude Code", "to": "MailCheckCommand", "label": "UserPromptSubmit hook injects unread mail. Source: internal/hooks/config/claude.json:39 (mail check --inject).", "type": "calls", "technologies": ["Claude Code hooks"]}
+  ]
+}

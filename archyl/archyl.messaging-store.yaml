@@ -1,0 +1,154 @@
+{
+  "containers": [
+    {
+      "name": "Mail and nudge",
+      "parent_system": "Gas City engine",
+      "type": "message_queue",
+      "description": "Agent-to-agent (and human) messaging. Mail is message beads in the messaging class behind a mail.Provider (bead-backed by default); `gc mail send --notify` also requests a recipient turn. Nudges are short prompts queued durably (one nudge = one bead in the nudges class) and delivered into live sessions by the controller or drained by the agent's UserPromptSubmit hook. Source: internal/mail/mail.go:127 (Provider), internal/mail/beadmail/beadmail.go:46 (Provider), cmd/gc/cmd_mail.go:1866 (newMailSendCmd), internal/storebinding/beads_nudge_queue.go:1 (nudge queue as BEADS), cmd/gc/nudge_dispatcher.go:115 (dispatchAllQueuedNudges).",
+      "technologies": ["Go"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "pipe"},
+      "components": [
+        {
+          "name": "MailProvider",
+          "type": "adapter",
+          "description": "mail.Provider interface and the bead-backed implementation (messages as beads, recipients resolved through the session address directory); an exec provider exists for external mail backends. Source: internal/mail/mail.go:127 (Provider), internal/mail/beadmail/beadmail.go:46 (Provider), internal/mail/beadmail/beadmail.go:72 (NewWithSessionDirectory), internal/mail/exec/exec.go:1 (package exec)."
+        },
+        {
+          "name": "MailSendCommand",
+          "type": "controller",
+          "description": "`gc mail send [--notify]`: resolves the recipient (session alias, configured mailbox, or \"human\"), writes the message, and with --notify asks for a recipient turn through the nudge path (skipped for \"human\"). Source: cmd/gc/cmd_mail.go:1866 (newMailSendCmd), cmd/gc/cmd_mail.go:1915 (notify), cmd/gc/cmd_mail.go:2151 (cmdMailSend), cmd/gc/cmd_mail.go:2247 (newMailNudgeFunc)."
+        },
+        {
+          "name": "MailCheckCommand",
+          "type": "controller",
+          "description": "`gc mail check [--inject]`: reports unread mail for $GC_SESSION_ID/$GC_ALIAS/$GC_AGENT (or human); with --inject prints it into the agent's turn from a hook. Source: cmd/gc/cmd_mail.go:525 (newMailCheckCmd), cmd/gc/cmd_mail.go:536 (human)."
+        },
+        {
+          "name": "NudgeQueue",
+          "type": "repository",
+          "description": "Durable nudge queue: items with pending / in-flight / dead / terminal states, stored as beads with CAS primitives. Source: internal/nudgequeue/state.go:36 (Item), internal/nudgequeue/state.go:111 (State), internal/storebinding/beads_nudge_queue.go:5 (one queued)."
+        },
+        {
+          "name": "NudgeQueueDispatcher",
+          "type": "job",
+          "description": "Controller-side delivery of queued nudges to their target sessions through the runtime provider, with a wake listener for immediate dispatch. Source: cmd/gc/nudge_dispatcher.go:58 (startNudgeWakeListener), cmd/gc/nudge_dispatcher.go:115 (dispatchAllQueuedNudges), cmd/gc/nudge_dispatcher.go:128 (dispatchQueuedNudges)."
+        },
+        {
+          "name": "SessionNudgeDelivery",
+          "type": "service",
+          "description": "`gc nudge` delivery into a session: queue or immediate, keyed for idempotency, ending in the provider's Nudge. Source: cmd/gc/cmd_nudge.go:316 (newNudgeCmd), cmd/gc/cmd_nudge.go:1408 (deliverSessionNudge), internal/runtime/nudge_delivery.go:103 (NudgeWithDeliveryKey)."
+        },
+        {
+          "name": "NudgeDrainCommand",
+          "type": "controller",
+          "description": "`gc nudge drain --inject`: drains this session's queued nudges into the current turn (called from Claude's UserPromptSubmit hook). Source: cmd/gc/cmd_nudge.go:367 (newNudgeDrainCmd), cmd/gc/cmd_nudge.go:745 (cmdNudgeDrainWithFormat)."
+        }
+      ]
+    },
+    {
+      "name": "Bead store integration",
+      "parent_system": "Gas City engine",
+      "type": "database",
+      "description": "Everything durable is a bead. beads.Store is the interface; backends are BdStore (bd CLI subprocess), NativeDoltStore (beads Go library over Dolt) and SQLiteStore (in-process modernc SQLite), wrapped by a CachingStore that emits bead.* events. Coordination classes (work, graph, messaging, sessions, orders, nudges) can be split onto different bindings; a born-split city keeps work on Dolt and the five infrastructure classes on one SQLite binding. `gc bd` passes raw bd commands through with the right rig and env. Source: internal/beads/beads.go:1069 (Store), internal/beads/bdstore.go:472 (BdStore), internal/beads/native_dolt_store.go:362 (NativeDoltStore), internal/beads/sqlite_store.go:232 (SQLiteStore), internal/coordclass/class.go:56 (Class), cmd/gc/init_storage.go:72 (bornSplitStorageConfig).",
+      "technologies": ["Go", "bd CLI subprocess", "Dolt SQL (beads library)", "SQLite (modernc.org/sqlite)"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#438dd5", "shape": "cylinder"},
+      "components": [
+        {
+          "name": "BeadStoreInterface",
+          "type": "module",
+          "description": "beads.Store and its capability interfaces (atomic tx, graph apply, conditional writes) used by every subsystem. Source: internal/beads/beads.go:736 (AtomicTxStore), internal/beads/beads.go:1069 (Store), internal/beads/beads.go:1257 (StorageGraphApplyStore)."
+        },
+        {
+          "name": "BdStore",
+          "type": "adapter",
+          "description": "Store implemented by running the bd binary in a directory with an env; used for scoped stores and hook claims. Source: internal/beads/bdstore.go:472 (BdStore), internal/beads/bdstore.go:610 (NewBdStore), internal/beads/bdstore.go:138 (exec.CommandContext), cmd/gc/scoped_store.go:36 (NewBdStore)."
+        },
+        {
+          "name": "NativeDoltStore",
+          "type": "adapter",
+          "description": "Store over the beads Go library (beadslib.Storage) connected to the Dolt server, with reconnect-on-transient-error. Opened for the city work ledger. Source: internal/beads/native_dolt_store.go:362 (NativeDoltStore), internal/beads/native_dolt_store.go:620 (OpenNativeDoltStoreAt), cmd/gc/main.go:1958 (OpenNativeDoltStoreAt)."
+        },
+        {
+          "name": "SQLiteStore",
+          "type": "adapter",
+          "description": "In-process SQLite bead store (beads.sqlite) for split infrastructure classes. Source: internal/beads/sqlite_store.go:23 (modernc.org/sqlite), internal/beads/sqlite_store.go:232 (SQLiteStore), internal/beads/sqlite_store.go:264 (OpenSQLiteStore), cmd/gc/init_storage.go:84 (sqlite-beads)."
+        },
+        {
+          "name": "CachingStore",
+          "type": "middleware",
+          "description": "Read cache over a backing store whose onChange hook feeds bead.* events and the API state. Source: internal/beads/caching_store.go:33 (CachingStore), internal/beads/caching_store.go:568 (NewCachingStore), cmd/gc/api_state.go:428 (NewCachingStore)."
+        },
+        {
+          "name": "ClassStoreRouting",
+          "type": "module",
+          "description": "Classifies each bead into a coordination class and hands each subsystem the store bound to its class; emits bead.created/updated/closed for class-store writes. Source: internal/coordclass/class.go:56 (Class), internal/coordclass/classify.go:123 (Classify), cmd/gc/class_store.go:21 (per-class store refactor), cmd/gc/class_store_emit.go:365 (events.BeadCreated)."
+        },
+        {
+          "name": "BdPassthrough",
+          "type": "controller",
+          "description": "`gc bd [bd-args...]`: runs bd in the rig dir that owns the bead prefix, with gc's env pinned (used by pack scripts and agents). Source: cmd/gc/cmd_bd.go:70 (newBdCmd), cmd/gc/cmd_bd.go:177 (bdCommandEnv)."
+        },
+        {
+          "name": "ManagedDolt",
+          "type": "service",
+          "description": "Starts and watches a managed `dolt sql-server` for the city when the city owns its Dolt. Source: cmd/gc/dolt_start_managed.go:150 (startManagedDoltProcess), cmd/gc/dolt_scope_watchdog.go:212 (sql-server)."
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "parent_system": "Gas City engine",
+      "type": "file_storage",
+      "description": "Tier-0 observability bus: the recorder appends JSON lines to .gc/events.jsonl (rotated, best-effort); readers scan back with cursors; the supervisor multiplexes all cities' event providers for /v0/events/stream; event-triggered orders consume it. Source: internal/events/events.go:1-6 (.gc/events.jsonl), internal/events/recorder.go:57 (FileRecorder), internal/events/multiplexer.go:36 (Multiplexer), cmd/gc/cmd_events.go:150 (newEventsCmd).",
+      "technologies": ["Go", "JSONL file"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#85bbf0", "shape": "cylinder"},
+      "components": [
+        {
+          "name": "EventRecorder",
+          "type": "repository",
+          "description": "FileRecorder writing .gc/events.jsonl with size-based rotation; created per city by the providers wiring. Source: internal/events/recorder.go:57 (FileRecorder), internal/events/recorder.go:223 (NewFileRecorder), cmd/gc/providers.go:1283 (NewFileRecorder)."
+        },
+        {
+          "name": "EventCatalog",
+          "type": "config",
+          "description": "Event type constants (bead.created, bead.updated, session.*, order.* ...) and the Event / Recorder / Provider interfaces. Source: internal/events/events.go:23 (BeadCreated), internal/events/events.go:789 (Event), internal/events/events.go:807 (Recorder), internal/events/events.go:832 (Provider)."
+        },
+        {
+          "name": "EventMultiplexer",
+          "type": "service",
+          "description": "Merges per-city event providers with per-city cursors for the supervisor stream and event export. Source: internal/events/multiplexer.go:36 (Multiplexer), internal/api/supervisor.go:580 (buildMultiplexer), internal/eventfeed/muxsource.go:26 (MuxSource)."
+        },
+        {
+          "name": "EventsCommand",
+          "type": "controller",
+          "description": "`gc events` list / --watch / --follow over the API (running city) or the journal (stopped city). Source: cmd/gc/cmd_events.go:150 (newEventsCmd)."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "MailSendCommand", "to": "MailProvider", "label": "Writes the message through the mail provider. Source: cmd/gc/cmd_mail.go:2151 (cmdMailSend).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "MailSendCommand", "to": "SessionNudgeDelivery", "label": "--notify (alias --nudge) builds a nudge function that requests a recipient turn. Source: cmd/gc/cmd_mail.go:1916 (alias for --notify), cmd/gc/cmd_mail.go:2247 (newMailNudgeFunc).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "MailCheckCommand", "to": "MailProvider", "label": "Reads unread mail for the caller's identity. Source: cmd/gc/cmd_mail.go:525 (newMailCheckCmd).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "MailProvider", "to": "Bead store integration", "label": "Messages are beads of the messaging class. Source: internal/mail/beadmail/beadmail.go:72 (NewWithSessionDirectory), internal/coordclass/class.go:72 (ClassMessaging).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "SessionNudgeDelivery", "to": "NudgeQueue", "label": "A nudge is delivered live, or queued when the session cannot take it now. Source: cmd/gc/cmd_nudge.go:1442 (deliverSessionNudgeKeyed), cmd/gc/cmd_nudge.go:1498 (or queues it).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "SessionNudgeDelivery", "to": "TmuxProvider", "label": "Immediate delivery types the nudge into the session. Source: internal/runtime/nudge_delivery.go:103 (NudgeWithDeliveryKey), internal/runtime/tmux/adapter.go:882 (Nudge).", "type": "calls", "technologies": ["tmux CLI"]},
+    {"from": "NudgeQueueDispatcher", "to": "NudgeQueue", "label": "Claims pending nudges for live targets. Source: cmd/gc/nudge_dispatcher.go:128 (dispatchQueuedNudges).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "NudgeQueueDispatcher", "to": "RuntimeProviderRegistry", "label": "Delivers through the session's runtime provider. Source: cmd/gc/nudge_dispatcher.go:115 (runtime.Provider).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "NudgeDrainCommand", "to": "NudgeQueue", "label": "Drains this session's queued nudges into the current turn. Source: cmd/gc/cmd_nudge.go:745 (cmdNudgeDrainWithFormat).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "NudgeQueue", "to": "Bead store integration", "label": "One queued nudge is one bead in the nudges class. Source: internal/storebinding/beads_nudge_queue.go:5 (one queued), internal/coordclass/class.go:87 (ClassNudges).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "BdStore", "to": "bd (Beads CLI)", "label": "Each store operation is a bd subprocess. Source: internal/beads/bdstore.go:138 (exec.CommandContext).", "type": "calls", "technologies": ["bd CLI subprocess"]},
+    {"from": "BdPassthrough", "to": "bd (Beads CLI)", "label": "Runs the requested bd command in the owning rig dir. Source: cmd/gc/cmd_bd.go:70 (newBdCmd), cmd/gc/cmd_bd.go:177 (bdCommandEnv).", "type": "calls", "technologies": ["bd CLI subprocess"]},
+    {"from": "NativeDoltStore", "to": "Dolt sql-server", "label": "Reads and writes the work ledger through the beads Go library. Source: internal/beads/native_dolt_store.go:364 (beadslib.Storage), go.mod:28 (steveyegge/beads).", "type": "writes_to", "technologies": ["Dolt SQL (beads library)"]},
+    {"from": "SQLiteStore", "to": "SQLite store files", "label": "Opens beads.sqlite in-process. Source: internal/beads/sqlite_store.go:264 (OpenSQLiteStore), internal/beads/sqlite_store.go:338 (sql.Open).", "type": "writes_to", "technologies": ["SQLite (modernc.org/sqlite)"]},
+    {"from": "ManagedDolt", "to": "Dolt sql-server", "label": "Spawns and supervises the dolt sql-server process. Source: cmd/gc/dolt_scope_watchdog.go:212 (sql-server).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "CachingStore", "to": "BeadStoreInterface", "label": "Wraps the backing store. Source: internal/beads/caching_store.go:568 (NewCachingStore).", "type": "implements", "technologies": ["Go function call"]},
+    {"from": "ClassStoreRouting", "to": "EventRecorder", "label": "Class-store writes emit bead.created / updated / closed events. Source: cmd/gc/class_store_emit.go:230 (emit), cmd/gc/class_store_emit.go:365 (events.BeadCreated).", "type": "writes_to", "technologies": ["JSONL file"]},
+    {"from": "EventRecorder", "to": "City directory", "label": "Appends to <city>/.gc/events.jsonl. Source: internal/events/events.go:5 (.gc/events.jsonl).", "type": "writes_to", "technologies": ["JSONL file"]},
+    {"from": "EventMultiplexer", "to": "EventRecorder", "label": "Reads each city's event provider. Source: internal/api/supervisor.go:580 (buildMultiplexer).", "type": "reads_from", "technologies": ["Go function call"]},
+    {"from": "PatrolTickLoop", "to": "EventRecorder", "label": "The controller records lifecycle and reload events. Source: cmd/gc/city_runtime.go:3049 (cr.rec.Record).", "type": "writes_to", "technologies": ["Go function call"]}
+  ]
+}

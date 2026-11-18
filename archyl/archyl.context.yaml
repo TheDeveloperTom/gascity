@@ -1,0 +1,104 @@
+{
+  "technologies": [
+    {"name": "Go", "category": "other"},
+    {"name": "cobra CLI", "category": "other"},
+    {"name": "Go function call", "category": "other"},
+    {"name": "TOML", "category": "other"},
+    {"name": "JSON", "category": "other"},
+    {"name": "JSONL file", "category": "other"},
+    {"name": "Unix socket", "category": "other"},
+    {"name": "HTTP/SSE (huma)", "category": "other"},
+    {"name": "bd CLI subprocess", "category": "other"},
+    {"name": "Dolt SQL (beads library)", "category": "other"},
+    {"name": "SQLite (modernc.org/sqlite)", "category": "other"},
+    {"name": "tmux CLI", "category": "other"},
+    {"name": "os/exec", "category": "other"},
+    {"name": "git CLI", "category": "other"},
+    {"name": "GitHub GraphQL API", "category": "other"},
+    {"name": "Claude Code hooks", "category": "other"},
+    {"name": "filesystem", "category": "other"},
+    {"name": "symlink", "category": "other"},
+    {"name": "fsnotify", "category": "other"},
+    {"name": "launchd/systemd", "category": "other"},
+    {"name": "go:embed", "category": "other"}
+  ],
+  "systems": [
+    {
+      "name": "Gas City engine",
+      "type": "software_system",
+      "description": "The gc binary built from TheDeveloperTom/gascity at 918a0c252: one Go program that is both the CLI (cobra command tree) and the long-running machine-wide supervisor that hosts one controller (CityRuntime) per registered city, the typed /v0 API and the embedded dashboard. It composes city.toml + packs into a config, reconciles agent sessions in tmux/subprocess/acp runtimes, materialises skills/MCP/Claude settings into work dirs, runs formulas v2 as bead molecules, dispatches orders, routes mail and nudges, and stores everything as beads (bd/Dolt/SQLite). Source: cmd/gc/main.go:33 (main), cmd/gc/main.go:314 (newRootCmdWithOptions), cmd/gc/cmd_supervisor.go:1496 (runSupervisor), go.mod:28 (github.com/steveyegge/beads)."
+    },
+    {
+      "name": "City directory",
+      "type": "external_system",
+      "description": "The operator's city on disk: city.toml with [[patches.agent]] and includes, the city pack (pack.toml, agents/<name>/, formulas/, orders/, skills/), and the runtime dir .gc/ (events.jsonl, settings.json, store/). Read by config composition, written by materialisers. Source: internal/config/compose.go:147 (LoadWithIncludesOptions), internal/hooks/hooks.go:662 (runtimeDst), internal/events/events.go:5 (.gc/events.jsonl), cmd/gc/init_storage.go:84 (initSplitBindingName).",
+      "technologies": ["filesystem", "TOML"]
+    },
+    {
+      "name": "GC home (~/.gc)",
+      "type": "external_system",
+      "description": "Machine-wide state of the supervisor: cities.toml (registry of cities), supervisor.toml (bind/port/patrol), cache/repos (the packs repo cache, modelled separately). Source: internal/supervisor/config.go:300 (RegistryPath), internal/supervisor/config.go:305 (ConfigPath), internal/config/implicit.go:109 (GlobalRepoCacheRoot).",
+      "technologies": ["filesystem", "TOML"]
+    },
+    {
+      "name": "Packs repo cache",
+      "type": "external_system",
+      "description": "<GC_HOME>/cache/repos/<source+commit key>: git checkouts of remote pack imports pinned by packs.lock, plus synthetic caches of the packs embedded in the binary. A pack-defined agent's SourceDir points here, so its agents/<name>/skills and mcp dirs, prompt and overlay are read from this cache, not from the city. Source: internal/config/implicit.go:109 (GlobalRepoCacheRoot), internal/packman/cache.go:91 (RepoCachePath), internal/packman/cache.go:103 (EnsureRepoInCache), internal/config/pack.go:1576 (SourceDir).",
+      "technologies": ["filesystem", "git CLI"]
+    },
+    {
+      "name": "GitHub",
+      "type": "external_system",
+      "description": "Remote git hosting for pack sources (clone/fetch/ls-remote tags by packman) and the GraphQL API read by the PR monitor. The bundled packs' canonical source is github.com/gastownhall/gascity. Source: internal/packman/cache.go:386 (defaultRunNetworkGit), internal/packman/resolve.go:95 (listRemoteTags), internal/githubmonitor/client.go:14 (defaultGraphQLEndpoint), internal/builtinpacks/registry.go:29 (Repository).",
+      "technologies": ["git CLI", "GitHub GraphQL API"]
+    },
+    {
+      "name": "bd (Beads CLI)",
+      "type": "external_system",
+      "description": "The beads command-line tool. The engine shells out to it through BdStore and passes raw invocations through `gc bd` with the right rig directory and env. Source: internal/beads/bdstore.go:472 (BdStore), internal/beads/bdstore.go:138 (exec.CommandContext), cmd/gc/cmd_bd.go:70 (newBdCmd).",
+      "technologies": ["bd CLI subprocess"]
+    },
+    {
+      "name": "Dolt sql-server",
+      "type": "external_system",
+      "description": "Dolt SQL server holding the work ledger (bd's database). The engine can run it as a managed child process and opens it natively through the beads Go library (NativeDoltStore). Source: cmd/gc/dolt_start_managed.go:150 (startManagedDoltProcess), cmd/gc/dolt_scope_watchdog.go:212 (sql-server), internal/beads/native_dolt_store.go:620 (OpenNativeDoltStoreAt).",
+      "technologies": ["Dolt SQL (beads library)"]
+    },
+    {
+      "name": "SQLite store files",
+      "type": "external_system",
+      "description": "Local SQLite bead stores (beads.sqlite) opened in-process with the pure-Go modernc driver. A born-split city keeps graph, sessions, messaging, orders and nudges classes in one sqlite-beads binding under .gc/store; work stays on the Dolt ledger. Source: internal/beads/sqlite_store.go:23 (modernc.org/sqlite), internal/beads/sqlite_store.go:27 (sqliteStoreFilename), cmd/gc/init_storage.go:72 (bornSplitStorageConfig).",
+      "technologies": ["SQLite (modernc.org/sqlite)"]
+    },
+    {
+      "name": "tmux",
+      "type": "external_system",
+      "description": "Terminal multiplexer that hosts agent sessions for the default runtime; the tmux provider drives it by exec of the tmux binary (new-session, send-keys, capture). Source: internal/runtime/tmux/tmux.go:466 (exec.CommandContext), internal/runtime/tmux/adapter.go:110 (Start).",
+      "technologies": ["tmux CLI"]
+    },
+    {
+      "name": "Claude Code",
+      "type": "external_system",
+      "description": "The default agent CLI (builtin provider \"claude\", command `claude`, prompt delivered as argv). Launched with --settings <city>/.gc/settings.json; its SessionStart/PreCompact/UserPromptSubmit hooks call back into gc (prime, handoff, nudge drain, mail check). Reads skills from <workdir>/.claude/skills and MCP servers from <workdir>/.mcp.json. Source: internal/worker/builtin/profiles.go:247 (claude), internal/worker/builtin/profiles.go:259 (PromptMode), internal/config/launch_command.go:241 (--settings), internal/hooks/config/claude.json:7 (SessionStart), internal/materialize/skills.go:94 (claude), internal/materialize/mcp_project.go:71 (.mcp.json).",
+      "technologies": ["Claude Code hooks"]
+    },
+    {
+      "name": "Other agent CLIs",
+      "type": "external_system",
+      "description": "The other builtin providers the engine can launch and materialise for: Codex, Gemini, Grok, Kimi, Kiro, Cursor, Copilot, AMP, OpenCode, MiMo, ZCode, Auggie, Pi, OMP, Antigravity. Each has its own skills sink and MCP projection target. Source: internal/worker/builtin/profiles.go:340 (Codex CLI), internal/worker/builtin/profiles.go:445 (Gemini CLI), internal/materialize/skills.go:93 (vendorSinks), internal/materialize/mcp_project.go:24 (MCPProviderCodex).",
+      "technologies": ["os/exec"]
+    },
+    {
+      "name": "OS service manager (launchd/systemd)",
+      "type": "external_system",
+      "description": "Keeps the machine-wide supervisor process alive; gc supervisor install/start manage its launchd plist or systemd unit and report supervision problems. Source: cmd/gc/cmd_supervisor_lifecycle.go:310 (supervisorLaunchdSupervisionWarning), cmd/gc/cmd_supervisor_lifecycle.go:342 (supervisorLaunchdRemedy).",
+      "technologies": ["launchd/systemd"]
+    },
+    {
+      "name": "Web browser",
+      "type": "external_system",
+      "description": "Operator's browser showing the dashboard SPA served same-origin by the supervisor; `gc dashboard` only resolves and opens the URL. Source: cmd/gc/cmd_dashboard.go:24 (newDashboardCmd), internal/api/dashboardspa/embed.go:10 (go:embed).",
+      "technologies": ["HTTP/SSE (huma)"]
+    }
+  ]
+}
