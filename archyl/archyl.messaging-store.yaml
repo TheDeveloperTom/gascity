@@ -4,7 +4,7 @@
       "name": "Mail and nudge",
       "parent_system": "Gas City engine",
       "type": "message_queue",
-      "description": "Agent-to-agent (and human) messaging. Mail is message beads in the messaging class behind a mail.Provider (bead-backed by default); `gc mail send --notify` also requests a recipient turn. Nudges are short prompts queued durably (one nudge = one bead in the nudges class) and delivered into live sessions by the controller or drained by the agent's UserPromptSubmit hook. Source: internal/mail/mail.go:127 (Provider), internal/mail/beadmail/beadmail.go:46 (Provider), cmd/gc/cmd_mail.go:1866 (newMailSendCmd), internal/storebinding/beads_nudge_queue.go:1 (nudge queue as BEADS), cmd/gc/nudge_dispatcher.go:115 (dispatchAllQueuedNudges).",
+      "description": "Agent-to-agent (and human) messaging. Mail is message beads in the messaging class behind a mail.Provider (bead-backed by default); `gc mail send --notify` also requests a recipient turn. Nudges are short prompts queued durably in the file <city>/.gc/nudges/state.json (beads in the nudges class are only its shadows) and delivered into live sessions by the controller or drained by the agent's UserPromptSubmit hook. Source: internal/mail/mail.go:127 (Provider), internal/mail/beadmail/beadmail.go:46 (Provider), cmd/gc/cmd_mail.go:1866 (newMailSendCmd), cmd/gc/nudge_queue_seam.go:60-61 (file queue only), cmd/gc/nudge_file_queue.go:19 (state.json), cmd/gc/nudge_dispatcher.go:115 (dispatchAllQueuedNudges).",
       "technologies": ["Go"],
       "tags": ["source: code 918a0c252"],
       "style": {"background_color": "#438dd5", "shape": "pipe"},
@@ -12,7 +12,7 @@
         {
           "name": "MailProvider",
           "type": "adapter",
-          "description": "mail.Provider interface and the bead-backed implementation (messages as beads, recipients resolved through the session address directory); an exec provider exists for external mail backends. Source: internal/mail/mail.go:127 (Provider), internal/mail/beadmail/beadmail.go:46 (Provider), internal/mail/beadmail/beadmail.go:72 (NewWithSessionDirectory), internal/mail/exec/exec.go:1 (package exec)."
+          "description": "mail.Provider interface and the bead-backed implementation (messages as beads, recipients resolved through the session address directory); an exec provider exists for external mail backends. Source: internal/mail/mail.go:127 (Provider), internal/mail/beadmail/beadmail.go:46 (Provider), internal/mail/beadmail/beadmail.go:72 (NewWithSessionDirectory), internal/mail/exec/exec.go:1 (Package exec)."
         },
         {
           "name": "MailSendCommand",
@@ -27,7 +27,7 @@
         {
           "name": "NudgeQueue",
           "type": "repository",
-          "description": "Durable nudge queue: items with pending / in-flight / dead / terminal states, stored as beads with CAS primitives. Source: internal/nudgequeue/state.go:36 (Item), internal/nudgequeue/state.go:111 (State), internal/storebinding/beads_nudge_queue.go:5 (one queued)."
+          "description": "Durable nudge queue as cmd/gc builds it: the flock'd file <city>/.gc/nudges/state.json is the queue; beads in the nudges class are its shadows. A beads-backed queue implementation exists, but only the SQLite storage binding constructs it; openNudgeQueue, the only constructor in cmd/gc, builds the file queue. Source: cmd/gc/nudge_queue_seam.go:60-61 (openNudgeQueue), cmd/gc/nudge_file_queue.go:19 (state.json), internal/nudgequeue/state.go:36 (Item), internal/nudgequeue/state.go:111 (State), internal/coordclass/class.go:87 (ClassNudges), internal/storebinding/sqlite/beads_provider.go:554 (NewBeadsNudgeQueue)."
         },
         {
           "name": "NudgeQueueDispatcher",
@@ -93,7 +93,12 @@
         {
           "name": "ManagedDolt",
           "type": "service",
-          "description": "Starts and watches a managed `dolt sql-server` for the city when the city owns its Dolt. Source: cmd/gc/dolt_start_managed.go:150 (startManagedDoltProcess), cmd/gc/dolt_scope_watchdog.go:212 (sql-server)."
+          "description": "Lifecycle of the managed `dolt sql-server` when the city owns its Dolt: start and watch, a lifecycle lock around those operations, recovery of the process, and choice of its port. Source: cmd/gc/dolt_start_managed.go:150 (startManagedDoltProcess), cmd/gc/dolt_scope_watchdog.go:212 (sql-server), cmd/gc/dolt_lifecycle_lock.go:12 (openManagedDoltLifecycleLock), cmd/gc/dolt_recover_managed.go:53 (recoverManagedDoltProcess), cmd/gc/dolt_port_selection.go:14 (chooseManagedDoltPort)."
+        },
+        {
+          "name": "HostedBeadsCredential",
+          "type": "adapter",
+          "description": "`gc internal beads-credential`: the command bd runs to mint a hosted Beads credential; it executes a configured credential-provider command over the Gas City v1 JSON protocol and caches the result. Source: cmd/gc/cmd_internal_beads_credential.go:26 (command bd runs), cmd/gc/cmd_internal_beads_credential.go:56 (beads-credential), cmd/gc/cmd_internal_beads_credential.go:84 (credentialprovider.New), internal/credentialprovider/credentialprovider.go:1 (credentialprovider)."
         }
       ]
     },
@@ -139,7 +144,9 @@
     {"from": "NudgeQueueDispatcher", "to": "NudgeQueue", "label": "Claims pending nudges for live targets. Source: cmd/gc/nudge_dispatcher.go:128 (dispatchQueuedNudges).", "type": "reads_from", "technologies": ["Go function call"]},
     {"from": "NudgeQueueDispatcher", "to": "RuntimeProviderRegistry", "label": "Delivers through the session's runtime provider. Source: cmd/gc/nudge_dispatcher.go:115 (runtime.Provider).", "type": "calls", "technologies": ["Go function call"]},
     {"from": "NudgeDrainCommand", "to": "NudgeQueue", "label": "Drains this session's queued nudges into the current turn. Source: cmd/gc/cmd_nudge.go:745 (cmdNudgeDrainWithFormat).", "type": "reads_from", "technologies": ["Go function call"]},
-    {"from": "NudgeQueue", "to": "Bead store integration", "label": "One queued nudge is one bead in the nudges class. Source: internal/storebinding/beads_nudge_queue.go:5 (one queued), internal/coordclass/class.go:87 (ClassNudges).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "NudgeQueue", "to": "Bead store integration", "label": "Saves shadow beads for queued nudges in the nudges-class store; the queue itself stays in state.json. Source: cmd/gc/nudge_queue_seam.go:52-53 (shadow), internal/coordclass/class.go:87 (ClassNudges).", "type": "writes_to", "technologies": ["Go function call"]},
+    {"from": "NudgeQueue", "to": "City directory", "label": "The queue is the flock'd file <city>/.gc/nudges/state.json. Source: cmd/gc/nudge_file_queue.go:19 (state.json).", "type": "writes_to", "technologies": ["filesystem", "JSON"]},
+    {"from": "bd (Beads CLI)", "to": "HostedBeadsCredential", "label": "bd runs this command to mint a hosted Beads credential. Source: cmd/gc/cmd_internal_beads_credential.go:26 (command bd runs).", "type": "calls", "technologies": ["os/exec"]},
     {"from": "BdStore", "to": "bd (Beads CLI)", "label": "Each store operation is a bd subprocess. Source: internal/beads/bdstore.go:138 (exec.CommandContext).", "type": "calls", "technologies": ["bd CLI subprocess"]},
     {"from": "BdPassthrough", "to": "bd (Beads CLI)", "label": "Runs the requested bd command in the owning rig dir. Source: cmd/gc/cmd_bd.go:70 (newBdCmd), cmd/gc/cmd_bd.go:177 (bdCommandEnv).", "type": "calls", "technologies": ["bd CLI subprocess"]},
     {"from": "NativeDoltStore", "to": "Dolt sql-server", "label": "Reads and writes the work ledger through the beads Go library. Source: internal/beads/native_dolt_store.go:364 (beadslib.Storage), go.mod:28 (steveyegge/beads).", "type": "writes_to", "technologies": ["Dolt SQL (beads library)"]},

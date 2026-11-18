@@ -79,11 +79,24 @@
           "name": "BuiltinPacksBootstrap",
           "type": "service",
           "description": "Packs embedded in the gc binary (core pack: agents, assets, doctor, formulas, orders, overlay, skills, template-fragments) are materialised as synthetic caches and kept current before each config load. Source: internal/bootstrap/packs/core/embed.go:12 (go:embed), cmd/gc/embed_builtin_packs.go:44 (ensureBuiltinPacksForConfigLoad), cmd/gc/embed_builtin_packs.go:70 (EnsureBuiltinRuntimeAssets), internal/packman/install.go:123 (EnsureBundledPacksCurrent), internal/builtinpacks/registry.go:29 (Repository)."
+        },
+        {
+          "name": "GitCredentials",
+          "type": "adapter",
+          "description": "gitcred: resolves git credentials for private pack imports and injects them into network git through git's credential-helper protocol; it fails closed on a bad rules file or permissions. Source: internal/gitcred/autherror.go:1 (Package gitcred), internal/gitcred/inject.go:40 (fails closed), internal/gitcred/inject.go:44 (CredentialedNetworkArgs)."
+        },
+        {
+          "name": "PackRegistry",
+          "type": "repository",
+          "description": "Configured pack registries (registries.toml in GC home) and their cached catalogs, behind `gc pack registry`. Source: internal/packregistry/catalog.go:1 (Package packregistry), internal/packregistry/catalog.go:52 (Catalog), internal/packregistry/config.go:47 (registries.toml), internal/packregistry/config.go:53 (LoadConfig), cmd/gc/cmd_pack_registry.go:264 (EnsureDefaultRegistryConfig)."
         }
       ]
     }
   ],
   "relationships": [
+    {"from": "RepoCache", "to": "Git", "label": "Runs the git CLI to clone pack repos into the cache. Source: internal/packman/cache.go:192 (clone).", "type": "calls", "technologies": ["git CLI"]},
+    {"from": "RepoCache", "to": "GitCredentials", "label": "Asks for credential injection before network git. Source: internal/packman/cache.go:387 (CredentialedNetworkArgs).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "PackRegistry", "to": "GC home (~/.gc)", "label": "Loads the registry config from GC home. Source: cmd/gc/cmd_pack_registry.go:263 (gchome.Default), cmd/gc/cmd_pack_registry.go:268 (LoadConfig).", "type": "reads_from", "technologies": ["TOML"]},
     {"from": "CityConfigLoader", "to": "City directory", "label": "Parses city.toml and its include fragments. Source: internal/config/compose.go:147 (LoadWithIncludesOptions), internal/config/compose.go:905 (resolvePackRef).", "type": "reads_from", "technologies": ["TOML"]},
     {"from": "CityConfigLoader", "to": "PackExpansion", "label": "Expands imported packs into agents, sessions, providers, services. Source: internal/config/compose.go:550 (expandPacks).", "type": "calls", "technologies": ["Go function call"]},
     {"from": "CityConfigLoader", "to": "AgentPatchApplier", "label": "Applies [[patches.agent]] after packs are expanded. Source: internal/config/compose.go:616 (ApplyPatches).", "type": "calls", "technologies": ["Go function call"]},

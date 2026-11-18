@@ -20,7 +20,11 @@
     {"name": "symlink", "category": "other"},
     {"name": "fsnotify", "category": "other"},
     {"name": "launchd/systemd", "category": "other"},
-    {"name": "go:embed", "category": "other"}
+    {"name": "go:embed", "category": "other"},
+    {"name": "Kubernetes API (client-go)", "category": "other"},
+    {"name": "tmux pane options", "category": "other"},
+    {"name": "env GC_GRANT_INFO + stdout", "category": "other"},
+    {"name": "React SPA", "category": "other"}
   ],
   "systems": [
     {
@@ -99,6 +103,18 @@
       "type": "external_system",
       "description": "Operator's browser showing the dashboard SPA served same-origin by the supervisor; `gc dashboard` only resolves and opens the URL. Source: cmd/gc/cmd_dashboard.go:24 (newDashboardCmd), internal/api/dashboardspa/embed.go:10 (go:embed).",
       "technologies": ["HTTP/SSE (huma)"]
+    },
+    {
+      "name": "Git",
+      "type": "external_system",
+      "description": "The git CLI on the host. gc runs it to clone pack repos into the repo cache, with credentials injected for private imports. Source: internal/packman/cache.go:192 (clone), internal/packman/cache.go:387 (CredentialedNetworkArgs).",
+      "technologies": ["git CLI"]
+    },
+    {
+      "name": "Kubernetes",
+      "type": "external_system",
+      "description": "A Kubernetes cluster used by the k8s session runtime: agent sessions run as pods driven through client-go. Source: internal/runtime/k8s/provider.go:19 (kubernetes), internal/runtime/k8s/provider.go:83 (NewProvider).",
+      "technologies": ["Kubernetes API (client-go)"]
     }
   ]
 }

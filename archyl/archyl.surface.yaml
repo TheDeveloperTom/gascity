@@ -39,15 +39,15 @@
     {
       "name": "API server and dashboard",
       "parent_system": "Gas City engine",
-      "type": "web_app",
-      "description": "HTTP surface hosted by the supervisor: the typed huma /v0 API per city (sessions, mail, sling, orders, beads, events, formulas, packs, webhooks) with SSE streams, the dashboard SPA embedded in the binary and a host-side /api BFF plane (config projection, git/builds reads, health). Source: internal/api/supervisor.go:180 (NewSupervisorMux), internal/api/server.go:282 (New), internal/api/sse.go:359 (text/event-stream), internal/api/dashboardspa/embed.go:10 (go:embed), internal/api/dashboardbff/plane.go:90 (New).",
+      "type": "service",
+      "description": "HTTP surface hosted by the supervisor: the typed huma /v0 API per city (sessions, mail, sling, orders, beads, events, formulas, packs, webhooks) with SSE streams, static serving of the embedded dashboard SPA and a host-side /api BFF plane (config projection, git/builds reads, health). Source: internal/api/supervisor.go:180 (NewSupervisorMux), internal/api/server.go:282 (New), internal/api/sse.go:359 (text/event-stream), internal/api/dashboardspa/embed.go:10 (go:embed), internal/api/dashboardbff/plane.go:90 (New).",
       "technologies": ["Go", "HTTP/SSE (huma)", "go:embed"],
       "tags": ["source: code 918a0c252"],
       "style": {"background_color": "#1168bd", "shape": "box"},
       "components": [
         {
           "name": "SupervisorMux",
-          "type": "gateway",
+          "type": "middleware",
           "description": "One mux for all cities: resolves the city per request, builds the cross-city event multiplexer, mounts SPA, BFF and /svc proxy. Source: internal/api/supervisor.go:180 (NewSupervisorMux), internal/api/supervisor.go:580 (buildMultiplexer)."
         },
         {
@@ -61,14 +61,46 @@
           "description": "Server-sent event streams (events, session output, convoys). Source: internal/api/sse.go:359 (text/event-stream), internal/api/event_stream_pump.go:1 (package api)."
         },
         {
-          "name": "DashboardSPA",
-          "type": "web_app",
-          "description": "Dashboard single-page app embedded from dist/ and served same-origin by the supervisor; `gc dashboard` only opens its URL. Source: internal/api/dashboardspa/embed.go:10 (go:embed all:dist), cmd/gc/cmd_dashboard.go:24 (newDashboardCmd)."
-        },
-        {
           "name": "DashboardBFF",
           "type": "service",
           "description": "Host-side /api/* plane replacing the former Node BFF: config projection, git/builds reads (git subprocess), run diffs, health probes. Source: internal/api/dashboardbff/plane.go:1 (Package dashboardbff), internal/api/dashboardbff/plane.go:90 (New), internal/api/dashboardbff/exec.go:285 (git)."
+        }
+      ]
+    },
+    {
+      "name": "Dashboard SPA",
+      "parent_system": "Gas City engine",
+      "type": "web_app",
+      "description": "The React single-page dashboard. It runs in the operator's browser; its build is embedded in the gc binary and served same-origin by the supervisor. It calls the typed /v0 API and the host-side /api plane. Source: internal/api/dashboardspa/web/frontend/src/main.tsx:2 (react-dom), internal/api/dashboardspa/embed.go:10 (go:embed all:dist), cmd/gc/supervisor_dashboard.go:60 (NewStaticHandler), internal/api/dashboardspa/web/frontend/src/api/client.ts:55 (fetch).",
+      "technologies": ["React SPA", "HTTP/SSE (huma)", "go:embed"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#1168bd", "shape": "web_browser"},
+      "components": [
+        {
+          "name": "DashboardSPA",
+          "type": "module",
+          "description": "Dashboard single-page app embedded from dist/ and served same-origin by the supervisor; `gc dashboard` only opens its URL. Source: internal/api/dashboardspa/embed.go:10 (go:embed all:dist), cmd/gc/cmd_dashboard.go:24 (newDashboardCmd), internal/api/dashboardspa/web/frontend/src/api/client.ts:55 (fetch)."
+        }
+      ]
+    },
+    {
+      "name": "gc-write-mint (write grant minter)",
+      "parent_system": "Gas City engine",
+      "type": "service",
+      "description": "A separate reference binary, not part of gc: a client-side helper for a direct hardened city. gc runs it as a context's grant_command; it re-validates the request binding and signs a single X-GC-City-Write grant with an ed25519 key that never enters gc. Source: cmd/gc-write-mint/main.go:1 (gc-write-mint), cmd/gc-write-mint/main.go:2 (grant_command), cmd/gc-write-mint/main.go:9 (re-validating signer), cmd/gc-write-mint/main.go:11 (dev/reference tool).",
+      "technologies": ["Go", "env GC_GRANT_INFO + stdout"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#999999", "shape": "box"},
+      "components": [
+        {
+          "name": "WriteGrantMinter",
+          "type": "service",
+          "description": "Reads the request binding from GC_GRANT_INFO, recomputes the request digest, refuses on a mismatch, signs with ed25519 and prints the token to stdout. Source: cmd/gc-write-mint/main.go:3 (GC_GRANT_INFO), cmd/gc-write-mint/main.go:5 (recomputes the request digest), cmd/gc-write-mint/main.go:76 (main)."
+        },
+        {
+          "name": "WriteMintKeygen",
+          "type": "job",
+          "description": "`gc-write-mint keygen` writes the ed25519 private key (PEM PKCS#8, mode 0600) and prints the entry for the server's write-auth verify key list. Source: cmd/gc-write-mint/keygen.go:38 (runKeygen), cmd/gc-write-mint/main.go:18 (keygen subcommand)."
         }
       ]
     },
@@ -100,6 +132,9 @@
     }
   ],
   "relationships": [
+    {"from": "SupervisorMux", "to": "DashboardSPA", "label": "The supervisor attaches the embedded SPA as the mux's static handler. Source: cmd/gc/supervisor_dashboard.go:60 (NewStaticHandler), cmd/gc/supervisor_dashboard.go:65 (WithStaticHandler).", "type": "uses", "technologies": ["go:embed"]},
+    {"from": "RemoteWriteClient", "to": "WriteGrantMinter", "label": "For a context with grant_command, runs the helper with the request binding in GC_GRANT_INFO to mint a grant. Source: cmd/gc/remote_client.go:115 (NewGrantSource), internal/clientgrant/clientgrant.go:37 (GC_GRANT_INFO).", "type": "calls", "technologies": ["env GC_GRANT_INFO + stdout"]},
+    {"from": "RemoteWriteClient", "to": "CityAPIServer", "label": "Mutating requests to a hardened city carry the X-GC-City-Write grant. Source: cmd/gc/remote_client.go:104 (X-GC-City-Write), internal/api/writeauth.go:35 (X-GC-City-Write).", "type": "sends_to", "technologies": ["HTTP/SSE (huma)"]},
     {"from": "DoctorCommand", "to": "DoctorFramework", "label": "Registers and runs the city's checks. Source: cmd/gc/cmd_doctor.go:249 (buildDoctorChecks), internal/doctor/doctor.go:81 (Run).", "type": "calls", "technologies": ["Go function call"]},
     {"from": "DoctorCommand", "to": "CityConfigLoader", "label": "Doctor loads the composed config to decide which checks apply. Source: cmd/gc/cmd_doctor.go:713 (doDoctor), internal/config/compose.go:1892 (LoadPackGraphDirsForDoctor).", "type": "calls", "technologies": ["Go function call"]},
     {"from": "PackScriptChecks", "to": "Packs repo cache", "label": "Check scripts live in the pack dir (cache checkout for remote packs). Source: internal/doctor/pack_checks.go:31 (PackScriptCheck), cmd/gc/cmd_doctor.go:683 (doctor.PackScriptCheck).", "type": "calls", "technologies": ["os/exec"]},

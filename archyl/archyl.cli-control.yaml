@@ -38,6 +38,16 @@
           "name": "HandoffCommand",
           "type": "controller",
           "description": "`gc handoff`: sends handoff mail to self and, for a controller-restartable session, requests a restart and pokes the controller. Wired to Claude's PreCompact hook as `gc handoff --auto \"context cycle\"`. Source: cmd/gc/cmd_handoff.go:22 (newHandoffCmd), cmd/gc/cmd_handoff.go:31 (Send handoff mail), cmd/gc/cmd_handoff.go:171 (cmdHandoff)."
+        },
+        {
+          "name": "RemoteWriteClient",
+          "type": "adapter",
+          "description": "buildRemoteWriteClient: the API client for remote mutations; for a context with grant_command every mutating request carries a fresh request-bound X-GC-City-Write grant. Source: cmd/gc/remote_client.go:102 (buildRemoteWriteClient), cmd/gc/remote_client.go:109 (buildRemoteWriteClient), cmd/gc/remote_client.go:115 (NewGrantSource), cmd/gc/cmd_context.go:88 (grant-command)."
+        },
+        {
+          "name": "WorkerSitePlane",
+          "type": "module",
+          "description": "Worker-site mode: a city directory holding .gc/control-plane.toml is attached to a remote controller's ledgers, resolves Plane=Worker and refuses to run a controller or supervisor there. The descriptor and connect bundle wire forms live in internal/connect. Source: cmd/gc/control_plane.go:27 (worker-site mode), cmd/gc/control_plane.go:105 (errWorkerSiteRefusesController), cmd/gc/control_plane.go:210 (controlPlaneFor), internal/connect/descriptor.go:31 (Descriptor), internal/connect/bundle.go:102 (Bundle)."
         }
       ]
     },
@@ -156,6 +166,7 @@
     }
   ],
   "relationships": [
+    {"from": "WorkerSitePlane", "to": "City directory", "label": "Reads and strictly decodes .gc/control-plane.toml to decide the plane. Source: cmd/gc/control_plane.go:205 (control-plane.toml), cmd/gc/control_plane.go:210 (controlPlaneFor).", "type": "reads_from", "technologies": ["TOML"]},
     {"from": "StartCommand", "to": "CityRegistry", "label": "Registers the city in ~/.gc/cities.toml and ensures the supervisor runs. Source: cmd/gc/cmd_start.go:438 (registers the city).", "type": "writes_to", "technologies": ["TOML"]},
     {"from": "CityRegistry", "to": "GC home (~/.gc)", "label": "Registry file lives at <GC_HOME>/cities.toml. Source: internal/supervisor/config.go:300 (RegistryPath).", "type": "reads_from", "technologies": ["TOML"]},
     {"from": "SupervisorMain", "to": "CityReconciler", "label": "Each supervisor pass reconciles registered cities against running ones. Source: cmd/gc/cmd_supervisor.go:1975 (reconcileCities).", "type": "calls", "technologies": ["Go function call"]},

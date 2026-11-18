@@ -46,7 +46,7 @@
       "parent_system": "Gas City engine",
       "type": "service",
       "description": "The runtime.Provider abstraction and its registered implementations (tmux default; subprocess, acp, k8s, herdr, hybrid, t3bridge, fake/fail for tests) that actually start, observe, nudge and stop agent processes; plus the session Manager used by chat/API session operations. Source: internal/runtime/runtime.go:506 (Provider), cmd/gc/runtime_registry.go:33 (buildRuntimeRegistry), internal/runtime/tmux/adapter.go:110 (Start), internal/session/manager.go:647 (Manager).",
-      "technologies": ["Go", "tmux CLI", "os/exec"],
+      "technologies": ["Go", "tmux CLI", "os/exec", "Kubernetes API (client-go)"],
       "tags": ["source: code 918a0c252"],
       "style": {"background_color": "#438dd5", "shape": "box"},
       "components": [
@@ -68,12 +68,22 @@
         {
           "name": "OtherRuntimeAdapters",
           "type": "adapter",
-          "description": "acp (Agent Client Protocol, transcripts under the city), k8s, herdr, hybrid and t3bridge runtimes. Source: cmd/gc/runtime_registry.go:72 (acp), cmd/gc/runtime_registry.go:90 (k8s), cmd/gc/runtime_registry.go:98 (herdr), cmd/gc/runtime_registry.go:105 (hybrid)."
+          "description": "acp (Agent Client Protocol, transcripts under the city), herdr, hybrid and t3bridge runtimes. Source: cmd/gc/runtime_registry.go:72 (acp), cmd/gc/runtime_registry.go:98 (herdr), cmd/gc/runtime_registry.go:105 (hybrid)."
+        },
+        {
+          "name": "KubernetesProvider",
+          "type": "adapter",
+          "description": "The k8s runtime: runtime.Provider over Kubernetes pods through client-go, plus the provision/transport seams. Source: cmd/gc/runtime_registry.go:90 (k8s), internal/runtime/k8s/provider.go:19 (kubernetes), internal/runtime/k8s/provider.go:36 (Provider), internal/runtime/k8s/provider.go:83 (NewProvider), internal/runtime/k8s/seams.go:30 (Seams)."
         },
         {
           "name": "SessionManager",
           "type": "service",
           "description": "internal/session Manager: create/attach/chat session operations used by the API and CLI; starts sessions through the same runtime provider. Source: internal/session/manager.go:647 (Manager), internal/session/chat.go:494 (m.sp.Start)."
+        },
+        {
+          "name": "WorkerHandle",
+          "type": "module",
+          "description": "worker.Handle: the canonical in-memory API and boundary for session creation and lifecycle; callers outside internal/session reach sessions through it rather than through session.Manager. Source: internal/worker/handle.go:128 (Handle), internal/worker/AGENTS.md:3 (canonical boundary)."
         }
       ]
     },
@@ -115,6 +125,11 @@
           "name": "MCPProjectionWriter",
           "type": "module",
           "description": "Builds the provider-native MCP file (Claude .mcp.json, Codex .codex/config.toml, Gemini .gemini/settings.json, Cursor .cursor/mcp.json) and applies it; run in pre_start via `gc internal project-mcp`. Source: internal/materialize/mcp_project.go:49 (BuildMCPProjection), internal/materialize/mcp_project.go:71 (.mcp.json), internal/materialize/mcp_project.go:120 (Apply), cmd/gc/cmd_internal_project_mcp.go:18 (newInternalProjectMCPCmd), cmd/gc/mcp_integration.go:197 (appendProjectMCPPreStart)."
+        },
+        {
+          "name": "MCPAdoption",
+          "type": "module",
+          "description": "Plan and adoption rules for provider-native MCP files: Plan reports what Apply would do to the target, and gc refuses to adopt a file it does not manage yet when adopting would drop content it does not manage. Source: internal/materialize/mcp_project_plan.go:28 (MCPProjectionPlan), internal/materialize/mcp_project_plan.go:47 (Plan), internal/materialize/mcp_project_adopt.go:19 (MCPAdoptionRefusedError), internal/materialize/mcp_project_adopt.go:31 (MCPAdoptionRefusedError)."
         }
       ]
     },
@@ -141,11 +156,48 @@
           "name": "EmbeddedClaudeHooks",
           "type": "config",
           "description": "Embedded default Claude settings: skipDangerousModePermissionPrompt, enableAllProjectMcpServers; SessionStart(matcher startup) gc prime --hook; PreCompact gc handoff --auto \"context cycle\"; UserPromptSubmit gc hook run -- nudge drain --inject and -- mail check --inject. Source: internal/hooks/config/claude.json:2-3 (skipDangerousModePermissionPrompt), internal/hooks/config/claude.json:7-13 (SessionStart), internal/hooks/config/claude.json:18-24 (PreCompact), internal/hooks/config/claude.json:29-39 (UserPromptSubmit)."
+        },
+        {
+          "name": "ProviderHookScripts",
+          "type": "config",
+          "description": "Per-provider hook and plugin files embedded in the core pack overlay (Codex hooks.json, the OpenCode plugin and others) that call back into gc, for example prime --hook and handoff --auto. Source: internal/hooks/hooks.go:327 (per-provider), internal/bootstrap/packs/core/overlay/per-provider/codex/.codex/hooks.json:9 (prime --hook), internal/bootstrap/packs/core/overlay/per-provider/codex/.codex/hooks.json:20 (handoff --auto), internal/bootstrap/packs/core/overlay/per-provider/opencode/.opencode/plugins/gascity.js:10 (gc prime --hook)."
+        }
+      ]
+    },
+    {
+      "name": "gc-osc7501 (program status helper)",
+      "parent_system": "Gas City engine",
+      "type": "worker",
+      "description": "A separate small binary shipped next to gc: the OSC 7501 Program Status Protocol companion, run per agent pane. It is armed only for sessions that declare capture; nothing is armed while the [session] program_status switch is off. Source: cmd/gc-osc7501/main.go:1 (gc-osc7501), cmd/gc-osc7501/main.go:2 (ships next to gc), internal/runtime/tmux/program_capture.go:27 (gc-osc7501 tap), internal/runtime/tmux/program_capture.go:35 (Nothing is armed).",
+      "technologies": ["Go", "tmux pane options"],
+      "tags": ["source: code 918a0c252"],
+      "style": {"background_color": "#85bbf0", "shape": "box"},
+      "components": [
+        {
+          "name": "Osc7501Tap",
+          "type": "adapter",
+          "description": "`gc-osc7501 tap` runs under tmux pipe-pane -O, reads the pane's output and publishes the program's root record to the pane options @gc_ps and @gc_ps_text, each write guarded by the pane's nonce. Source: cmd/gc-osc7501/main.go:11 (tap runs), cmd/gc-osc7501/main.go:13 (@gc_ps), cmd/gc-osc7501/main.go:14 (nonce)."
+        },
+        {
+          "name": "Osc7501Relay",
+          "type": "adapter",
+          "description": "`gc-osc7501 relay -- <argv>` runs the program on its own pty, relays bytes verbatim to the pane and answers the program's OSC 7501 support probe. Source: cmd/gc-osc7501/main.go:17 (relay runs argv), cmd/gc-osc7501/main.go:18 (support probe)."
         }
       ]
     }
   ],
   "relationships": [
+    {"from": "TmuxProvider", "to": "Osc7501Tap", "label": "For a session that declares capture, arms the pane with pipe-pane -O into the tap. Source: internal/runtime/tmux/program_capture.go:27 (gc-osc7501 tap).", "type": "calls", "technologies": ["tmux CLI"]},
+    {"from": "TmuxProvider", "to": "Osc7501Relay", "label": "A relay-declared provider's command runs under the relay. Source: internal/runtime/tmux/program_capture.go:30 (gc-osc7501 relay), internal/runtime/tmux/program_capture.go:364 (wrapRelay).", "type": "calls", "technologies": ["tmux CLI"]},
+    {"from": "Osc7501Tap", "to": "tmux", "label": "Writes the program status into pane options. Source: cmd/gc-osc7501/main.go:13 (@gc_ps).", "type": "writes_to", "technologies": ["tmux pane options"]},
+    {"from": "RuntimeProviderRegistry", "to": "KubernetesProvider", "label": "Registers the k8s runtime. Source: cmd/gc/runtime_registry.go:90 (k8s).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "KubernetesProvider", "to": "Kubernetes", "label": "Provisions and drives agent pods through the Kubernetes API. Source: internal/runtime/k8s/provider.go:19 (kubernetes), internal/runtime/k8s/seams.go:46 (Provision).", "type": "calls", "technologies": ["Kubernetes API (client-go)"]},
+    {"from": "SessionReconciler", "to": "WorkerHandle", "label": "Starts a resolved session through the worker handle. Source: cmd/gc/session_lifecycle_parallel.go:2842 (workerHandleForSessionWithStaleKeyDetectionWaiter), cmd/gc/session_lifecycle_parallel.go:2846 (StartResolved).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "WorkerHandle", "to": "SessionManager", "label": "Creates sessions through the session manager. Source: internal/worker/handle_lifecycle.go:776 (CreateSession).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "MCPProjectionWriter", "to": "MCPAdoption", "label": "Apply refuses a target it may not adopt. Source: internal/materialize/mcp_project.go:183 (MCPAdoptionRefusedError).", "type": "calls", "technologies": ["Go function call"]},
+    {"from": "ProviderHookInstaller", "to": "ProviderHookScripts", "label": "Installs the embedded per-provider overlay into the work dir. Source: internal/hooks/hooks.go:323 (installOverlayManaged), internal/hooks/hooks.go:327 (per-provider).", "type": "reads_from", "technologies": ["go:embed"]},
+    {"from": "Other agent CLIs", "to": "PrimeCommand", "label": "Provider hooks such as Codex SessionStart run gc prime --hook. Source: internal/bootstrap/packs/core/overlay/per-provider/codex/.codex/hooks.json:9 (prime --hook).", "type": "calls", "technologies": ["os/exec"]},
+    {"from": "Other agent CLIs", "to": "HandoffCommand", "label": "Provider hooks such as Codex's run gc handoff --auto. Source: internal/bootstrap/packs/core/overlay/per-provider/codex/.codex/hooks.json:20 (handoff --auto).", "type": "calls", "technologies": ["os/exec"]},
     {"from": "TemplateResolver", "to": "PromptRenderer", "label": "Renders the agent's prompt template. Source: cmd/gc/template_resolve.go:466 (renderPrompt).", "type": "calls", "technologies": ["Go function call"]},
     {"from": "TemplateResolver", "to": "AssignedSkillsAppendix", "label": "Appends the assigned-skills list to the prompt when a sink will deliver skills. Source: cmd/gc/template_resolve.go:544 (buildAssignedSkillsPromptFragment).", "type": "calls", "technologies": ["Go function call"]},
     {"from": "TemplateResolver", "to": "ProviderLaunchCommand", "label": "Builds the provider launch command for the session, then projects the managed Claude settings and adds --settings before fingerprinting. Source: cmd/gc/template_resolve.go:242 (ProviderTemplateCommand), cmd/gc/template_resolve.go:268 (ensureClaudeSettingsArgs), cmd/gc/template_resolve.go:5-7 (.gc/settings.json).", "type": "calls", "technologies": ["Go function call"]},
@@ -158,7 +210,7 @@
     {"from": "ProviderLaunchCommand", "to": "ClaudeSettingsWriter", "label": "Claude is launched with --settings <city>/.gc/settings.json written by installClaude. Source: internal/config/launch_command.go:239 (ProviderSettingsSource), internal/hooks/hooks.go:662 (runtimeDst).", "type": "depends_on", "technologies": ["filesystem"]},
     {"from": "RuntimeProviderRegistry", "to": "TmuxProvider", "label": "Registers tmux as a host-filesystem + host-pre_start runtime. Source: cmd/gc/runtime_registry.go:140 (tmux).", "type": "depends_on", "technologies": ["Go function call"]},
     {"from": "RuntimeProviderRegistry", "to": "SubprocessProvider", "label": "Registers subprocess (host filesystem, no host pre_start). Source: cmd/gc/runtime_registry.go:63 (subprocess).", "type": "depends_on", "technologies": ["Go function call"]},
-    {"from": "RuntimeProviderRegistry", "to": "OtherRuntimeAdapters", "label": "Registers acp, k8s, herdr, hybrid, t3bridge. Source: cmd/gc/runtime_registry.go:72 (acp), cmd/gc/runtime_registry.go:105 (hybrid).", "type": "depends_on", "technologies": ["Go function call"]},
+    {"from": "RuntimeProviderRegistry", "to": "OtherRuntimeAdapters", "label": "Registers acp, herdr, hybrid, t3bridge. Source: cmd/gc/runtime_registry.go:72 (acp), cmd/gc/runtime_registry.go:105 (hybrid).", "type": "depends_on", "technologies": ["Go function call"]},
     {"from": "TmuxProvider", "to": "tmux", "label": "Every session operation is a tmux CLI call. Source: internal/runtime/tmux/tmux.go:466 (exec.CommandContext).", "type": "calls", "technologies": ["tmux CLI"]},
     {"from": "TmuxProvider", "to": "Claude Code", "label": "The tmux pane runs the provider launch command (claude ... --settings ...). Source: internal/runtime/tmux/adapter.go:110 (Start).", "type": "calls", "technologies": ["os/exec"]},
     {"from": "TmuxProvider", "to": "Other agent CLIs", "label": "Same launch path for every non-Claude provider command. Source: internal/runtime/tmux/adapter.go:110 (Start).", "type": "calls", "technologies": ["os/exec"]},
