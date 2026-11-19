@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/beadmeta"
@@ -113,6 +116,88 @@ func TestAttachGitHubPRRepairWorkflowPouredMoleculeStaysOnTheWorkStore(t *testin
 	}
 	if got := len(allBeads(t, work)); got < 2 {
 		t.Errorf("the work store holds %d bead(s), want the PR bead plus the materialized molecule", got)
+	}
+}
+
+// attachRepairVarsWorkflow writes a repair formula that declares base and
+// implementation_target, attaches it through the real attach with the given
+// monitor repair_vars, and returns the bead that carries the stamped
+// gc.var.* inputs (the molecule root) plus every bead's title.
+func attachRepairVarsWorkflow(t *testing.T, repairVars map[string]string) (map[string]string, []string) {
+	t.Helper()
+	cityDir, _, work := attachRepairWorkflowFixture(t, false)
+	if err := os.WriteFile(filepath.Join(cityDir, "formulas", "pr-repair-vars.formula.toml"), []byte(`
+formula = "pr-repair-vars"
+version = 1
+
+[vars.base]
+default = "main"
+
+[vars.implementation_target]
+default = "formula-default-target"
+
+[[steps]]
+id = "repair"
+title = "Repair PR {{pr}} into {{base}} as {{implementation_target}}"
+`), 0o644); err != nil {
+		t.Fatalf("write formula: %v", err)
+	}
+	parent, err := work.Create(beads.Bead{Title: "PR needs repair", Type: "task"})
+	if err != nil {
+		t.Fatalf("creating the PR bead: %v", err)
+	}
+	cfg := &config.City{FormulaLayers: config.FormulaLayers{City: []string{filepath.Join(cityDir, "formulas")}}}
+	rig := config.Rig{Path: cityDir}
+	monitor := config.GitHubPRMonitor{RepairWorkflow: "pr-repair-vars", RepairRoute: "partcl/polecat", RepairVars: repairVars}
+	result := githubmonitor.Result{Owner: "gastownhall", Repo: "gascity", Number: 42, HeadRefName: "fix/x", BaseRefName: "integration/me/group"}
+	if err := defaultAttachGitHubPRRepairWorkflow(work, cliGraphStore(work, cfg, cityDir), cfg, rig, monitor, parent, result); err != nil {
+		t.Fatalf("attaching repair workflow: %v", err)
+	}
+	var rootVars map[string]string
+	var titles []string
+	for _, b := range allBeads(t, work) {
+		titles = append(titles, b.Title)
+		if b.Metadata[beadmeta.FormulaVarPrefix+"pr"] == "42" {
+			rootVars = map[string]string{}
+			for k, v := range b.Metadata {
+				if strings.HasPrefix(k, beadmeta.FormulaVarPrefix) {
+					rootVars[strings.TrimPrefix(k, beadmeta.FormulaVarPrefix)] = v
+				}
+			}
+		}
+	}
+	if rootVars == nil {
+		t.Fatalf("no bead carries gc.var.pr=42; titles = %v", titles)
+	}
+	return rootVars, titles
+}
+
+// TestAttachGitHubPRRepairWorkflowPassesRepairVars drives the real attach and
+// formula instantiation: with repair_vars set, the PR's base ref and the
+// monitor's repair route reach the formula as base and implementation_target.
+func TestAttachGitHubPRRepairWorkflowPassesRepairVars(t *testing.T) {
+	vars, titles := attachRepairVarsWorkflow(t, map[string]string{
+		"base":                  "{{base}}",
+		"implementation_target": "{{repair_route}}",
+	})
+	if vars["base"] != "integration/me/group" || vars["implementation_target"] != "partcl/polecat" {
+		t.Fatalf("stamped vars = %v, want base=integration/me/group implementation_target=partcl/polecat", vars)
+	}
+	if !slices.Contains(titles, "Repair PR 42 into integration/me/group as partcl/polecat") {
+		t.Fatalf("step titles = %v, want the PR base and repair route substituted", titles)
+	}
+}
+
+// TestAttachGitHubPRRepairWorkflowWithoutRepairVarsKeepsFormulaDefaults is the
+// default half: no repair_vars, so the formula's own defaults apply (the root
+// stamps effective values, defaults included), exactly as before.
+func TestAttachGitHubPRRepairWorkflowWithoutRepairVarsKeepsFormulaDefaults(t *testing.T) {
+	vars, titles := attachRepairVarsWorkflow(t, nil)
+	if vars["base"] != "main" || vars["implementation_target"] != "formula-default-target" {
+		t.Fatalf("stamped vars = %v, want the formula defaults base=main implementation_target=formula-default-target", vars)
+	}
+	if !slices.Contains(titles, "Repair PR 42 into main as formula-default-target") {
+		t.Fatalf("step titles = %v, want formula defaults", titles)
 	}
 }
 

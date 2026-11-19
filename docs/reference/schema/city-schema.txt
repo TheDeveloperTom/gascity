@@ -1833,6 +1833,20 @@
           "type": "array",
           "description": "RepairKinds is an optional allow-list of failure kinds that mint repair\nbeads under `gc github pr backfill --create-repair-beads`. Valid values\nare \"checks_failed\", \"merge_conflict\", \"behind_base\" and \"blocked\". When\nempty, every actionable PR mints a repair bead (the historical behavior).\nWhen non-empty, only actionable PRs whose failure kind is listed mint or\nrefresh a repair bead; the others are still reported as actionable. Set\n[\"merge_conflict\", \"checks_failed\"] to keep repair agents off PRs that are\nmerely behind their base or blocked while checks run. Unions with the\nbackfill --failure-kind flag."
         },
+        "head_ref_prefixes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "HeadRefPrefixes is an optional allow-list of PR head-branch prefixes\nthat may mint repair beads under `gc github pr backfill\n--create-repair-beads`. When empty, every actionable PR may mint a repair\nbead (the historical behavior). When non-empty, only actionable PRs whose\nhead ref starts with one of the prefixes (case-sensitive) mint or refresh\na repair bead; the others are still reported as actionable and counted as\nskipped_repairs. A PR with an empty head ref matches no prefix. Use it\nwhen one GitHub login opens both automated and hand-made PRs, so authors\ncannot tell them apart, e.g. [\"devwork/task/alice/\"]. Unions with the\nbackfill --head-ref-prefix flag."
+        },
+        "repair_vars": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "RepairVars adds formula vars to the repair workflow attached to a newly\ncreated repair bead. Keys are formula var names; values are templates\nwhose {{name}} placeholders are filled from the pull request: bead_id,\nbead, title, pr, repo (owner/name), owner, branch (head ref), base (base\nref), head_sha, failure_kind, repair_route, rig and monitor. When empty,\nthe workflow gets only bead_id, bead, title, pr, repo and branch (the\nhistorical behavior). An entry overrides a built-in var of the same name.\nExample: { base = \"{{base}}\", implementation_target = \"{{repair_route}}\" }.\nThe backfill --repair-var flag adds or overrides entries per invocation."
+        },
         "webhook_secret_env": {
           "type": "string",
           "description": "WebhookSecretEnv is the environment variable containing the webhook\nHMAC secret. The secret value itself must not be stored in city.toml."
