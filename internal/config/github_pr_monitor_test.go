@@ -120,6 +120,32 @@ func TestValidateGitHubPRMonitorsRejectsMissingRepoAndRoute(t *testing.T) {
 			},
 			want: "authors contains an empty login",
 		},
+		{
+			name: "empty repair kind entry",
+			monitor: GitHubPRMonitor{
+				Name:         "bad",
+				Owner:        "sample-org",
+				Repo:         "sample-repo",
+				BaseBranches: []string{"main"},
+				Rig:          "sample",
+				RepairRoute:  "route-a",
+				RepairKinds:  []string{"merge_conflict", "  "},
+			},
+			want: "repair_kinds contains an empty kind",
+		},
+		{
+			name: "unknown repair kind",
+			monitor: GitHubPRMonitor{
+				Name:         "bad",
+				Owner:        "sample-org",
+				Repo:         "sample-repo",
+				BaseBranches: []string{"main"},
+				Rig:          "sample",
+				RepairRoute:  "route-a",
+				RepairKinds:  []string{"merge_conflict", "behind"},
+			},
+			want: `repair_kinds contains unknown failure kind "behind"`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &City{
@@ -286,5 +312,60 @@ func TestGitHubPRMonitorAllowedAuthorSet(t *testing.T) {
 	}
 	if set["Alice"] {
 		t.Fatal("AllowedAuthorSet() must be case-sensitive; Alice should not match alice")
+	}
+}
+
+func TestParseGitHubPRMonitorRepairKinds(t *testing.T) {
+	cfg, err := Parse([]byte(`
+[workspace]
+name = "test"
+
+[[rigs]]
+name = "sample"
+path = "sample"
+
+[[github.pr_monitor]]
+name = "sample-main"
+owner = "sample-org"
+repo = "sample-repo"
+base_branches = ["main"]
+rig = "sample"
+repair_route = "route-a"
+repair_kinds = ["merge_conflict", "checks_failed"]
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := cfg.GitHub.PRMonitors[0].RepairKinds
+	if len(got) != 2 || got[0] != "merge_conflict" || got[1] != "checks_failed" {
+		t.Fatalf("RepairKinds = %v, want [merge_conflict checks_failed]", got)
+	}
+	if err := ValidateGitHubPRMonitors(cfg); err != nil {
+		t.Fatalf("ValidateGitHubPRMonitors() = %v, want nil for known kinds", err)
+	}
+}
+
+func TestGitHubPRMonitorRepairKindSet(t *testing.T) {
+	// No kinds configured means no restriction (nil set): every actionable
+	// failure kind mints a repair bead, the historical behavior.
+	if got := (GitHubPRMonitor{}).RepairKindSet(); got != nil {
+		t.Fatalf("RepairKindSet() = %v, want nil for no kinds", got)
+	}
+	set := (GitHubPRMonitor{RepairKinds: []string{" merge_conflict ", "checks_failed", "merge_conflict"}}).RepairKindSet()
+	if len(set) != 2 || !set["merge_conflict"] || !set["checks_failed"] {
+		t.Fatalf("RepairKindSet() = %v, want trimmed deduped {merge_conflict,checks_failed}", set)
+	}
+}
+
+func TestIsGitHubPRFailureKind(t *testing.T) {
+	for _, kind := range []string{"checks_failed", "merge_conflict", "behind_base", "blocked"} {
+		if !IsGitHubPRFailureKind(kind) {
+			t.Errorf("IsGitHubPRFailureKind(%q) = false, want true", kind)
+		}
+	}
+	for _, kind := range []string{"", "behind", "BLOCKED", "dirty"} {
+		if IsGitHubPRFailureKind(kind) {
+			t.Errorf("IsGitHubPRFailureKind(%q) = true, want false", kind)
+		}
 	}
 }

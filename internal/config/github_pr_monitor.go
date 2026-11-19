@@ -49,6 +49,16 @@ type GitHubPRMonitor struct {
 	// repair work carries the branch/test/push/refinery steps instead of
 	// sitting as a raw routed task.
 	RepairWorkflow string `toml:"repair_workflow,omitempty"`
+	// RepairKinds is an optional allow-list of failure kinds that mint repair
+	// beads under `gc github pr backfill --create-repair-beads`. Valid values
+	// are "checks_failed", "merge_conflict", "behind_base" and "blocked". When
+	// empty, every actionable PR mints a repair bead (the historical behavior).
+	// When non-empty, only actionable PRs whose failure kind is listed mint or
+	// refresh a repair bead; the others are still reported as actionable. Set
+	// ["merge_conflict", "checks_failed"] to keep repair agents off PRs that are
+	// merely behind their base or blocked while checks run. Unions with the
+	// backfill --failure-kind flag.
+	RepairKinds []string `toml:"repair_kinds,omitempty"`
 	// WebhookSecretEnv is the environment variable containing the webhook
 	// HMAC secret. The secret value itself must not be stored in city.toml.
 	WebhookSecretEnv string `toml:"webhook_secret_env,omitempty"`
@@ -75,6 +85,46 @@ func (m GitHubPRMonitor) AllowedAuthorSet() map[string]bool {
 		login = strings.TrimSpace(login)
 		if login != "" {
 			set[login] = true
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+// gitHubPRFailureKinds lists the failure kinds the PR readiness classifier
+// emits (internal/githubmonitor FailureKind* constants). Kept here because the
+// config package cannot import githubmonitor; a githubmonitor test pins the
+// two lists together.
+var gitHubPRFailureKinds = []string{"checks_failed", "merge_conflict", "behind_base", "blocked"}
+
+// GitHubPRFailureKinds returns the failure kinds accepted by repair_kinds and
+// `gc github pr backfill --failure-kind`.
+func GitHubPRFailureKinds() []string {
+	return append([]string(nil), gitHubPRFailureKinds...)
+}
+
+// IsGitHubPRFailureKind reports whether kind is a known PR failure kind. The
+// match is exact (case-sensitive, untrimmed).
+func IsGitHubPRFailureKind(kind string) bool {
+	for _, known := range gitHubPRFailureKinds {
+		if kind == known {
+			return true
+		}
+	}
+	return false
+}
+
+// RepairKindSet returns the trimmed, deduped set of failure kinds allowed to
+// mint repair beads for this monitor. An empty result means "no restriction"
+// (every actionable failure kind mints a bead).
+func (m GitHubPRMonitor) RepairKindSet() map[string]bool {
+	set := make(map[string]bool, len(m.RepairKinds))
+	for _, kind := range m.RepairKinds {
+		kind = strings.TrimSpace(kind)
+		if kind != "" {
+			set[kind] = true
 		}
 	}
 	if len(set) == 0 {
@@ -184,6 +234,16 @@ func ValidateGitHubPRMonitors(cfg *City) error {
 		for _, login := range monitor.Authors {
 			if strings.TrimSpace(login) == "" {
 				return fmt.Errorf("%s %q: authors contains an empty login", ctx, name)
+			}
+		}
+		for _, kind := range monitor.RepairKinds {
+			kind = strings.TrimSpace(kind)
+			if kind == "" {
+				return fmt.Errorf("%s %q: repair_kinds contains an empty kind", ctx, name)
+			}
+			if !IsGitHubPRFailureKind(kind) {
+				return fmt.Errorf("%s %q: repair_kinds contains unknown failure kind %q (valid: %s)",
+					ctx, name, kind, strings.Join(gitHubPRFailureKinds, ", "))
 			}
 		}
 		if envName := strings.TrimSpace(monitor.WebhookSecretEnv); envName != "" && !envVarName.MatchString(envName) {

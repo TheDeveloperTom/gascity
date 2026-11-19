@@ -1826,6 +1826,13 @@
           "type": "string",
           "description": "RepairWorkflow is the formula attached to repair beads created for this\nmonitor. Empty defaults to the standard polecat repair workflow so routed\nrepair work carries the branch/test/push/refinery steps instead of\nsitting as a raw routed task."
         },
+        "repair_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "RepairKinds is an optional allow-list of failure kinds that mint repair\nbeads under `gc github pr backfill --create-repair-beads`. Valid values\nare \"checks_failed\", \"merge_conflict\", \"behind_base\" and \"blocked\". When\nempty, every actionable PR mints a repair bead (the historical behavior).\nWhen non-empty, only actionable PRs whose failure kind is listed mint or\nrefresh a repair bead; the others are still reported as actionable. Set\n[\"merge_conflict\", \"checks_failed\"] to keep repair agents off PRs that are\nmerely behind their base or blocked while checks run. Unions with the\nbackfill --failure-kind flag."
+        },
         "webhook_secret_env": {
           "type": "string",
           "description": "WebhookSecretEnv is the environment variable containing the webhook\nHMAC secret. The secret value itself must not be stored in city.toml."
