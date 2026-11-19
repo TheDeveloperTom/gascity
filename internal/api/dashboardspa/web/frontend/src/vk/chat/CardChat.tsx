@@ -1,9 +1,10 @@
 import { ArrowUpIcon } from '@phosphor-icons/react';
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useState, type KeyboardEvent } from 'react';
 import { useReadOnly } from '../../contexts/ReadOnlyContext';
 import { useCardChat, type CardChat as CardChatState, type ChatRow } from '../../hooks/useCardChat';
 import { t } from '../../i18n';
 import { cn } from '../cn';
+import { ShareDialog, shareLabel, type SharePeer } from './ShareDialog';
 
 // BOARD-CHAT Task C4 (owner 19.11 points 2, 5, 6): the private chat on the
 // owner's own card. The owner asks; the desk («Дежурный по доске») answers;
@@ -19,13 +20,18 @@ export interface CardChatProps {
   city: string;
   /** The own card; `rig` null while the board's rigs are still loading. */
   card: { rig: string | null; id: string };
-  /** Under the hint: the «Показать Ричарду» action (Task C5). */
-  share?: ReactNode;
+  /** The card's title (the share summary starts with it). */
+  title?: string;
+  /**
+   * Task C5: the one peer a summary can be shown to («Показать Ричарду»);
+   * null or absent = no share button.
+   */
+  peer?: SharePeer | null;
 }
 
-export function CardChat({ city, card, share }: CardChatProps) {
+export function CardChat({ city, card, title = '', peer = null }: CardChatProps) {
   if (card.rig === null) return <ChatSkeleton />;
-  return <LiveCardChat city={city} card={{ rig: card.rig, id: card.id }} share={share} />;
+  return <LiveCardChat city={city} card={{ rig: card.rig, id: card.id }} title={title} peer={peer} />;
 }
 
 function ChatSkeleton() {
@@ -86,8 +92,17 @@ function agentLine(chat: CardChatState): string | null {
   return t('The desk is answering another question');
 }
 
-function LiveCardChat({ city, card, share }: { city: string; card: { rig: string; id: string }; share: ReactNode }) {
+interface LiveProps {
+  city: string;
+  card: { rig: string; id: string };
+  title: string;
+  peer: SharePeer | null;
+}
+
+function LiveCardChat({ city, card, title, peer }: LiveProps) {
   const chat = useCardChat(city, card);
+  const [sharing, setSharing] = useState(false);
+  const [shared, setShared] = useState(false);
   const readOnly = useReadOnly();
   const id = useId();
   const [value, setValue] = useState('');
@@ -195,9 +210,36 @@ function LiveCardChat({ city, card, share }: { city: string; card: { rig: string
             </button>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[13px] text-vk-text-low">{t('only you and your Mayor see it')}</span>
-            {share}
+            <span className="text-[13px] text-vk-text-low">
+              {shared && peer !== null
+                ? t('{name} and his Mayor will see it', { name: peer.name })
+                : t('only you and your Mayor see it')}
+            </span>
+            {peer !== null && (
+              <button
+                type="button"
+                onClick={() => setSharing(true)}
+                className="min-h-11 rounded-sm px-1 text-sm text-vk-text-low underline underline-offset-2 focus-mark hover:text-vk-text-high md:min-h-0"
+              >
+                {shareLabel(peer)}
+              </button>
+            )}
           </div>
+          {peer !== null && (
+            <ShareDialog
+              open={sharing}
+              onClose={() => setSharing(false)}
+              city={city}
+              card={card}
+              title={title}
+              rows={chat.rows}
+              peer={peer}
+              onShared={() => {
+                setSharing(false);
+                setShared(true);
+              }}
+            />
+          )}
         </div>
       )}
     </section>

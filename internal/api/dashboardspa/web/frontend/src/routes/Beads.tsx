@@ -414,6 +414,11 @@ export function BeadsPage() {
     });
     return { rig: rig?.name ?? null };
   }, [selectedId, rigItems]);
+  // BOARD-CHAT C5: «Показать Ричарду» names the one peer the service shares with.
+  const sharePeer = useMemo(() => {
+    const only = peerSources.length === 1 ? peerSources[0]! : null;
+    return only === null ? null : { name: only.name, dative: only.dative };
+  }, [peerSources]);
   const openTopicFromCard = useCallback(
     (login: string, topicId: string) => {
       // one URL write: two functional updates in one tick would race
@@ -1032,6 +1037,9 @@ export function BeadsPage() {
               key={ownSelectedId}
               city={cityName ?? ''}
               card={{ rig: cityName === null ? null : ownCard.rig, id: ownSelectedId }}
+              title={selectedBead?.title ?? ''}
+              // C2 `/v1/share` goes to «the peer»: offered only with exactly one
+              peer={sharePeer}
             />
           )
         }

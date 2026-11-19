@@ -51,6 +51,14 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   Desk: 'Дежурный',
   Yes: 'Да',
   No: 'Нет',
+  // BOARD-CHAT C5 (owner 19.11 point 4): share on purpose; Richard's cards say who reads
+  'Show {dative}': 'Показать {dative}',
+  'Show to {name}': 'Показать: {name}',
+  'What {name} will see': 'Что увидит {name}',
+  '{n} of {max} characters': '{n} из {max} знаков',
+  '{name} and his Mayor will see it': 'увидят {name} и его Мэр',
+  'this is a conversation with {owner} city: {name} and his Mayor will see it':
+    'это разговор с городом {owner}: увидят {name} и его Мэр',
   'waiting for delivery': 'ждёт доставки',
   new: 'новое',
   '✓ acknowledged': '✓ принято',

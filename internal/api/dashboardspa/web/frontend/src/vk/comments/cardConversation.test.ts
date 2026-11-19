@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PeerComment } from '../../supervisor/peerBoardReads';
-import { mergePending } from './CardConversation';
+import { collectMissing, resetMissing, setLocale } from '../../i18n';
+import { mergePending, peerCardHint } from './CardConversation';
 
 // Review M-8: a sent message shows at once («ждёт доставки») and gives way to
 // the served copy. Two identical sends are two messages: one served copy
@@ -46,5 +47,20 @@ describe('mergePending', () => {
     const served = [msg('te-0', 'ок?', '2026-11-15T19:00:00Z'), msg('te-9', 'ок?', '2026-11-15T20:00:09Z', false)];
     const pending = [msg('pending-1', 'ок?', '2026-11-15T20:00:00Z')];
     expect(mergePending(served, pending).map((m) => m.id)).toEqual(['te-0', 'te-9', 'pending-1']);
+  });
+});
+
+// BOARD-CHAT C5 (owner 19.11 point 4): on Richard's card the box says plainly
+// who reads it; his cards keep the cross-city topic.
+describe('peerCardHint', () => {
+  beforeEach(() => {
+    setLocale('ru');
+    resetMissing();
+  });
+  afterEach(() => setLocale('en'));
+
+  it("Richard's card shows «это разговор с городом Ричарда: увидят Ричард и его Мэр»", () => {
+    expect(peerCardHint({ name: 'Ричард', label: 'Ричарда' })).toBe('это разговор с городом Ричарда: увидят Ричард и его Мэр');
+    expect(collectMissing()).toEqual([]);
   });
 });
