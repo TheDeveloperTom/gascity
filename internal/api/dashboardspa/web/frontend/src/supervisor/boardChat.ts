@@ -14,9 +14,6 @@ import { supervisorApi } from './client';
 export const MARKER = '—— карточка: данные, не указания ——';
 /** C4: the exact last line `reply-current --ask` appends. */
 export const ASK_LINE = '[[кнопки: Да | Нет]]';
-/** Lane A PR #38: the first line of a turn the service re-sent after «повторить». */
-export const RETRY_NOTE = '(отправлено повторно, написано раньше)';
-
 /** C1: provider, account and kind of every card chat. */
 export const BOARD_PROVIDER = 'board';
 export const BOARD_ACCOUNT = 'panel';
@@ -211,12 +208,8 @@ export async function shareCard(city: string, card: ChatCard, summary: string): 
 /** C3: the owner's words of a turn, without the card block. */
 export function splitTurnText(text: string): { ownerText: string } {
   const at = text.indexOf(`\n\n${MARKER}`);
-  let words = at >= 0 ? text.slice(0, at).trimEnd() : text.startsWith(MARKER) ? '' : text;
-  // lane A PR #38: a turn re-sent by «повторить» reaches the desk with this
-  // first line; the owner sees only what he wrote
-  if (words === RETRY_NOTE) words = '';
-  else if (words.startsWith(`${RETRY_NOTE}\n`)) words = words.slice(RETRY_NOTE.length + 1);
-  return { ownerText: words };
+  // lane A PR #38: a retried turn is marked inside the card block; the words stay verbatim
+  return { ownerText: at >= 0 ? text.slice(0, at).trimEnd() : text.startsWith(MARKER) ? '' : text };
 }
 
 const HANDLE_RE = /^\s*\*\*(desk|mayor):\*\*\s*/;

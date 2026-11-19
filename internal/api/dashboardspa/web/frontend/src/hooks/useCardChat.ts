@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   BOARD_PROVIDER,
+  BoardChatError,
   getPending,
+  isRetryable,
+  newClientId,
+  readBinding,
   readThread,
   retryTurn,
   sendTurn,
+  type BoardChatErrorCode,
   type ChatCard,
   type PendingItem,
   type ThreadEntry,
@@ -12,17 +17,26 @@ import {
 import { useGcEventRefresh, type GcEventEnvelope } from './useGcEvents';
 import { useStructuredSessionStream } from './useStructuredSessionStream';
 
-// BOARD-CHAT Task C3 (plan BOARD-CHAT-PLAN.md; contract C6; DOCCHECK DC#24-26).
+// BOARD-CHAT Task C3 (plan BOARD-CHAT-PLAN.md; contract C6; DOCCHECK DC#24-26),
+// with the lane C review fixes.
 //
 // The card chat's rows and their states come from native signals only:
 //  - history: the conversation's transcript (`/extmsg/transcript`, DC#23);
 //  - new entries: the city event stream's `extmsg.inbound` / `extmsg.outbound`
 //    / `extmsg.bound` for provider `board` and this card (DC#24), each one a
-//    transcript read after the last seen Sequence;
+//    transcript read after the last seen Sequence; again after the stream
+//    reconnects or the page becomes visible (review I3);
+//  - who holds the chat: `extmsg.bound` (read once at mount, then live; I5);
+//  - who wrote a reply: the entry's source session, never its text (I6);
 //  - «читает»: the bound agent's session stream `activity` (DC#25);
 //  - delivered: the turn's client_id appears as a ProviderMessageID (DC#26).
 // Only the abnormal path asks the board-chat service (`/v1/pending`, C2):
-// a turn not delivered 15 s after the service accepted it.
+// every 15 s while a turn it accepted is not in the transcript (I2).
+//
+// Review I1 (owner point 5, «no message is ever lost»): a turn lives in a
+// small registry kept in localStorage from the moment the box clears until
+// the transcript shows it. Its send is module-level, so a closed drawer or a
+// reload still shows it, and a failure still offers «повторить».
 
 export type ChatRowState = 'sending' | 'queued' | 'delivered' | 'reading' | 'failed';
 
@@ -31,6 +45,9 @@ export interface ChatRow {
   who: 'owner' | 'desk' | 'mayor';
   text: string;
   state?: ChatRowState;
+  /** A failed turn: why (review M1), and whether «повторить» can help. */
+  error?: BoardChatErrorCode;
+  retryable?: boolean;
   ask?: { entryId: string; answered: boolean };
   at: string;
 }
@@ -40,35 +57,144 @@ export interface CardChat {
   send(text: string): void;
   retry(clientId: string): void;
   answer(entryId: string, yes: boolean): void;
-  status: 'loading' | 'ready' | 'error';
+  /** `no_chat`: the service says this card has no chat (409 not_own_card, review Q3). */
+  status: 'loading' | 'ready' | 'error' | 'no_chat';
   who: 'desk' | 'mayor';
   agentActivity: 'idle' | 'in-turn' | 'unknown';
 }
 
-/** A turn this tab sent (or the service still holds) that the transcript does not show yet. */
-interface LocalTurn {
+/** The sessions the board already reads; enough to tell the desk from the Mayor (I6). */
+export interface SessionLike {
+  id: string;
+  template?: string;
+  alias?: string;
+  agent_name?: string;
+}
+
+/** A turn from the moment the box cleared until the transcript shows it. */
+interface StoredTurn {
   clientId: string;
+  city: string;
+  cardId: string;
+  rig: string;
   text: string;
   replyTo?: string;
   at: string;
   state: 'sending' | 'queued' | 'failed';
   /** `local`: the service never accepted it (re-send); `service`: its outbox gave up (`/v1/retry`). */
   origin: 'local' | 'service';
+  error?: BoardChatErrorCode;
 }
 
-/** Owner 19.11 point 5: the check that asks the service about a turn not delivered yet. */
+/** Owner 19.11 point 5: how often to ask the service about a turn not delivered yet. */
 export const DELIVERY_CHECK_MS = 15_000;
 /** Reply visible ≤ 1 s after `extmsg.outbound` (plan D3 scenario 1). */
 const EVENT_COALESCE_MS = 250;
 const CHAT_EVENTS: ReadonlySet<string> = new Set(['extmsg.inbound', 'extmsg.outbound', 'extmsg.bound']);
+const STORE_KEY = 'gc.board-chat.turns.v1';
+const NONE: readonly SessionLike[] = [];
 
-// The text of a turn by its client_id, for this tab's lifetime: `/v1/pending`
-// carries no text (C2), so a remounted drawer still shows what was typed.
-const sentTexts = new Map<string, string>();
+// ---- the turn registry (module + localStorage) ----------------------------
 
-function newClientId(): string {
-  return crypto.randomUUID();
+const STATES: ReadonlySet<string> = new Set(['sending', 'queued', 'failed']);
+
+function isStoredTurn(v: unknown): v is StoredTurn {
+  if (typeof v !== 'object' || v === null) return false;
+  const t = v as Record<string, unknown>;
+  return (
+    typeof t.clientId === 'string' &&
+    typeof t.city === 'string' &&
+    typeof t.cardId === 'string' &&
+    typeof t.rig === 'string' &&
+    typeof t.text === 'string' &&
+    typeof t.state === 'string' &&
+    STATES.has(t.state) &&
+    (t.origin === 'local' || t.origin === 'service')
+  );
 }
+
+function loadTurns(): StoredTurn[] {
+  try {
+    const raw = window.localStorage.getItem(STORE_KEY);
+    const parsed: unknown = raw === null ? [] : JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isStoredTurn) : [];
+  } catch {
+    return [];
+  }
+}
+
+let turns: readonly StoredTurn[] = loadTurns();
+const listeners = new Set<() => void>();
+/** Sends this tab still waits on: a reloaded «sending» turn is not one of them. */
+const inFlight = new Set<string>();
+/** Review M5: one card's sends go out one after another, in order. */
+const chains = new Map<string, Promise<unknown>>();
+/** Cards the service said have no chat (409 not_own_card). */
+const noChat = new Set<string>();
+
+function setTurns(next: readonly StoredTurn[]): void {
+  turns = next;
+  try {
+    window.localStorage.setItem(STORE_KEY, JSON.stringify(next));
+  } catch {
+    // private window or full storage: the module copy still holds the turn
+  }
+  for (const l of [...listeners]) l();
+}
+
+function patchTurn(clientId: string, patch: Partial<StoredTurn>): void {
+  if (!turns.some((t) => t.clientId === clientId)) return;
+  setTurns(turns.map((t) => (t.clientId === clientId ? { ...t, ...patch } : t)));
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+const snapshot = () => turns;
+
+function cardKey(city: string, cardId: string): string {
+  return `${city}\u0000${cardId}`;
+}
+
+/** Sends one turn after the card's previous one; the result lands in the registry. */
+function deliver(turn: StoredTurn, onAccepted: () => void): void {
+  const key = cardKey(turn.city, turn.cardId);
+  inFlight.add(turn.clientId);
+  patchTurn(turn.clientId, { state: 'sending' });
+  const next = (chains.get(key) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => sendTurn(turn.city, { rig: turn.rig, id: turn.cardId }, turn.text, turn.clientId, turn.replyTo))
+    .then(
+      () => {
+        inFlight.delete(turn.clientId);
+        patchTurn(turn.clientId, { state: 'queued', origin: 'local' });
+        onAccepted();
+      },
+      (err: unknown) => {
+        inFlight.delete(turn.clientId);
+        const code: BoardChatErrorCode = err instanceof BoardChatError ? err.code : 'failed';
+        if (code === 'not_own_card') {
+          noChat.add(key);
+          setTurns(turns.filter((t) => t.clientId !== turn.clientId));
+          return;
+        }
+        patchTurn(turn.clientId, { state: 'failed', origin: 'local', error: code });
+      },
+    );
+  chains.set(key, next);
+}
+
+/** Tests only: drop the module state and read localStorage again. */
+export function resetCardChatForTests(): void {
+  turns = loadTurns();
+  inFlight.clear();
+  chains.clear();
+  noChat.clear();
+}
+
+// ---- helpers -----------------------------------------------------------------
 
 function mergeThread(prev: readonly ThreadEntry[], next: readonly ThreadEntry[]): ThreadEntry[] {
   if (next.length === 0) return prev as ThreadEntry[];
@@ -77,21 +203,28 @@ function mergeThread(prev: readonly ThreadEntry[], next: readonly ThreadEntry[])
   return [...byId.values()].sort((a, b) => a.seq - b.seq);
 }
 
-function pendingState(item: PendingItem): LocalTurn['state'] {
+function pendingState(item: PendingItem): StoredTurn['state'] {
   return item.state === 'failed' ? 'failed' : 'queued';
 }
 
-function boundWho(payload: Record<string, unknown> | undefined): 'desk' | 'mayor' | null {
-  const name = payload?.agent_name;
+function agentOf(name: string | null | undefined): 'desk' | 'mayor' | null {
   if (typeof name !== 'string' || name === '') return null;
-  return name === 'mayor' || name.endsWith('/mayor') ? 'mayor' : 'desk';
+  const last = name.split('/').pop() ?? name;
+  if (last === 'mayor') return 'mayor';
+  if (last === 'desk') return 'desk';
+  return null;
 }
 
-export function useCardChat(city: string, card: ChatCard): CardChat {
+function sessionWho(session: SessionLike): 'desk' | 'mayor' | null {
+  return agentOf(session.alias) ?? agentOf(session.agent_name) ?? agentOf(session.template);
+}
+
+// ---- the hook --------------------------------------------------------------
+
+export function useCardChat(city: string, card: ChatCard, sessions: readonly SessionLike[] = NONE): CardChat {
   const [thread, setThread] = useState<ThreadEntry[]>([]);
-  const [local, setLocal] = useState<LocalTurn[]>([]);
-  const [status, setStatus] = useState<CardChat['status']>('loading');
-  const [who, setWho] = useState<'desk' | 'mayor'>('desk');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [bound, setBound] = useState<'desk' | 'mayor' | null>(null);
   const lastSeq = useRef<number | undefined>(undefined);
   const reading = useRef(false);
   const readAgain = useRef(false);
@@ -99,10 +232,26 @@ export function useCardChat(city: string, card: ChatCard): CardChat {
   const live = useRef(true);
   const threadRef = useRef(thread);
   threadRef.current = thread;
-  const localRef = useRef(local);
-  localRef.current = local;
   const cardRef = useRef(card);
   cardRef.current = card;
+  const key = cardKey(city, card.id);
+
+  const all = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const local = useMemo(() => all.filter((t) => t.city === city && t.cardId === card.id), [all, city, card.id]);
+  const localRef = useRef(local);
+  localRef.current = local;
+
+  // Review I6: who a session is, from the sessions the board reads.
+  const whoBySession = useMemo(() => {
+    const m = new Map<string, 'desk' | 'mayor'>();
+    for (const s of sessions) {
+      const w = sessionWho(s);
+      if (w !== null) m.set(s.id, w);
+    }
+    return m;
+  }, [sessions]);
+  const whoRef = useRef(whoBySession);
+  whoRef.current = whoBySession;
 
   const applyThread = useCallback((entries: readonly ThreadEntry[]) => {
     for (const e of entries) {
@@ -123,6 +272,7 @@ export function useCardChat(city: string, card: ChatCard): CardChat {
         reading.current = false;
         if (!live.current) return;
         applyThread(entries);
+        setStatus('ready'); // review M4: a good read clears an earlier error
         if (readAgain.current) {
           readAgain.current = false;
           refresh();
@@ -135,34 +285,84 @@ export function useCardChat(city: string, card: ChatCard): CardChat {
     );
   }, [city, card.id, applyThread]);
 
-  // Mount (and card change): history from the transcript, unsent turns from pending.
+  // The abnormal path: turns the service accepted but the transcript does not show.
+  const check = useCallback(() => {
+    checkTimer.current = null;
+    const seen = new Set(threadRef.current.map((e) => e.providerMessageId));
+    const waiting = localRef.current.filter((l) => l.state === 'queued' && !seen.has(l.clientId));
+    if (waiting.length === 0) return;
+    getPending(city, cardRef.current.id).then(
+      (items) => {
+        if (!live.current) return;
+        const byId = new Map(items.map((i) => [i.clientId, i]));
+        for (const l of waiting) {
+          const item = byId.get(l.clientId);
+          if (item !== undefined) patchTurn(l.clientId, { state: pendingState(item), origin: 'service' });
+        }
+        // not pending any more: delivered, the transcript will show it
+        if (waiting.some((l) => !byId.has(l.clientId))) refresh();
+        // review I2: keep checking while a turn is still on its way
+        if (waiting.some((l) => byId.get(l.clientId)?.state !== 'failed')) scheduleCheck();
+      },
+      () => {
+        if (live.current) scheduleCheck();
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [city, refresh]);
+
+  const scheduleCheck = useCallback(() => {
+    if (checkTimer.current !== null || !live.current) return;
+    checkTimer.current = setTimeout(check, DELIVERY_CHECK_MS);
+  }, [check]);
+
+  // Mount (and card change): history, the service's pending turns, who holds the chat.
   useEffect(() => {
     live.current = true;
     lastSeq.current = undefined;
     reading.current = true;
     readAgain.current = false;
     setThread([]);
-    setLocal([]);
     setStatus('loading');
-    setWho('desk');
-    Promise.all([readThread(city, card.id), getPending(city, card.id).catch(() => [] as PendingItem[])]).then(
-      ([entries, pending]) => {
+    setBound(null);
+    Promise.all([
+      readThread(city, card.id),
+      getPending(city, card.id).catch(() => null),
+      readBinding(city, card.id).catch(() => null),
+    ]).then(
+      ([entries, pending, binding]) => {
         reading.current = false;
         if (!live.current) return;
         applyThread(entries);
+        if (binding !== null) {
+          const w = agentOf(binding.agent) ?? (binding.sessionId !== null ? (whoRef.current.get(binding.sessionId) ?? null) : null);
+          if (w !== null) setBound(w);
+        }
         const seen = new Set(entries.map((e) => e.providerMessageId).filter((id): id is string => id !== undefined));
-        setLocal(
-          pending
-            .filter((p) => !seen.has(p.clientId))
-            .map((p) => ({
-              clientId: p.clientId,
-              text: sentTexts.get(p.clientId) ?? '',
-              at: '',
-              state: pendingState(p),
-              origin: 'service' as const,
-            })),
-        );
+        if (pending !== null) {
+          const byId = new Map(pending.map((p) => [p.clientId, p]));
+          let next = turns.filter((t) => !seen.has(t.clientId));
+          next = next.map((t) => {
+            if (t.city !== city || t.cardId !== card.id) return t;
+            const item = byId.get(t.clientId);
+            if (item !== undefined) return { ...t, state: pendingState(item), origin: 'service' as const };
+            // a reloaded send whose answer never came, and the service does not hold it
+            if (t.state === 'sending' && !inFlight.has(t.clientId)) return { ...t, state: 'failed' as const, origin: 'local' as const };
+            return t;
+          });
+          const known = new Set(next.map((t) => t.clientId));
+          for (const p of pending) {
+            if (seen.has(p.clientId) || known.has(p.clientId)) continue;
+            // sent from another tab or device: the service keeps no text
+            next = [
+              ...next,
+              { clientId: p.clientId, city, cardId: card.id, rig: card.rig, text: '', at: '', state: pendingState(p), origin: 'service' },
+            ];
+          }
+          setTurns(next);
+        }
         setStatus('ready');
+        if (turns.some((t) => t.city === city && t.cardId === card.id && t.state === 'queued')) scheduleCheck();
         if (readAgain.current) {
           readAgain.current = false;
           refresh();
@@ -178,93 +378,69 @@ export function useCardChat(city: string, card: ChatCard): CardChat {
       if (checkTimer.current !== null) clearTimeout(checkTimer.current);
       checkTimer.current = null;
     };
-    // refresh/applyThread are stable for a given city and card
+    // refresh/applyThread/scheduleCheck are stable for a given city and card
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city, card.id]);
+
+  // Delivered turns leave the registry.
+  useEffect(() => {
+    const seen = new Set(thread.map((e) => e.providerMessageId).filter((id): id is string => id !== undefined));
+    if (turns.some((t) => seen.has(t.clientId))) setTurns(turns.filter((t) => !seen.has(t.clientId)));
+  }, [thread]);
 
   const matches = useCallback((event: GcEventEnvelope) => {
     if (!CHAT_EVENTS.has(event.type)) return false;
     const payload = event.payload;
     if (payload?.provider !== BOARD_PROVIDER || payload.conversation_id !== cardRef.current.id) return false;
     if (event.type === 'extmsg.bound') {
-      const next = boundWho(payload);
-      if (next !== null) setWho(next);
+      const name = typeof payload.agent_name === 'string' ? payload.agent_name : null;
+      const sid = typeof payload.session_id === 'string' ? payload.session_id : null;
+      const next = agentOf(name) ?? (sid !== null ? (whoRef.current.get(sid) ?? null) : null);
+      setBound(next ?? (name !== null && name !== '' ? 'desk' : null));
     }
     return true;
   }, []);
 
-  useGcEventRefresh(['extmsg.'], refresh, { matches, coalesceMs: EVENT_COALESCE_MS });
+  const conn = useGcEventRefresh(['extmsg.'], refresh, { matches, coalesceMs: EVENT_COALESCE_MS });
 
-  const delivered = useMemo(
-    () => new Set(thread.map((e) => e.providerMessageId).filter((id): id is string => id !== undefined)),
-    [thread],
-  );
+  // Review I3: a reconnected stream does not replay the gap; read it.
+  const lastConn = useRef(conn);
+  const wasOpen = useRef(conn === 'open');
+  useEffect(() => {
+    const prev = lastConn.current;
+    lastConn.current = conn;
+    if (conn !== 'open') return;
+    if (wasOpen.current && prev !== 'open' && status !== 'loading') refresh();
+    wasOpen.current = true;
+  }, [conn, refresh, status]);
 
-  // The abnormal path: a turn accepted by the service but not in the transcript after 15 s.
-  const check = useCallback(() => {
-    checkTimer.current = null;
-    const seen = new Set(threadRef.current.map((e) => e.providerMessageId));
-    const waiting = localRef.current.filter((l) => l.state === 'queued' && !seen.has(l.clientId));
-    if (waiting.length === 0) return;
-    getPending(city, cardRef.current.id).then(
-      (items) => {
-        if (!live.current) return;
-        const byId = new Map(items.map((i) => [i.clientId, i]));
-        // not pending any more: delivered, the transcript will show it
-        const gone = waiting.some((l) => !byId.has(l.clientId));
-        setLocal((prev) =>
-          prev.map((l) => {
-            const item = l.state === 'queued' ? byId.get(l.clientId) : undefined;
-            return item === undefined ? l : { ...l, state: pendingState(item), origin: 'service' };
-          }),
-        );
-        if (gone) refresh();
-      },
-      () => {},
-    );
-  }, [city, refresh]);
-
-  const scheduleCheck = useCallback(() => {
-    if (checkTimer.current !== null) return;
-    checkTimer.current = setTimeout(check, DELIVERY_CHECK_MS);
-  }, [check]);
-
-  const setTurn = (clientId: string, patch: Partial<LocalTurn>) =>
-    setLocal((prev) => prev.map((l) => (l.clientId === clientId ? { ...l, ...patch } : l)));
-
-  const deliver = useCallback(
-    (turn: Pick<LocalTurn, 'clientId' | 'text' | 'replyTo'>) => {
-      sendTurn(city, cardRef.current, turn.text, turn.clientId, turn.replyTo).then(
-        () => {
-          if (!live.current) return;
-          setTurn(turn.clientId, { state: 'queued' });
-          scheduleCheck();
-        },
-        () => {
-          if (!live.current) return;
-          setTurn(turn.clientId, { state: 'failed', origin: 'local' });
-        },
-      );
-    },
-    [city, scheduleCheck],
-  );
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && live.current) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refresh]);
 
   const sendWith = useCallback(
     (text: string, replyTo?: string) => {
-      const clientId = newClientId();
-      sentTexts.set(clientId, text);
-      const turn: LocalTurn = {
-        clientId,
+      const turn: StoredTurn = {
+        clientId: newClientId(),
+        city,
+        cardId: cardRef.current.id,
+        rig: cardRef.current.rig,
         text,
         ...(replyTo !== undefined ? { replyTo } : {}),
         at: new Date().toISOString(),
         state: 'sending',
         origin: 'local',
       };
-      setLocal((prev) => [...prev, turn]);
-      deliver(turn);
+      setTurns([...turns, turn]);
+      deliver(turn, () => {
+        if (live.current) scheduleCheck();
+      });
     },
-    [deliver],
+    [city, scheduleCheck],
   );
 
   const send = useCallback((text: string) => sendWith(text), [sendWith]);
@@ -273,29 +449,55 @@ export function useCardChat(city: string, card: ChatCard): CardChat {
 
   const retry = useCallback(
     (clientId: string) => {
-      const turn = localRef.current.find((l) => l.clientId === clientId);
+      const turn = turns.find((l) => l.clientId === clientId);
       if (turn === undefined || turn.state !== 'failed') return;
       if (turn.origin === 'local') {
-        setTurn(clientId, { state: 'sending' });
-        deliver(turn);
+        deliver({ ...turn, state: 'sending' }, () => {
+          if (live.current) scheduleCheck();
+        });
         return;
       }
       retryTurn(city, clientId).then(
         () => {
-          if (!live.current) return;
-          setTurn(clientId, { state: 'queued' });
-          scheduleCheck();
+          patchTurn(clientId, { state: 'queued', error: undefined });
+          if (live.current) scheduleCheck();
         },
-        () => {},
+        (err: unknown) => {
+          // not_failed: delivered, unknown or still waiting — the transcript and the check decide
+          if (err instanceof BoardChatError && err.code === 'not_failed') {
+            patchTurn(clientId, { state: 'queued', error: undefined });
+            if (live.current) {
+              refresh();
+              scheduleCheck();
+            }
+          }
+        },
       );
     },
-    [city, deliver, scheduleCheck],
+    [city, refresh, scheduleCheck],
   );
+
+  // Who holds the chat: the bound event, else the Mayor while his ask is open (I5), else the desk.
+  const sourceWho = useCallback((e: ThreadEntry): 'desk' | 'mayor' => (e.source !== undefined ? whoBySession.get(e.source) : undefined) ?? 'desk', [whoBySession]);
+  const who = useMemo<'desk' | 'mayor'>(() => {
+    if (bound !== null) return bound;
+    const last = [...thread].reverse().find((e) => e.who !== 'owner');
+    if (last !== undefined && last.ask && sourceWho(last) === 'mayor') {
+      const answered = thread.some((e) => e.who === 'owner' && e.replyTo === last.id);
+      if (!answered) return 'mayor';
+    }
+    return 'desk';
+  }, [bound, thread, sourceWho]);
 
   const sessionState = useStructuredSessionStream(who, true);
   const activity = sessionState.status === 'ready' ? sessionState.result.activity : 'unknown';
   const agentActivity: CardChat['agentActivity'] =
     activity === 'in-turn' ? 'in-turn' : activity === 'idle' ? 'idle' : 'unknown';
+
+  const delivered = useMemo(
+    () => new Set(thread.map((e) => e.providerMessageId).filter((id): id is string => id !== undefined)),
+    [thread],
+  );
 
   const rows = useMemo(() => {
     const answered = new Set<string>();
@@ -316,20 +518,34 @@ export function useCardChat(city: string, card: ChatCard): CardChat {
           at: e.at,
         };
       }
+      // review I6: the author and the buttons come from the source session only
+      const author = sourceWho(e);
       return {
         key: e.id,
-        who: e.who,
+        who: author,
         text: e.text,
-        ...(e.ask ? { ask: { entryId: e.id, answered: answered.has(e.id) } } : {}),
+        ...(e.ask && author === 'mayor' ? { ask: { entryId: e.id, answered: answered.has(e.id) } } : {}),
         at: e.at,
       };
     });
     for (const l of local) {
       if (delivered.has(l.clientId)) continue;
-      out.push({ key: l.clientId, who: 'owner', text: l.text, state: l.state, at: l.at });
+      out.push({
+        key: l.clientId,
+        who: 'owner',
+        text: l.text,
+        state: l.state,
+        ...(l.state === 'failed'
+          ? { retryable: l.origin === 'service' || isRetryable(l.error ?? 'failed'), ...(l.error !== undefined ? { error: l.error } : {}) }
+          : {}),
+        at: l.at,
+      });
     }
     return out;
-  }, [thread, local, delivered, agentActivity]);
+  }, [thread, local, delivered, agentActivity, sourceWho]);
 
-  return { rows, send, retry, answer, status, who, agentActivity };
+  // `all` changes when a send ends; read the no-chat mark then
+  const chatless = all !== null && noChat.has(key);
+
+  return { rows, send, retry, answer, status: chatless ? 'no_chat' : status, who, agentActivity };
 }
