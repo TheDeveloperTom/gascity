@@ -17,6 +17,7 @@ import type { PeerCard } from '../supervisor/peerBoardReads';
 import { topicsForCard } from '../lib/peerTopics';
 import { peerStatusLines } from '../lib/peerLive';
 import { questionsForCard } from '../lib/topicQuestions';
+import { CardChat } from '../vk/chat/CardChat';
 import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
@@ -400,28 +401,19 @@ export function BeadsPage() {
     (card: BoardCard) => (card.peer === null ? 0 : (peerTopicCount.get(card.key) ?? 0)),
     [peerTopicCount],
   );
-  // OUR card: its rig (the rig whose prefix starts the id), our login from
-  // OUR city service (`own_login`; never from peer topics), and the topics
-  // that reference {our login, rig, id}. Who the box writes to is decided in
-  // CardConversation from these trusted facts only (security scan 15.11).
+  // Our login from OUR city service (`own_login`; never from peer topics).
   const ownLogin = peerBoards.result?.ownLogin ?? null;
+  // BOARD-CHAT C4 (owner 19.11 point 4): an own card has no topic thread; its
+  // drawer carries the private card chat, addressed by {rig, id}.
   const ownCard = useMemo(() => {
-    const none = { rig: null, topics: [], questions: [] } as const;
     const id = selectedId;
-    if (id === null || isPeerKey(id)) return none;
+    if (id === null || isPeerKey(id)) return { rig: null };
     const rig = rigItems.find((r) => {
       const prefix = r.prefix?.trim() ?? '';
       return prefix.length > 0 && id.startsWith(`${prefix}-`);
     });
-    if (rig === undefined) return none;
-    const ref = { mine: true, city: ownLogin, rig: rig.name, id };
-    return {
-      rig: rig.name,
-      topics: topicsForCard(peerBoards.result, ref),
-      // BOARD-LIVE L7: the owner's question about this card (one of three views)
-      questions: questionsForCard(peerBoards.result, ref),
-    };
-  }, [selectedId, rigItems, peerBoards.result, ownLogin]);
+    return { rig: rig?.name ?? null };
+  }, [selectedId, rigItems]);
   const openTopicFromCard = useCallback(
     (login: string, topicId: string) => {
       // one URL write: two functional updates in one tick would race
@@ -1027,42 +1019,37 @@ export function BeadsPage() {
         </CardConversation>
       )}
 
-      <CardConversation
-        key={`own:${ownSelectedId ?? ''}`}
-        topics={ownCard.topics}
-        questions={ownCard.questions}
-        peers={peerSources}
-        card={{ city: ownLogin, rig: ownCard.rig ?? '', id: ownSelectedId ?? '', title: selectedBead?.title ?? '' }}
-        ours
-        nowMs={nowMs}
-        onOpenTopic={openTopicFromCard}
-      >
-        {({ thread, composer }) => (
-          <BeadDetailModal
-            open={ownSelectedId !== null}
-            onClose={() => setSelectedId(null)}
-            beadId={ownSelectedId}
-            initialBead={selectedBead}
-            step={ownStep}
-            extra={ownCard.rig !== null && ownLogin !== null && peerSources.length > 0 ? thread : null}
-            footer={ownCard.rig !== null ? composer : null}
-            depNode={selectedNode}
-            sessions={sessionItems}
-            onOpenBead={jumpToBead}
-            renderActions={renderBeadActions}
-            onShowOnGraph={() => {
-              if (ownSelectedId === null) return;
-              setView('graph', epic === ALL_EPICS || focusParam !== null ? ownSelectedId : undefined);
-            }}
-            graphChain={anyGraph ? { cameFrom: prevBead } : null}
-            backCrumb={
-              prevBead !== null && prevBead !== ownSelectedId
-                ? { label: crumbLabel(prevBead, allRows), onBack: () => jumpToBead(prevBead) }
-                : null
-            }
-          />
-        )}
-      </CardConversation>
+      <BeadDetailModal
+        open={ownSelectedId !== null}
+        onClose={() => setSelectedId(null)}
+        beadId={ownSelectedId}
+        initialBead={selectedBead}
+        step={ownStep}
+        boardCard
+        footer={
+          ownSelectedId === null ? null : (
+            <CardChat
+              key={ownSelectedId}
+              city={cityName ?? ''}
+              card={{ rig: cityName === null ? null : ownCard.rig, id: ownSelectedId }}
+            />
+          )
+        }
+        depNode={selectedNode}
+        sessions={sessionItems}
+        onOpenBead={jumpToBead}
+        renderActions={renderBeadActions}
+        onShowOnGraph={() => {
+          if (ownSelectedId === null) return;
+          setView('graph', epic === ALL_EPICS || focusParam !== null ? ownSelectedId : undefined);
+        }}
+        graphChain={anyGraph ? { cameFrom: prevBead } : null}
+        backCrumb={
+          prevBead !== null && prevBead !== ownSelectedId
+            ? { label: crumbLabel(prevBead, allRows), onBack: () => jumpToBead(prevBead) }
+            : null
+        }
+      />
 
       <Modal
         open={closing !== null}
