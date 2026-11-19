@@ -33,7 +33,7 @@
 // Source: vibe-kanban packages/ui/src/components/IssueCommentsSection.tsx (CommentItem, comment input)
 
 import { ArrowUpIcon } from '@phosphor-icons/react';
-import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
 import { withApiBase } from '../../lib/apiBase';
 import { asOfClock } from '../../lib/boardOwner';
@@ -348,6 +348,13 @@ export interface CommentComposerProps {
   mentions?: readonly MentionOption[];
 }
 
+/** A message on its way from the box (BOARD-CHAT C1). */
+interface OutgoingRow {
+  key: string;
+  text: string;
+  state: 'sending' | 'failed';
+}
+
 /**
  * The VK comment box: textarea, hint and the round send button. Enter sends
  * (owner 17.11), Shift+Enter is a new line; Enter while an IME is composing
@@ -367,7 +374,8 @@ export function CommentComposer({
   const id = useId();
   const listId = useId();
   const [value, setValue] = useState('');
-  const [sending, setSending] = useState(false);
+  const [outgoing, setOutgoing] = useState<readonly OutgoingRow[]>([]);
+  const seq = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const empty = value.trim().length === 0 || disabled;
   // owner 17.11: the `@word` under the caret and the matching suggestions
@@ -396,18 +404,34 @@ export function CommentComposer({
     }
   };
 
-  const send = async () => {
-    if (empty || sending) return;
-    setSending(true);
+  // BOARD-CHAT C1 (owner 19.11, point 5): the box clears in the same frame as
+  // Enter and a row shows the message on its way; a failure keeps the row
+  // with «повторить». Once sent, the thread's own row takes over.
+  const deliver = (key: string, text: string) => {
+    setOutgoing((rows) => rows.map((r) => (r.key === key ? { ...r, state: 'sending' } : r)));
+    onSubmit(text).then(
+      () => setOutgoing((rows) => rows.filter((r) => r.key !== key)),
+      (err: unknown) => {
+        setOutgoing((rows) => rows.map((r) => (r.key === key ? { ...r, state: 'failed' } : r)));
+        setError(errorText ? errorText(err) : t('Not sent — try again.'));
+      },
+    );
+  };
+
+  const send = () => {
+    if (empty) return;
+    const text = value.trim();
+    const key = `out-${++seq.current}`;
+    setValue('');
+    setCaret(0);
     setError(null);
-    try {
-      await onSubmit(value.trim());
-      setValue('');
-    } catch (err) {
-      setError(errorText ? errorText(err) : t('Not sent — try again.'));
-    } finally {
-      setSending(false);
-    }
+    setOutgoing((rows) => [...rows, { key, text, state: 'sending' }]);
+    deliver(key, text);
+  };
+
+  const retry = (row: OutgoingRow) => {
+    setError(null);
+    deliver(row.key, row.text);
   };
 
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -431,7 +455,7 @@ export function CommentComposer({
     }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void send();
+      send();
     }
   };
 
@@ -472,6 +496,30 @@ export function CommentComposer({
           ))}
         </ul>
       )}
+      {outgoing.map((row) => (
+        <div
+          key={row.key}
+          data-testid="outgoing-row"
+          data-state={row.state}
+          className="flex flex-col gap-1 border-l-2 border-vk-mine pl-2"
+        >
+          <p className="m-0 whitespace-pre-wrap text-base text-vk-text-low [overflow-wrap:anywhere]">{row.text}</p>
+          {row.state === 'sending' ? (
+            <span className="text-sm font-light text-vk-text-low">{t('sending')}</span>
+          ) : (
+            <span className="flex items-center gap-2 text-sm">
+              <span className="font-light text-vk-error">{t('not delivered')}</span>
+              <button
+                type="button"
+                onClick={() => retry(row)}
+                className="min-h-11 rounded-sm px-1 text-vk-text-normal underline underline-offset-2 focus-mark hover:text-vk-text-high md:min-h-0"
+              >
+                {t('retry')}
+              </button>
+            </span>
+          )}
+        </div>
+      ))}
       <textarea
         id={id}
         ref={textareaRef}
@@ -495,8 +543,8 @@ export function CommentComposer({
         <button
           type="button"
           aria-label={t('Send')}
-          onClick={() => void send()}
-          disabled={empty || sending}
+          onClick={send}
+          disabled={empty}
           className="flex size-11 shrink-0 items-center justify-center rounded-full border border-vk-border bg-vk-bg-panel text-vk-text-high transition-colors hover:bg-vk-bg-secondary focus-mark disabled:cursor-not-allowed disabled:opacity-50 md:size-[28px]"
         >
           <ArrowUpIcon size={12} weight="bold" />

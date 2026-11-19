@@ -7,6 +7,7 @@ import {
   getV0CityByCityNameBeadById,
   getV0CityByCityNameBeads,
   getV0CityByCityNameEvents,
+  getV0CityByCityNameExtmsgTranscript,
   getV0CityByCityNameFormulasByName,
   getV0CityByCityNameFormulasFeed,
   getV0CityByCityNameHealth,
@@ -15,6 +16,7 @@ import {
   getV0CityByCityNameRigs,
   getV0CityByCityNameRunsCensus,
   getV0CityByCityNameSessionByIdPending,
+  getV0CityByCityNameSessionById,
   getV0CityByCityNameSessionByIdTranscript,
   getV0CityByCityNameSessions,
   getV0CityByCityNameStatus,
@@ -37,6 +39,8 @@ import type {
   FormulaFeedBody,
   GetV0CityByCityNameBeadsData,
   GetV0CityByCityNameEventsData,
+  GetV0CityByCityNameExtmsgTranscriptData,
+  ListBodyConversationTranscriptRecord,
   GetV0CityByCityNameFormulasFeedData,
   GetV0CityByCityNameFormulasByNameData,
   GetHealthResponse,
@@ -55,6 +59,7 @@ import type {
   MailListBody,
   Message,
   ListBodySessionResponse,
+  SessionResponse,
   OkResponseBody,
   PostV0CityByCityNameMailByIdArchiveData,
   PostV0CityByCityNameMailByIdMarkUnreadData,
@@ -111,6 +116,11 @@ export interface SupervisorApi {
     cityName: string,
     query?: NonNullable<GetV0CityByCityNameEventsData['query']>,
   ): Promise<ListBodyWireEvent>;
+  /** BOARD-CHAT C2 (DC#23): one external-messaging conversation's transcript. */
+  extmsgTranscript(
+    cityName: string,
+    query: NonNullable<GetV0CityByCityNameExtmsgTranscriptData['query']>,
+  ): Promise<ListBodyConversationTranscriptRecord>;
   getBead(cityName: string, id: string): Promise<Bead>;
   createBead(cityName: string, body: BeadCreateInputBody): Promise<Bead>;
   updateBead(cityName: string, id: string, body: BeadUpdateBody): Promise<OkResponseBody>;
@@ -156,6 +166,8 @@ export interface SupervisorApi {
   ): string;
   listSessions(cityName: string): Promise<ListBodySessionResponse>;
   sessionPending(cityName: string, sessionId: string): Promise<SessionPendingResponse>;
+  /** BOARD-CHAT re-review R2: one session by id, alias or name (closed ones too). */
+  getSession(cityName: string, sessionId: string): Promise<SessionResponse>;
   respondSession(
     cityName: string,
     sessionId: string,
@@ -298,6 +310,16 @@ export function createSupervisorApi(options: CreateSupervisorApiOptions = {}): S
           ...(query === undefined ? {} : { query }),
         }) as Promise<SupervisorResult<ListBodyWireEvent>>,
         'gc supervisor events response was empty',
+      );
+    },
+    extmsgTranscript(cityName, query) {
+      return unwrapSupervisorResult<ListBodyConversationTranscriptRecord>(
+        getV0CityByCityNameExtmsgTranscript({
+          client,
+          path: { cityName },
+          query,
+        }) as Promise<SupervisorResult<ListBodyConversationTranscriptRecord>>,
+        'gc supervisor extmsg transcript response was empty',
       );
     },
     getBead(cityName, id) {
@@ -509,6 +531,15 @@ export function createSupervisorApi(options: CreateSupervisorApiOptions = {}): S
           body,
         }) as Promise<SupervisorResult<RespondSessionResponse>>,
         'gc supervisor session respond response was empty',
+      );
+    },
+    getSession(cityName, sessionId) {
+      return unwrapSupervisorResult<SessionResponse>(
+        getV0CityByCityNameSessionById({
+          client,
+          path: { cityName, id: sessionId },
+        }) as Promise<SupervisorResult<SessionResponse>>,
+        'gc supervisor session response was empty',
       );
     },
     sessionTranscript(cityName, sessionId, format, options) {

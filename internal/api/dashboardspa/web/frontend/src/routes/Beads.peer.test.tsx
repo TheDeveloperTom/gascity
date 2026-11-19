@@ -351,45 +351,59 @@ describe('BeadsPage with Richard’s board', () => {
     return screen.findByRole('dialog');
   }
 
-  it('OUR card with no own_login yet: our login from a topic OUR service marks mine — the box and thread appear (I-1)', async () => {
-    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }));
+  // BOARD-CHAT C4 (owner 19.11 point 4, supersedes the 15.11 «own card =
+  // topic» tests): OUR card carries the private card chat; no topic thread,
+  // and nothing goes to the other city unless the owner shares it.
+  it('OUR card: the private card chat, never the topic thread, even when a topic references it', async () => {
+    peerResponse = () => json({ ...peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }), own_login: 'me' });
     renderPage();
     const dialog = await openMyCard();
-    expect(await within(dialog).findByRole('region', { name: 'Обсуждение карточки' })).toBeTruthy();
-    expect(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' })).toBeTruthy();
-  });
-
-  it('OUR card, our login truly unknown (no own_login, nothing marked mine): no thread lookup and no box', async () => {
-    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
-    renderPage();
-    const dialog = await openMyCard();
-    // the panel has settled on the bead (its body reads the card)
-    await within(dialog).findByText('dw-ab12');
-    expect(within(dialog).queryByRole('textbox', { name: 'Комментарий к карточке' })).toBeNull();
+    const chat = await within(dialog).findByRole('region', { name: 'Чат по карточке' });
+    expect(chat.closest('[data-testid="task-drawer-footer"]')).not.toBeNull();
+    expect(within(dialog).getByText('видите только вы и ваш Мэр')).toBeTruthy();
     expect(within(dialog).queryByRole('region', { name: 'Обсуждение карточки' })).toBeNull();
+    expect(within(dialog).queryByText('Кто обновит Node?')).toBeNull();
+    expect(within(dialog).queryByTestId('mayor-message')).toBeNull();
+    expect(collectMissing()).toEqual([]);
   });
 
-  it('OUR card whose topic is on BOB’s board (two peers): the message goes to bob, no picker (M-10)', async () => {
-    const body = { ...peerBody({ snapshotAt: minutesAgo(1) }), own_login: 'me' };
-    const bob = structuredClone(body.peers[0]!) as Record<string, unknown>;
-    bob.login = 'bob';
-    bob.person = { name: 'Боб', genitive: 'Боба', initial: 'Б', dative: 'Бобу' };
-    bob.cards = [];
-    bob.topics = [{ ...peerTopics()[1], city: 'me', card: { city: 'me', rig: 'devwork', id: 'dw-ab12' } }];
-    body.peers.push(bob as (typeof body.peers)[number]);
-    peerResponse = () => json(body);
+  it('OUR card: a message goes to the board-chat service, never to a peer topic', async () => {
+    peerResponse = () => json({ ...peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }), own_login: 'me' });
     const posts = capturePosts();
     renderPage();
     const dialog = await openMyCard();
-    await within(dialog).findByRole('region', { name: 'Обсуждение карточки' });
-    expect(within(dialog).queryByRole('combobox', { name: 'Кому' })).toBeNull();
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' }), {
-      target: { value: 'Обновлю сам' },
-    });
+    const box = (await within(dialog).findByRole('textbox', { name: 'Спросить про эту карточку' })) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'Что это за карточка?' } });
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
+      fireEvent.keyDown(box, { key: 'Enter' });
     });
-    expect(posts.at(-1)!.body).toEqual({ card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Обновлю сам', to: 'bob' });
+    expect(box.value).toBe('');
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.path).toBe('/v0/city/test-city/svc/board-chat/v1/send');
+    expect(posts[0]!.body).toMatchObject({ card: { rig: 'devwork', id: 'dw-ab12' }, text: 'Что это за карточка?' });
+    expect(String(posts[0]!.body.client_id)).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  // review M10 (rewritten: the old assertions passed trivially once own cards dropped topics)
+  it('OUR card, our login unknown: the private chat still shows (it needs no login); no topic box, no Discord link', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
+    renderPage();
+    const dialog = await openMyCard();
+    await within(dialog).findByRole('region', { name: 'Чат по карточке' });
+    expect(within(dialog).getByRole('textbox', { name: 'Спросить про эту карточку' })).toBeTruthy();
+    expect(within(dialog).queryByRole('textbox', { name: 'Комментарий к карточке' })).toBeNull();
+    expect(within(dialog).queryByRole('region', { name: 'Обсуждение карточки' })).toBeNull();
+    // review Q4: the own card's one Mayor path is the chat
+    expect(within(dialog).queryByRole('button', { name: 'Обсудить с Мэром' })).toBeNull();
+  });
+
+  it('review Q3: OUR card whose id matches no rig shows the plain no-chat line once the rigs are read', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
+    renderPage('/beads?bead=gcg-77');
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Чат есть у задач и эпиков продукта')).toBeTruthy();
+    expect(within(dialog).queryByTestId('card-chat-skeleton')).toBeNull();
+    expect(within(dialog).queryByRole('textbox', { name: 'Спросить про эту карточку' })).toBeNull();
   });
 
   it('read-only dashboard: no comment box (M-5)', async () => {
@@ -421,74 +435,6 @@ describe('BeadsPage with Richard’s board', () => {
     await waitFor(() => expect(myCard()).not.toBeNull());
   });
 
-  it('OUR card, one peer, no thread yet: the first message opens a topic with that peer about OUR card', async () => {
-    peerResponse = () => json({ ...peerBody({ snapshotAt: minutesAgo(1) }), own_login: 'me' });
-    const posts = capturePosts();
-    renderPage();
-    const dialog = await openMyCard();
-    expect(within(dialog).queryByRole('combobox', { name: 'Кому' })).toBeNull();
-    fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Комментарий к карточке' }), {
-      target: { value: 'Кто возьмёт?' },
-    });
-    await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
-    });
-    expect(posts).toEqual([
-      {
-        path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
-        body: { card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Кто возьмёт?', to: 'rich' },
-      },
-    ]);
-  });
-
-  it('OUR card, two peers, no thread yet: the person picks whom to write to; nothing goes out before', async () => {
-    const body = { ...peerBody({ snapshotAt: minutesAgo(1) }), own_login: 'me' };
-    const bob = structuredClone(body.peers[0]!) as Record<string, unknown>;
-    bob.login = 'bob';
-    bob.person = { name: 'Боб', genitive: 'Боба', initial: 'Б', dative: 'Бобу' };
-    bob.cards = [];
-    body.peers.push(bob as (typeof body.peers)[number]);
-    peerResponse = () => json(body);
-    const posts = capturePosts();
-    renderPage();
-    const dialog = await openMyCard();
-    const to = (await within(dialog).findByRole('combobox', { name: 'Кому' })) as HTMLSelectElement;
-    const box = within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' });
-    fireEvent.change(box, { target: { value: 'Кто возьмёт?' } });
-    expect((within(dialog).getByRole('button', { name: 'Отправить' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(to, { target: { value: 'bob' } });
-    await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
-    });
-    expect(posts).toHaveLength(1);
-    expect(posts[0]).toEqual({
-      path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
-      body: { card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Кто возьмёт?', to: 'bob' },
-    });
-  });
-
-  it('OUR card: the topic that references it is its thread, with the same box', async () => {
-    peerResponse = () => json({ ...peerBody({ snapshotAt: minutesAgo(1), topics: peerTopics() }), own_login: 'me' });
-    const posts = capturePosts();
-    renderPage();
-    await screen.findByText('Изменение схемы users');
-    fireEvent.click(within(myCard()!).getByRole('button', { name: /Моя карточка с тем же id/ }));
-    const dialog = await screen.findByRole('dialog');
-    const thread = await within(dialog).findByRole('region', { name: 'Обсуждение карточки' });
-    expect(within(thread).getByText('Кто обновит Node?')).toBeTruthy();
-    expect(within(thread).queryByText(/перезагрузить общий CI/)).toBeNull();
-    const box = within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' });
-    fireEvent.change(box, { target: { value: 'Обновлю сам' } });
-    await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
-    });
-    // the topic's peer (the board it came from), never a fallback
-    expect(posts.at(-1)).toEqual({
-      path: '/v0/city/test-city/svc/peer-boards/v1/topics/card-message',
-      body: { card: { city: 'me', rig: 'devwork', id: 'dw-ab12' }, text: 'Обновлю сам', to: 'rich' },
-    });
-  });
-
   // BOARD-LIVE L14: both cities use the `dw` prefix and the rig name
   // `devwork`. Our devwork/dw-ab12 and his devwork/dw-ab12 are two cards;
   // opening, commenting, the topic thread and the project filter each hit
@@ -515,7 +461,7 @@ describe('BeadsPage with Richard’s board', () => {
       // his card: his thread only, and the message names HIS card
       fireEvent.click(within(hisCard()!).getByRole('button', { name: /Изменение схемы users/ }));
       let dialog = await screen.findByRole('dialog');
-      let thread = within(dialog).getByRole('region', { name: 'Обсуждение карточки' });
+      const thread = within(dialog).getByRole('region', { name: 'Обсуждение карточки' });
       expect(within(thread).getByText('Уточняю у Артёма.')).toBeTruthy();
       expect(within(thread).queryByText('Кто обновит Node?')).toBeNull();
       fireEvent.change(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' }), {
@@ -526,21 +472,22 @@ describe('BeadsPage with Richard’s board', () => {
       });
       expect(posts.at(-1)!.body.card).toEqual({ city: 'rich', rig: 'devwork', id: 'dw-ab12' });
       cleanup();
-      // our card: our thread only, and the message names OUR card
+      // our card (BOARD-CHAT C4): the private chat, none of his thread, and
+      // the message names OUR card to our board-chat service
       renderPage();
       await screen.findByText('Изменение схемы users');
       fireEvent.click(within(myCard()!).getByRole('button', { name: /Моя карточка с тем же id/ }));
       dialog = await screen.findByRole('dialog');
-      thread = await within(dialog).findByRole('region', { name: 'Обсуждение карточки' });
-      expect(within(thread).getByText('Кто обновит Node?')).toBeTruthy();
-      expect(within(thread).queryByText('Уточняю у Артёма.')).toBeNull();
-      fireEvent.change(within(dialog).getByRole('textbox', { name: 'Комментарий к карточке' }), {
+      await within(dialog).findByRole('region', { name: 'Чат по карточке' });
+      expect(within(dialog).queryByText('Уточняю у Артёма.')).toBeNull();
+      fireEvent.change(within(dialog).getByRole('textbox', { name: 'Спросить про эту карточку' }), {
         target: { value: 'наш' },
       });
       await act(async () => {
         fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить' }));
       });
-      expect(posts.at(-1)!.body.card).toEqual({ city: 'me', rig: 'devwork', id: 'dw-ab12' });
+      expect(posts.at(-1)!.path).toBe('/v0/city/test-city/svc/board-chat/v1/send');
+      expect(posts.at(-1)!.body.card).toEqual({ rig: 'devwork', id: 'dw-ab12' });
     });
 
     it('the project filter: our devwork board also shows his devwork card (16.11 owner); his project never shows ours', async () => {

@@ -1345,6 +1345,8 @@ describe('supervisor client wrapper', () => {
       listRigs: vi.fn(),
       listBeads: vi.fn(),
       listEvents: vi.fn(),
+      extmsgTranscript: vi.fn(),
+      getSession: vi.fn(),
       listCities: vi.fn(),
       formulaFeed: vi.fn(),
       listMail: vi.fn(),

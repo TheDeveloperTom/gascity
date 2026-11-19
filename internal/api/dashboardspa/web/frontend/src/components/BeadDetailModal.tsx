@@ -70,6 +70,12 @@ interface BeadDetailModalProps {
   extra?: ReactNode;
   /** Pinned at the drawer's bottom (vk-final: the card's comment box). */
   footer?: ReactNode;
+  /**
+   * BOARD-CHAT C4 (owner 19.11 point 6): a board card. Its footer is the
+   * caller's (the card chat, a skeleton while it loads): never the Discord
+   * MayorMessageBox fallback, which looked like deleted comments.
+   */
+  boardCard?: boolean;
   /** Graph sprint: «Показать на графе» beside «Обсудить с Мэром». */
   onShowOnGraph?: () => void;
   /** Graph sprint: on the graph, the clickable «Почему стоит» / «Её ждут» rows. */
@@ -95,6 +101,7 @@ export function BeadDetailModal({
   renderActions,
   extra = null,
   footer = null,
+  boardCard = false,
   onShowOnGraph,
   graphChain = null,
   backCrumb = null,
@@ -179,7 +186,8 @@ export function BeadDetailModal({
   const actions =
     bead && discussCtx ? (
       <>
-        <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} variant="secondary" />
+        {/* lane C review Q4 (owner 19.11): an own board card's one Mayor path is its chat */}
+        {!boardCard && <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} variant="secondary" />}
         {onShowOnGraph !== undefined && <ShowOnGraphButton onClick={onShowOnGraph} />}
         {renderActions?.(bead)}
       </>
@@ -223,7 +231,7 @@ export function BeadDetailModal({
           ) : undefined
         }
         actions={actions}
-        footer={footer ?? (discussCtx ? <MayorMessageBox ctx={discussCtx} /> : null)}
+        footer={boardCard ? footer : (footer ?? (discussCtx ? <MayorMessageBox ctx={discussCtx} /> : null))}
       >
         {notFound ? (
           <div className="space-y-2">

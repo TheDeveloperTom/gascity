@@ -70,6 +70,18 @@ export function mergePending(served: readonly PeerComment[], pending: readonly P
   return [...served, ...left];
 }
 
+/**
+ * BOARD-CHAT C5 (owner 19.11 point 4): Richard's cards keep the cross-city
+ * topic, and the box says so plainly («это разговор с городом Ричарда:
+ * увидят Ричард и его Мэр»). `label` is the genitive («Ричарда»).
+ */
+export function peerCardHint(peer: { name: string; label: string }): string {
+  return t('this is a conversation with {owner} city: {name} and his Mayor will see it', {
+    owner: peer.label,
+    name: peer.name,
+  });
+}
+
 /** The card's current topic: the newest one still talking, else the newest closed one. */
 function currentOf(topics: readonly CardTopic[]): CardTopic | null {
   const live = topics.find((ct) => ct.topic.status === 'open' || ct.topic.status === 'paused');
@@ -223,7 +235,11 @@ export function CardConversation({
             : t('Write to the Mayors…')
         }
         hint={
-          toPeer !== null ? t('both Mayors and {name} will see it', { name: toPeer.name }) : t('Choose whom to write to.')
+          toPeer === null
+            ? t('Choose whom to write to.')
+            : !ours
+              ? peerCardHint(toPeer)
+              : t('both Mayors and {name} will see it', { name: toPeer.name })
         }
         disabled={!canSend}
         mentions={mentions}
