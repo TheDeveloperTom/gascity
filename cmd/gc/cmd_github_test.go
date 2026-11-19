@@ -490,7 +490,172 @@ func TestGitHubPRBackfillAuthorFlagCreatesNoRepairBeadForOtherAuthors(t *testing
 	}
 }
 
+// failureKindFixturePRs is one PR per actionable shape that matters for the
+// repair-kind filter: CI still running on a protected branch (BLOCKED, no
+// failed check), merely behind base, a merge conflict, and a red check.
+func failureKindFixturePRs() []githubmonitor.PullRequest {
+	return []githubmonitor.PullRequest{
+		{Number: 10, BaseRefName: "main", HeadSHA: "blocked10", MergeStateStatus: "BLOCKED",
+			Checks: []githubmonitor.Check{{Name: "ci", Status: "IN_PROGRESS"}}},
+		{Number: 11, BaseRefName: "main", HeadSHA: "behind11", MergeStateStatus: "BEHIND"},
+		{Number: 12, BaseRefName: "main", HeadSHA: "dirty12", MergeStateStatus: "DIRTY"},
+		{Number: 13, BaseRefName: "main", HeadSHA: "red13", MergeStateStatus: "BLOCKED",
+			Checks: []githubmonitor.Check{{Name: "ci", Status: "COMPLETED", Conclusion: "FAILURE"}}},
+	}
+}
+
+type failureKindBackfillPayload struct {
+	ActionableCount int `json:"actionable_count"`
+	CreatedRepairs  int `json:"created_repairs"`
+	SkippedRepairs  int `json:"skipped_repairs"`
+}
+
+// runFailureKindBackfill runs backfill over failureKindFixturePRs and returns
+// the decoded payload plus the PR numbers that got a repair bead.
+func runFailureKindBackfill(t *testing.T, cityPath string, extraArgs ...string) (failureKindBackfillPayload, map[string]bool) {
+	t.Helper()
+	store := beads.NewMemStore()
+	oldToken := resolveGitHubTokenForBackfill
+	oldClient := newGitHubPRBackfillClient
+	oldStore := openGitHubPRRepairStore
+	resolveGitHubTokenForBackfill = func(context.Context) (string, error) { return "token", nil }
+	newGitHubPRBackfillClient = func(string) githubPRLister {
+		return fakeGitHubPRLister{prs: failureKindFixturePRs()}
+	}
+	openGitHubPRRepairStore = func(string, string) (beads.Store, error) { return store, nil }
+	stubGitHubRepairWorkflowAttach(t)
+	t.Cleanup(func() {
+		resolveGitHubTokenForBackfill = oldToken
+		newGitHubPRBackfillClient = oldClient
+		openGitHubPRRepairStore = oldStore
+	})
+
+	args := append([]string{"--city", cityPath, "github", "pr", "backfill", "partcl-main", "--create-repair-beads", "--json"}, extraArgs...)
+	var stdout, stderr bytes.Buffer
+	if code := run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("run code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+	var payload failureKindBackfillPayload
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("decode stdout %q: %v", stdout.String(), err)
+	}
+	created, err := store.ListByMetadata(map[string]string{"source": "github-pr-monitor"}, 0)
+	if err != nil {
+		t.Fatalf("ListByMetadata: %v", err)
+	}
+	prs := map[string]bool{}
+	for _, b := range created {
+		prs[b.Metadata["github.pr"]] = true
+	}
+	return payload, prs
+}
+
+func assertRepairPRs(t *testing.T, got map[string]bool, want ...string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("repair beads for PRs %v, want exactly %v", got, want)
+	}
+	for _, pr := range want {
+		if !got[pr] {
+			t.Fatalf("repair beads for PRs %v, want exactly %v", got, want)
+		}
+	}
+}
+
+// TestBackfillFailureKindFilter pins the opt-in repair-kind filter: with
+// --failure-kind merge_conflict --failure-kind checks_failed, only the
+// conflicted and the red PR mint repair beads. The BEHIND and the
+// BLOCKED-while-CI-runs PRs are still reported as actionable (the detector is
+// unchanged) but get no bead.
+func TestBackfillFailureKindFilter(t *testing.T) {
+	cityPath := writeGitHubMonitorTestCity(t)
+	payload, prs := runFailureKindBackfill(t, cityPath, "--failure-kind", "merge_conflict", "--failure-kind", "checks_failed")
+	assertRepairPRs(t, prs, "12", "13")
+	if payload.ActionableCount != 4 {
+		t.Fatalf("actionable_count = %d, want 4 (detector unchanged by the filter)", payload.ActionableCount)
+	}
+	if payload.CreatedRepairs != 2 || payload.SkippedRepairs != 2 {
+		t.Fatalf("created=%d skipped=%d, want 2/2", payload.CreatedRepairs, payload.SkippedRepairs)
+	}
+}
+
+func TestBackfillFailureKindFilterBehindOnlyMintsNoBead(t *testing.T) {
+	cityPath := writeGitHubMonitorTestCity(t)
+	_, prs := runFailureKindBackfill(t, cityPath, "--failure-kind", "merge_conflict")
+	assertRepairPRs(t, prs, "12")
+}
+
+// TestBackfillWithoutFailureKindKeepsHistoricalBehavior pins the default: no
+// flag and no repair_kinds means every actionable PR mints a bead, as before.
+func TestBackfillWithoutFailureKindKeepsHistoricalBehavior(t *testing.T) {
+	cityPath := writeGitHubMonitorTestCity(t)
+	payload, prs := runFailureKindBackfill(t, cityPath)
+	assertRepairPRs(t, prs, "10", "11", "12", "13")
+	if payload.SkippedRepairs != 0 {
+		t.Fatalf("skipped_repairs = %d, want 0 with no filter", payload.SkippedRepairs)
+	}
+}
+
+func TestBackfillMonitorRepairKindsFiltersRepairBeads(t *testing.T) {
+	cityPath := writeGitHubMonitorTestCityWith(t, `repair_kinds = ["merge_conflict", "checks_failed"]`+"\n")
+	_, prs := runFailureKindBackfill(t, cityPath)
+	assertRepairPRs(t, prs, "12", "13")
+}
+
+// TestBackfillFailureKindUnionsWithMonitorRepairKinds mirrors --author: the
+// flag unions with the monitor's configured list.
+func TestBackfillFailureKindUnionsWithMonitorRepairKinds(t *testing.T) {
+	cityPath := writeGitHubMonitorTestCityWith(t, `repair_kinds = ["merge_conflict"]`+"\n")
+	_, prs := runFailureKindBackfill(t, cityPath, "--failure-kind", "checks_failed")
+	assertRepairPRs(t, prs, "12", "13")
+}
+
+func TestBackfillRejectsInvalidFailureKindFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "unknown kind", args: []string{"--create-repair-beads", "--failure-kind", "behind"}, want: `unknown --failure-kind "behind"`},
+		{name: "blank kind", args: []string{"--create-repair-beads", "--failure-kind", " "}, want: "--failure-kind must not be empty"},
+		{name: "without create-repair-beads", args: []string{"--failure-kind", "merge_conflict"}, want: "--failure-kind requires --create-repair-beads"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cityPath := writeGitHubMonitorTestCity(t)
+			oldToken := resolveGitHubTokenForBackfill
+			oldClient := newGitHubPRBackfillClient
+			resolveGitHubTokenForBackfill = func(context.Context) (string, error) {
+				t.Fatal("token resolved despite invalid --failure-kind")
+				return "", nil
+			}
+			newGitHubPRBackfillClient = func(string) githubPRLister {
+				t.Fatal("GitHub client created despite invalid --failure-kind")
+				return nil
+			}
+			t.Cleanup(func() {
+				resolveGitHubTokenForBackfill = oldToken
+				newGitHubPRBackfillClient = oldClient
+			})
+			args := append([]string{"--city", cityPath, "github", "pr", "backfill"}, tc.args...)
+			var stdout, stderr bytes.Buffer
+			if code := run(args, &stdout, &stderr); code == 0 {
+				t.Fatalf("run code = 0, want non-zero; stdout = %q", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), tc.want)
+			}
+		})
+	}
+}
+
 func writeGitHubMonitorTestCity(t *testing.T) string {
+	t.Helper()
+	return writeGitHubMonitorTestCityWith(t, "")
+}
+
+// writeGitHubMonitorTestCityWith writes the standard monitor test city with
+// extraMonitorTOML appended inside the [[github.pr_monitor]] block.
+func writeGitHubMonitorTestCityWith(t *testing.T, extraMonitorTOML string) string {
 	t.Helper()
 	cityPath := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cityPath, ".gc"), 0o755); err != nil {
@@ -514,7 +679,7 @@ repair_route = "partcl/polecat"
 notify = ["gastown.mayor"]
 poll_interval = "2m"
 merge_queue = "repair"
-`
+` + extraMonitorTOML
 	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write city.toml: %v", err)
 	}

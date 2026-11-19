@@ -54,6 +54,12 @@ type githubPRBackfillOptions struct {
 	// combined set is non-empty, only PRs whose author login matches exactly
 	// (case-sensitively) are acted on.
 	authors []string
+	// failureKinds is an additional repair-kind allow-list supplied for this
+	// invocation. It unions with each monitor's configured repair_kinds; when
+	// the combined set is non-empty, only actionable PRs whose failure kind is
+	// listed mint or refresh a repair bead. Empty keeps the historical
+	// behavior (every actionable PR mints a bead).
+	failureKinds []string
 }
 
 type githubPRBackfillResult struct {
@@ -68,6 +74,9 @@ type githubPRBackfillResult struct {
 	CreatedRepairs    int                    `json:"created_repairs,omitempty"`
 	UpdatedRepairs    int                    `json:"updated_repairs,omitempty"`
 	DispatchedRepairs int                    `json:"dispatched_repairs,omitempty"`
+	// SkippedRepairs counts actionable PRs that minted no repair bead because
+	// their failure kind is outside the repair-kind allow-list.
+	SkippedRepairs int `json:"skipped_repairs,omitempty"`
 }
 
 type githubPRRepairBead struct {
@@ -133,7 +142,15 @@ The command reads [[github.pr_monitor]] entries from the resolved city
 configuration, queries open pull requests from GitHub, and reports PRs that
 need repair: failed checks, merge conflicts, blocked mergeability, or branches
 behind their base. By default clean and pending-only PRs are omitted; pass
---all to include every observed PR.`,
+--all to include every observed PR.
+
+With --create-repair-beads, every actionable PR mints a deduped repair bead
+unless a repair-kind allow-list is set: --failure-kind (repeatable) unioned
+with the monitor's repair_kinds. Then only PRs whose failure kind is listed
+mint or refresh a bead; the rest are still reported and counted as
+skipped_repairs. For example, --failure-kind merge_conflict --failure-kind
+checks_failed keeps repair agents off PRs that are only behind their base or
+blocked while checks run.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -152,6 +169,7 @@ behind their base. By default clean and pending-only PRs are omitted; pass
 	cmd.Flags().BoolVar(&opts.includeClean, "all", false, "include clean and pending-only PRs")
 	cmd.Flags().BoolVar(&opts.createRepairs, "create-repair-beads", false, "create deduped repair beads for actionable PRs")
 	cmd.Flags().StringArrayVar(&opts.authors, "author", nil, "restrict to PRs by this GitHub author login (repeatable); fail-closed and unions with each monitor's configured authors")
+	cmd.Flags().StringArrayVar(&opts.failureKinds, "failure-kind", nil, "with --create-repair-beads, mint repair beads only for this failure kind (checks_failed, merge_conflict, behind_base, blocked; repeatable); unions with each monitor's configured repair_kinds")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", opts.timeout, "GitHub query timeout")
 	return cmd
 }
@@ -184,6 +202,21 @@ func doGitHubPRBackfill(opts githubPRBackfillOptions, stdout, stderr io.Writer) 
 			return 1
 		}
 	}
+	if len(opts.failureKinds) > 0 && !opts.createRepairs {
+		fmt.Fprintln(stderr, "gc github pr backfill: --failure-kind requires --create-repair-beads") //nolint:errcheck // best-effort stderr
+		return 1
+	}
+	for _, kind := range opts.failureKinds {
+		kind = strings.TrimSpace(kind)
+		if kind == "" {
+			fmt.Fprintln(stderr, "gc github pr backfill: --failure-kind must not be empty") //nolint:errcheck // best-effort stderr
+			return 1
+		}
+		if !config.IsGitHubPRFailureKind(kind) {
+			fmt.Fprintf(stderr, "gc github pr backfill: unknown --failure-kind %q (valid: %s)\n", kind, strings.Join(config.GitHubPRFailureKinds(), ", ")) //nolint:errcheck // best-effort stderr
+			return 1
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
 	defer cancel()
 
@@ -206,10 +239,13 @@ func doGitHubPRBackfill(opts githubPRBackfillOptions, stdout, stderr io.Writer) 
 			return 1
 		}
 		evaluated := githubmonitor.EvaluatePullRequestsWithAllowedAuthors(monitor, prs, opts.authors)
+		repairKinds := githubPRRepairKindSet(monitor, opts.failureKinds)
 		for _, prResult := range evaluated {
 			if prResult.Actionable {
 				result.ActionableCount++
-				if opts.createRepairs {
+				if opts.createRepairs && !githubPRRepairKindAllowed(repairKinds, prResult.FailureKind) {
+					result.SkippedRepairs++
+				} else if opts.createRepairs {
 					outcome, err := ensureGitHubPRRepairBead(cityPath, cfg, monitor, prResult)
 					if err != nil {
 						fmt.Fprintf(stderr, "gc github pr backfill: repair bead for %s/%s#%d: %v\n", prResult.Owner, prResult.Repo, prResult.Number, err) //nolint:errcheck // best-effort stderr
@@ -257,6 +293,33 @@ func doGitHubPRBackfill(opts githubPRBackfillOptions, stdout, stderr io.Writer) 
 	}
 	writeGitHubPRBackfillText(stdout, result)
 	return 0
+}
+
+// githubPRRepairKindSet unions a monitor's configured repair_kinds with the
+// --failure-kind flag values. It returns nil when both are empty, which means
+// "no repair-kind restriction" (the historical behavior).
+func githubPRRepairKindSet(monitor config.GitHubPRMonitor, extra []string) map[string]bool {
+	set := monitor.RepairKindSet()
+	for _, kind := range extra {
+		kind = strings.TrimSpace(kind)
+		if kind == "" {
+			continue
+		}
+		if set == nil {
+			set = make(map[string]bool, len(extra))
+		}
+		set[kind] = true
+	}
+	return set
+}
+
+// githubPRRepairKindAllowed reports whether an actionable PR with failureKind
+// may mint or refresh a repair bead. An empty allow-list allows every kind.
+func githubPRRepairKindAllowed(allowed map[string]bool, failureKind string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	return allowed[failureKind]
 }
 
 func ensureGitHubPRRepairBead(cityPath string, cfg *config.City, monitor config.GitHubPRMonitor, result githubmonitor.Result) (githubPRRepairOutcome, error) {

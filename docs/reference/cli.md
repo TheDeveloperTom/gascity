@@ -2070,6 +2070,14 @@ need repair: failed checks, merge conflicts, blocked mergeability, or branches
 behind their base. By default clean and pending-only PRs are omitted; pass
 --all to include every observed PR.
 
+With --create-repair-beads, every actionable PR mints a deduped repair bead
+unless a repair-kind allow-list is set: --failure-kind (repeatable) unioned
+with the monitor's repair_kinds. Then only PRs whose failure kind is listed
+mint or refresh a bead; the rest are still reported and counted as
+skipped_repairs. For example, --failure-kind merge_conflict --failure-kind
+checks_failed keeps repair agents off PRs that are only behind their base or
+blocked while checks run.
+
 ```
 gc github pr backfill [monitor-name] [flags]
 ```
@@ -2079,6 +2087,7 @@ gc github pr backfill [monitor-name] [flags]
 | `--all` | bool |  | include clean and pending-only PRs |
 | `--author` | stringArray |  | restrict to PRs by this GitHub author login (repeatable); fail-closed and unions with each monitor's configured authors |
 | `--create-repair-beads` | bool |  | create deduped repair beads for actionable PRs |
+| `--failure-kind` | stringArray |  | with --create-repair-beads, mint repair beads only for this failure kind (checks_failed, merge_conflict, behind_base, blocked; repeatable); unions with each monitor's configured repair_kinds |
 | `--json` | bool |  | emit JSON |
 | `--timeout` | duration | `45s` | GitHub query timeout |
 

@@ -7,6 +7,22 @@ import (
 	"github.com/gastownhall/gascity/internal/config"
 )
 
+// TestFailureKindsMatchConfigRepairKinds pins config's repair_kinds
+// vocabulary to the failure kinds this classifier emits, so a new kind cannot
+// be added on one side only.
+func TestFailureKindsMatchConfigRepairKinds(t *testing.T) {
+	emitted := []string{FailureKindChecksFailed, FailureKindMergeConflict, FailureKindBehindBase, FailureKindBlocked}
+	accepted := config.GitHubPRFailureKinds()
+	if len(accepted) != len(emitted) {
+		t.Fatalf("config.GitHubPRFailureKinds() = %v, want exactly %v", accepted, emitted)
+	}
+	for _, kind := range emitted {
+		if !config.IsGitHubPRFailureKind(kind) {
+			t.Fatalf("config does not accept emitted failure kind %q; accepted = %v", kind, accepted)
+		}
+	}
+}
+
 func TestEvaluatePullRequestsMarksFailedChecksActionable(t *testing.T) {
 	monitor := config.GitHubPRMonitor{
 		Name:         "partcl-main",
