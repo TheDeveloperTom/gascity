@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'gascity-shell-6a8ca57efe75';
+const CACHE = 'gascity-shell-37ca4d124d92';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 const NEVER = /^\/(?:v0|api|health|hook|svc)(?:\/|$)/;
 
