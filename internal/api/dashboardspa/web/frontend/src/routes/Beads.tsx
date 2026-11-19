@@ -1037,6 +1037,9 @@ export function BeadsPage() {
               key={ownSelectedId}
               city={cityName ?? ''}
               card={{ rig: cityName === null ? null : ownCard.rig, id: ownSelectedId }}
+              // review Q3: rigs read (or failed) and none owns the id: a plain line, not a skeleton
+              noChat={cityName !== null && ownCard.rig === null && (rigs.data !== undefined || rigs.error !== null)}
+              sessions={sessionItems}
               title={selectedBead?.title ?? ''}
               // C2 `/v1/share` goes to «the peer»: offered only with exactly one
               peer={sharePeer}

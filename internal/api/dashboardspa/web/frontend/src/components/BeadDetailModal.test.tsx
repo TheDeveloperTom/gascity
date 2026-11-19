@@ -94,6 +94,16 @@ describe('BeadDetailModal', () => {
     mockUseBeadDetail.mockReturnValue(detailState({ bead }));
     render(<BeadDetailModal open onClose={() => {}} beadId="dw-1" />);
     expect(screen.getByTestId('mayor-message')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Discuss with the Mayor' })).toBeTruthy();
+  });
+
+  // review Q4 (owner 19.11: no «позвать Мэра»): the own card's one Mayor path is its chat
+  it('a board card shows no «Обсудить с Мэром» link', () => {
+    mockUseBeadDetail.mockReturnValue(detailState({ bead }));
+    render(
+      <BeadDetailModal open onClose={() => {}} beadId="dw-1" boardCard footer={<CardChat city="devwork" card={{ rig: null, id: 'dw-1' }} />} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Discuss with the Mayor' })).toBeNull();
   });
 
   it('still surfaces genuine errors via the alert role', () => {

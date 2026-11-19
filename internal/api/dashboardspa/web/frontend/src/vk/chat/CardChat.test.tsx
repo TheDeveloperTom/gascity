@@ -8,12 +8,12 @@ import { collectMissing, resetMissing, setLocale } from '../../i18n';
 
 const chat = vi.hoisted(() => ({
   state: null as unknown as CardChatState,
-  calls: [] as { city: string; card: { rig: string; id: string } }[],
+  calls: [] as { city: string; card: { rig: string; id: string }; sessions?: unknown }[],
 }));
 
 vi.mock('../../hooks/useCardChat', () => ({
-  useCardChat: (city: string, card: { rig: string; id: string }) => {
-    chat.calls.push({ city, card });
+  useCardChat: (city: string, card: { rig: string; id: string }, sessions?: unknown) => {
+    chat.calls.push(sessions === undefined ? { city, card } : { city, card, sessions });
     return chat.state;
   },
 }));
@@ -62,7 +62,7 @@ describe('CardChat', () => {
     chat.state = state({ status: 'loading' });
     render(<CardChat city="devwork" card={CARD} />);
     expect(screen.getByTestId('card-chat-skeleton')).toBeTruthy();
-    expect(chat.calls.at(-1)).toEqual({ city: 'devwork', card: CARD });
+    expect(chat.calls.at(-1)).toMatchObject({ city: 'devwork', card: CARD });
   });
 
   it('shows hint for own card', () => {
@@ -81,7 +81,7 @@ describe('CardChat', () => {
         row({ key: 'c', who: 'mayor', text: 'сделал' }),
         row({ key: 'd', text: 'летит', state: 'sending' }),
         row({ key: 'e', text: 'в очереди', state: 'queued' }),
-        row({ key: 'f', text: 'упал', state: 'failed' }),
+        row({ key: 'f', text: 'упал', state: 'failed', retryable: true }),
       ],
     });
     render(<CardChat city="devwork" card={CARD} />);
@@ -178,6 +178,90 @@ describe('CardChat', () => {
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: before });
     }
+  });
+
+  it('passes the board’s sessions on, so replies are told apart by their source (review I6)', () => {
+    const sessions = [{ id: 's-mayor', template: 'mayor' }];
+    render(<CardChat city="devwork" card={CARD} sessions={sessions} />);
+    expect(chat.calls.at(-1)).toEqual({ city: 'devwork', card: CARD, sessions });
+  });
+
+  it('review Q3: a card with no chat shows one plain line, never a skeleton or a box', () => {
+    const { unmount } = render(<CardChat city="devwork" card={{ rig: null, id: 'gcg-1' }} noChat />);
+    expect(screen.getByText('Чат есть у задач и эпиков продукта')).toBeTruthy();
+    expect(screen.queryByTestId('card-chat-skeleton')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(chat.calls).toHaveLength(0);
+    unmount();
+    // the service said so (409 not_own_card)
+    chat.state = state({ status: 'no_chat' });
+    render(<CardChat city="devwork" card={CARD} />);
+    expect(screen.getByText('Чат есть у задач и эпиков продукта')).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('review M1: a refusal says why; «повторить» only where it can help', () => {
+    chat.state = state({
+      rows: [
+        row({ key: 'a', text: 'длинно', state: 'failed', error: 'too_long', retryable: false }),
+        row({ key: 'b', text: 'чужое', state: 'failed', error: 'not_owner', retryable: false }),
+        row({ key: 'c', text: 'сеть', state: 'failed', error: 'unavailable', retryable: true }),
+      ],
+    });
+    render(<CardChat city="devwork" card={CARD} />);
+    const rows = screen.getAllByTestId('chat-row');
+    expect(within(rows[0]!).getByText('не доставлено: длиннее 4000 знаков')).toBeTruthy();
+    expect(within(rows[0]!).queryByRole('button', { name: 'повторить' })).toBeNull();
+    expect(within(rows[1]!).getByText('не доставлено: писать сюда может только хозяин доски')).toBeTruthy();
+    expect(within(rows[2]!).getByText('не доставлено: чат сейчас недоступен')).toBeTruthy();
+    expect(within(rows[2]!).getByRole('button', { name: 'повторить' })).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('review M1: the box holds at most 4000 characters and shows the count', () => {
+    render(<CardChat city="devwork" card={CARD} />);
+    const box = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(box.maxLength).toBe(4000);
+    expect(screen.queryByText(/из 4000 знаков/)).toBeNull();
+    fireEvent.change(box, { target: { value: 'привет' } });
+    expect(screen.getByText('6 из 4000 знаков')).toBeTruthy();
+    expect(collectMissing()).toEqual([]);
+  });
+
+  describe('review I4: the thread shows its newest rows', () => {
+    const heights = { scroll: 1000, client: 200 };
+    let restore: () => void;
+    beforeEach(() => {
+      const sh = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+      const ch = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => heights.scroll });
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => heights.client });
+      restore = () => {
+        if (sh) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', sh);
+        if (ch) Object.defineProperty(HTMLElement.prototype, 'clientHeight', ch);
+      };
+    });
+    afterEach(() => restore());
+
+    it('on open, and on a new row while the owner is at the bottom; not when he scrolled up', () => {
+      chat.state = state({ rows: [row({ key: 'a', text: 'один' })] });
+      const { rerender } = render(<CardChat city="devwork" card={CARD} />);
+      const thread = screen.getByTestId('card-chat-thread');
+      expect(thread.scrollTop).toBe(1000);
+      // a new row while at the bottom
+      heights.scroll = 1400;
+      chat.state = state({ rows: [row({ key: 'a', text: 'один' }), row({ key: 'b', who: 'desk', text: 'два' })] });
+      rerender(<CardChat city="devwork" card={CARD} />);
+      expect(thread.scrollTop).toBe(1400);
+      // the owner scrolls up to read; a new row does not pull him down
+      thread.scrollTop = 100;
+      fireEvent.scroll(thread);
+      heights.scroll = 1800;
+      chat.state = state({ rows: [...chat.state.rows, row({ key: 'c', who: 'desk', text: 'три' })] });
+      rerender(<CardChat city="devwork" card={CARD} />);
+      expect(thread.scrollTop).toBe(100);
+    });
   });
 
   it('layout at 2000 px uses the drawer width', () => {

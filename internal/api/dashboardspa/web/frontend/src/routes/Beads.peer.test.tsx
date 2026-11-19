@@ -384,14 +384,26 @@ describe('BeadsPage with Richard’s board', () => {
     expect(String(posts[0]!.body.client_id)).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('OUR card, our login truly unknown (no own_login, nothing marked mine): no thread lookup and no box', async () => {
+  // review M10 (rewritten: the old assertions passed trivially once own cards dropped topics)
+  it('OUR card, our login unknown: the private chat still shows (it needs no login); no topic box, no Discord link', async () => {
     peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
     renderPage();
     const dialog = await openMyCard();
-    // the panel has settled on the bead (its body reads the card)
-    await within(dialog).findByText('dw-ab12');
+    await within(dialog).findByRole('region', { name: 'Чат по карточке' });
+    expect(within(dialog).getByRole('textbox', { name: 'Спросить про эту карточку' })).toBeTruthy();
     expect(within(dialog).queryByRole('textbox', { name: 'Комментарий к карточке' })).toBeNull();
     expect(within(dialog).queryByRole('region', { name: 'Обсуждение карточки' })).toBeNull();
+    // review Q4: the own card's one Mayor path is the chat
+    expect(within(dialog).queryByRole('button', { name: 'Обсудить с Мэром' })).toBeNull();
+  });
+
+  it('review Q3: OUR card whose id matches no rig shows the plain no-chat line once the rigs are read', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
+    renderPage('/beads?bead=gcg-77');
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Чат есть у задач и эпиков продукта')).toBeTruthy();
+    expect(within(dialog).queryByTestId('card-chat-skeleton')).toBeNull();
+    expect(within(dialog).queryByRole('textbox', { name: 'Спросить про эту карточку' })).toBeNull();
   });
 
   it('read-only dashboard: no comment box (M-5)', async () => {

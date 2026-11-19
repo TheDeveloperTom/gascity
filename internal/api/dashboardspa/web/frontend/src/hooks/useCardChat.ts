@@ -46,7 +46,7 @@ export interface ChatRow {
   text: string;
   state?: ChatRowState;
   /** A failed turn: why (review M1), and whether «повторить» can help. */
-  error?: BoardChatErrorCode;
+  error?: BoardChatErrorCode | undefined;
   retryable?: boolean;
   ask?: { entryId: string; answered: boolean };
   at: string;
@@ -83,7 +83,7 @@ interface StoredTurn {
   state: 'sending' | 'queued' | 'failed';
   /** `local`: the service never accepted it (re-send); `service`: its outbox gave up (`/v1/retry`). */
   origin: 'local' | 'service';
-  error?: BoardChatErrorCode;
+  error?: BoardChatErrorCode | undefined;
 }
 
 /** Owner 19.11 point 5: how often to ask the service about a turn not delivered yet. */

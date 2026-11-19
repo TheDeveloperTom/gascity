@@ -1,7 +1,8 @@
 import { ArrowUpIcon } from '@phosphor-icons/react';
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useReadOnly } from '../../contexts/ReadOnlyContext';
-import { useCardChat, type CardChat as CardChatState, type ChatRow } from '../../hooks/useCardChat';
+import { useCardChat, type CardChat as CardChatState, type ChatRow, type SessionLike } from '../../hooks/useCardChat';
+import type { BoardChatErrorCode } from '../../supervisor/boardChat';
 import { t } from '../../i18n';
 import { cn } from '../cn';
 import { ShareDialog, shareLabel, type SharePeer } from './ShareDialog';
@@ -27,11 +28,26 @@ export interface CardChatProps {
    * null or absent = no share button.
    */
   peer?: SharePeer | null;
+  /** The sessions the board reads: replies are told apart by their source session (review I6). */
+  sessions?: readonly SessionLike[];
+  /**
+   * Review Q3: the board knows this card has no chat (its rigs are read and
+   * none owns the id, e.g. a run bead): one plain line, never a skeleton.
+   */
+  noChat?: boolean;
 }
 
-export function CardChat({ city, card, title = '', peer = null }: CardChatProps) {
+/** Review M1: the service takes at most 4000 characters (C2). */
+export const CHAT_TEXT_MAX = 4000;
+
+export function CardChat({ city, card, title = '', peer = null, sessions, noChat = false }: CardChatProps) {
+  if (noChat) return <NoChat />;
   if (card.rig === null) return <ChatSkeleton />;
-  return <LiveCardChat city={city} card={{ rig: card.rig, id: card.id }} title={title} peer={peer} />;
+  return <LiveCardChat city={city} card={{ rig: card.rig, id: card.id }} title={title} peer={peer} sessions={sessions} />;
+}
+
+function NoChat() {
+  return <p className="text-sm text-vk-text-low">{t('The chat is for product tasks and epics')}</p>;
 }
 
 function ChatSkeleton() {
@@ -50,6 +66,29 @@ function whoName(who: ChatRow['who']): string {
   return who === 'mayor' ? t('Mayor') : t('Desk');
 }
 
+/** Review M1: why a turn was refused, in plain words. */
+function refusal(code: BoardChatErrorCode | undefined): string {
+  switch (code) {
+    case 'too_long':
+    case 'too_large':
+      return t('not delivered: longer than {max} characters', { max: CHAT_TEXT_MAX });
+    case 'not_owner':
+      return t('not delivered: only the board owner can write here');
+    case 'unavailable':
+      return t('not delivered: the chat is unavailable now');
+    case 'own_login_unknown':
+      return t('not delivered: the city does not know whose board this is');
+    case 'server_error':
+    case 'outbox_unreadable':
+      return t('not delivered: the chat service failed');
+    case 'bad_request':
+    case 'unsupported_media_type':
+      return t('not delivered: the chat did not accept the message');
+    default:
+      return t('not delivered');
+  }
+}
+
 function RowState({ row, who, onRetry }: { row: ChatRow; who: CardChatState['who']; onRetry: () => void }) {
   switch (row.state) {
     case 'sending':
@@ -66,14 +105,16 @@ function RowState({ row, who, onRetry }: { row: ChatRow; who: CardChatState['who
     case 'failed':
       return (
         <span className="flex items-center gap-2 text-sm">
-          <span className="font-light text-vk-error">{t('not delivered')}</span>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="min-h-11 rounded-sm px-1 text-vk-text-normal underline underline-offset-2 focus-mark hover:text-vk-text-high md:min-h-0"
-          >
-            {t('retry')}
-          </button>
+          <span className="font-light text-vk-error">{refusal(row.error)}</span>
+          {row.retryable !== false && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-11 rounded-sm px-1 text-vk-text-normal underline underline-offset-2 focus-mark hover:text-vk-text-high md:min-h-0"
+            >
+              {t('retry')}
+            </button>
+          )}
         </span>
       );
     default:
@@ -97,10 +138,22 @@ interface LiveProps {
   card: { rig: string; id: string };
   title: string;
   peer: SharePeer | null;
+  sessions: readonly SessionLike[] | undefined;
 }
 
-function LiveCardChat({ city, card, title, peer }: LiveProps) {
-  const chat = useCardChat(city, card);
+/** Within this many px of the bottom the thread follows new rows (review I4). */
+const STICK_PX = 48;
+const NO_SESSIONS: readonly SessionLike[] = [];
+
+function LiveCardChat({ city, card, title, peer, sessions }: LiveProps) {
+  const chat = useCardChat(city, card, sessions ?? NO_SESSIONS);
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const stick = useRef(true);
+  // review I4: open at the newest row; follow new rows unless the owner scrolled up
+  useLayoutEffect(() => {
+    const el = threadRef.current;
+    if (el !== null && stick.current) el.scrollTop = el.scrollHeight;
+  }, [chat.rows.length, chat.status]);
   const [sharing, setSharing] = useState(false);
   const [shared, setShared] = useState(false);
   const readOnly = useReadOnly();
@@ -108,6 +161,7 @@ function LiveCardChat({ city, card, title, peer }: LiveProps) {
   const [value, setValue] = useState('');
 
   if (chat.status === 'loading') return <ChatSkeleton />;
+  if (chat.status === 'no_chat') return <NoChat />;
 
   const send = () => {
     const text = value.trim();
@@ -128,6 +182,11 @@ function LiveCardChat({ city, card, title, peer }: LiveProps) {
   return (
     <section data-testid="card-chat" aria-label={t('Card chat')} className="flex w-full min-w-0 flex-col gap-2">
       <div
+        ref={threadRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+        }}
         data-testid="card-chat-thread"
         className="flex max-h-[35dvh] min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain md:max-h-[45dvh]"
       >
@@ -195,6 +254,7 @@ function LiveCardChat({ city, card, title, peer }: LiveProps) {
               rows={2}
               value={value}
               placeholder={t('Ask about this card…')}
+              maxLength={CHAT_TEXT_MAX}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={onKey}
               className="min-h-[20px] min-w-0 flex-1 resize-none border-0 bg-transparent p-0 text-base text-vk-text-high outline-none placeholder:text-vk-text-low"
@@ -210,11 +270,16 @@ function LiveCardChat({ city, card, title, peer }: LiveProps) {
             </button>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[13px] text-vk-text-low">
-              {shared && peer !== null
-                ? t('{name} and his Mayor will see it', { name: peer.name })
-                : t('only you and your Mayor see it')}
+            <span className="flex flex-col text-[13px] text-vk-text-low">
+              <span>{t('only you and your Mayor see it')}</span>
+              {/* review M9: only the summary went; the chat stays private */}
+              {shared && peer !== null && <span>{t('{name} sees only what you showed him', { name: peer.name })}</span>}
             </span>
+            {value.length > 0 && (
+              <span className="text-[13px] text-vk-text-low">
+                {t('{n} of {max} characters', { n: value.length, max: CHAT_TEXT_MAX })}
+              </span>
+            )}
             {peer !== null && (
               <button
                 type="button"

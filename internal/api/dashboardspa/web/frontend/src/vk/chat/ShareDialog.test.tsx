@@ -98,7 +98,7 @@ describe('ShareDialog', () => {
     expect(collectMissing()).toEqual([]);
   });
 
-  it('after share the hint reads «увидят Ричард и его Мэр»', async () => {
+  it('after share the hint says only the summary went to Richard (review M9)', async () => {
     render(<CardChat city="devwork" card={CARD} title="Вход по ссылке" peer={PEER} />);
     expect(screen.getByText('видите только вы и ваш Мэр')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Показать Ричарду' }));
@@ -108,8 +108,10 @@ describe('ShareDialog', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Показать Ричарду' }));
     });
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByText('увидят Ричард и его Мэр')).toBeTruthy();
-    expect(screen.queryByText('видите только вы и ваш Мэр')).toBeNull();
+    expect(screen.getByText('Ричард видит только то, что вы ему показали')).toBeTruthy();
+    // the chat itself stays private
+    expect(screen.getByText('видите только вы и ваш Мэр')).toBeTruthy();
+    expect(screen.queryByText('увидят Ричард и его Мэр')).toBeNull();
     expect(collectMissing()).toEqual([]);
   });
 

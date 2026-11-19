@@ -186,7 +186,8 @@ export function BeadDetailModal({
   const actions =
     bead && discussCtx ? (
       <>
-        <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} variant="secondary" />
+        {/* lane C review Q4 (owner 19.11): an own board card's one Mayor path is its chat */}
+        {!boardCard && <DiscussButton ctx={discussCtx} label={t('Discuss with the Mayor')} variant="secondary" />}
         {onShowOnGraph !== undefined && <ShowOnGraphButton onClick={onShowOnGraph} />}
         {renderActions?.(bead)}
       </>

@@ -56,7 +56,15 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'Show to {name}': 'Показать: {name}',
   'What {name} will see': 'Что увидит {name}',
   '{n} of {max} characters': '{n} из {max} знаков',
-  '{name} and his Mayor will see it': 'увидят {name} и его Мэр',
+  '{name} sees only what you showed him': '{name} видит только то, что вы ему показали',
+  // lane C review (Q3, M1)
+  'The chat is for product tasks and epics': 'Чат есть у задач и эпиков продукта',
+  'not delivered: longer than {max} characters': 'не доставлено: длиннее {max} знаков',
+  'not delivered: only the board owner can write here': 'не доставлено: писать сюда может только хозяин доски',
+  'not delivered: the chat is unavailable now': 'не доставлено: чат сейчас недоступен',
+  'not delivered: the city does not know whose board this is': 'не доставлено: город не знает, чья это доска',
+  'not delivered: the chat service failed': 'не доставлено: сбой в сервисе чата',
+  'not delivered: the chat did not accept the message': 'не доставлено: чат не принял сообщение',
   'this is a conversation with {owner} city: {name} and his Mayor will see it':
     'это разговор с городом {owner}: увидят {name} и его Мэр',
   'waiting for delivery': 'ждёт доставки',
