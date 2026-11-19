@@ -892,7 +892,7 @@ export function BeadsPage() {
           <GraphFilterSwitch value={graphFilter} onChange={setGraphFilter} />
           <BoardGraphView
             graph={allGraph}
-            selectedId={selectedId}
+            selectedId={selectedKey}
             onSelect={focusChain}
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
             onToggleLane={toggleLane}
@@ -921,7 +921,7 @@ export function BeadsPage() {
           )}
           <GraphView
             model={graphModel}
-            selectedId={selectedId}
+            selectedId={selectedKey}
             onSelect={focusChain}
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
           />
@@ -945,7 +945,7 @@ export function BeadsPage() {
             ).length === 0 && <IdleNotice idle={boardModel.idle} />}
           <BeadBoard
             model={boardModel}
-            selectedId={selectedId}
+            selectedId={selectedKey}
             attentionSeverity={beadAttentionSeverity}
             noteOf={beadNoteOf}
             sessions={boardSessions}

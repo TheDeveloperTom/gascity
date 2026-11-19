@@ -234,8 +234,10 @@ export function BeadDetailModal({
         footer={
           boardCard
             ? // D3 live check 19.11: a card's private chat only under a card our
-              // store holds — never under an id it does not know (yet)
-              bead !== null && !notFound
+              // store holds — never under an id it does not know (yet). PR #3
+              // review I-1: `bead` lags `beadId` by one render (useBeadDetail
+              // resets it in an effect), so it must be THIS id's bead.
+              bead !== null && bead.id === beadId && !notFound
               ? footer
               : null
             : (footer ?? (discussCtx ? <MayorMessageBox ctx={discussCtx} /> : null))

@@ -35,6 +35,8 @@ function bead(id: string, extra: Partial<SupervisorBead> = {}): SupervisorBead {
 
 const MINE = bead('dw-ab12', { title: 'Моя карточка с тем же id' });
 const requests: string[] = [];
+/** Path plus query, for reads that name the card only in the query (`/extmsg/transcript`). */
+const requestUrls: string[] = [];
 let peerResponse: () => Response;
 
 function json(payload: unknown, status = 200): Response {
@@ -53,6 +55,7 @@ const clock = (iso: string) => {
 beforeEach(() => {
   setActiveCity('test-city');
   requests.length = 0;
+  requestUrls.length = 0;
   peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
   window.localStorage.clear();
   invalidate('beads:board:');
@@ -69,9 +72,17 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
       requests.push(url.pathname);
+      requestUrls.push(url.pathname + url.search);
       if (url.pathname === PEER_URL) return peerResponse();
       // Richard's id: our store does not hold it (D3 live check 19.11)
       if (url.pathname === '/v0/city/test-city/bead/dw-d43') return json({ title: 'Not Found', status: 404 }, 404);
+      // a bead detail read answers with that bead, as the supervisor does (review I-1:
+      // our chat mounts only under the bead of the open id)
+      const detail = /^\/v0\/city\/test-city\/bead\/([^/]+)$/.exec(url.pathname);
+      if (detail !== null) {
+        const id = decodeURIComponent(detail[1]!);
+        return json(id === MINE.id ? MINE : bead(id));
+      }
       if (url.pathname === '/v0/city/test-city/beads') {
         return json({ items: [MINE], total: 1 });
       }
@@ -425,8 +436,13 @@ describe('BeadsPage with Richard’s board', () => {
     expect(within(dialog).getByText('Схема users меняется.')).toBeTruthy();
     expect(within(dialog).queryByRole('textbox', { name: 'Спросить про эту карточку' })).toBeNull();
     expect(within(dialog).queryByRole('region', { name: 'Чат по карточке' })).toBeNull();
-    // our private chat was never mounted: nothing read from or sent to board-chat
+    // our private chat was never mounted: nothing read from or sent to board-chat,
+    // and no card-chat transcript read for his id (review M-5)
     expect(requests.some((p) => p.includes('/svc/board-chat/'))).toBe(false);
+    expect(requestUrls.some((u) => u.includes('/extmsg/transcript') && u.includes('conversation_id=dw-d43'))).toBe(false);
+    // review M-3: his card is the one marked selected on the board
+    const his = document.querySelector('[data-card-key="peer:rich:devwork:dw-d43"]') as HTMLElement;
+    expect(his.querySelector('[aria-pressed="true"]')).not.toBeNull();
   });
 
   it('a bare id on BOTH boards stays ours', async () => {
