@@ -21,6 +21,7 @@ const baseApi: SupervisorApi = {
   listRigs: vi.fn(),
   listBeads: vi.fn(),
   listEvents: vi.fn(),
+  extmsgTranscript: vi.fn(),
   getBead: vi.fn(),
   createBead: vi.fn(),
   updateBead: vi.fn(),
