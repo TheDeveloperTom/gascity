@@ -170,7 +170,76 @@ describe('Discord identity (owner 15.11)', () => {
 });
 
 describe('CommentComposer', () => {
-  it('sends with the button or Ctrl+Enter, clears, and shows an error on failure', async () => {
+  // BOARD-CHAT C1 (owner 19.11, point 5): the box never waits for the server.
+  function deferred() {
+    let resolve!: () => void;
+    let reject!: (err: unknown) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('clears input in the same frame as Enter', () => {
+    const pending = deferred();
+    const onSubmit = vi.fn().mockReturnValue(pending.promise);
+    render(<CommentComposer label="Комментарий" placeholder="…" onSubmit={onSubmit} />);
+    const box = screen.getByRole('textbox', { name: 'Комментарий' }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'вопрос' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    // synchronously, while the send promise is still pending
+    expect(onSubmit).toHaveBeenCalledWith('вопрос');
+    expect(box.value).toBe('');
+  });
+
+  it('shows a pending row before the server answers', async () => {
+    const pending = deferred();
+    const onSubmit = vi.fn().mockReturnValue(pending.promise);
+    render(<CommentComposer label="Комментарий" placeholder="…" onSubmit={onSubmit} />);
+    const box = screen.getByRole('textbox', { name: 'Комментарий' }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'вопрос' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    const row = screen.getByTestId('outgoing-row');
+    expect(row.getAttribute('data-state')).toBe('sending');
+    expect(within(row).getByText('вопрос')).toBeTruthy();
+    expect(within(row).getByText('отправляется')).toBeTruthy();
+    // a second message can go while the first is still on its way
+    fireEvent.change(box, { target: { value: 'уточнение' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByTestId('outgoing-row')).toHaveLength(2);
+    await act(async () => {
+      pending.resolve();
+    });
+    // once sent, the thread's own row takes over
+    expect(screen.queryAllByTestId('outgoing-row')).toHaveLength(0);
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('failed send keeps the row with повторить', async () => {
+    const onSubmit = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce(undefined);
+    render(<CommentComposer label="Комментарий" placeholder="…" onSubmit={onSubmit} />);
+    const box = screen.getByRole('textbox', { name: 'Комментарий' }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'вопрос' } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter' });
+    });
+    const row = screen.getByTestId('outgoing-row');
+    expect(row.getAttribute('data-state')).toBe('failed');
+    expect(within(row).getByText('вопрос')).toBeTruthy();
+    expect(within(row).getByText('не доставлено')).toBeTruthy();
+    expect(box.value).toBe('');
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'повторить' }));
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(onSubmit).toHaveBeenLastCalledWith('вопрос');
+    expect(screen.queryAllByTestId('outgoing-row')).toHaveLength(0);
+    expect(collectMissing()).toEqual([]);
+  });
+
+  it('sends with the button or Ctrl+Enter, clears, and keeps a failed row on failure', async () => {
     const onSubmit = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('x'));
     render(
       <CommentComposer
@@ -196,11 +265,12 @@ describe('CommentComposer', () => {
     });
     expect(onSubmit).toHaveBeenCalledWith('ещё');
     expect(screen.getByRole('alert').textContent).toBe('Не отправлено — попробуй ещё раз.');
-    expect(box.value).toBe('ещё');
+    expect(box.value).toBe('');
+    expect(screen.getByTestId('outgoing-row').getAttribute('data-state')).toBe('failed');
     expect(collectMissing()).toEqual([]);
   });
 
-  it('plain Enter sends; Shift+Enter keeps a new line; Enter while composing (IME) does not send', async () => {
+  it('Shift+Enter inserts a newline; IME composition does not send', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<CommentComposer label="Комментарий" placeholder="…" onSubmit={onSubmit} />);
     const box = screen.getByRole('textbox', { name: 'Комментарий' }) as HTMLTextAreaElement;

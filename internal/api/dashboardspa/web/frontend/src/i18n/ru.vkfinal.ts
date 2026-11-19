@@ -34,6 +34,9 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'agent · {name}': 'агент · {name}',
   delivered: 'доставлено',
   'not delivered': 'не доставлено',
+  // BOARD-CHAT C1 (owner 19.11): the optimistic row under the box
+  sending: 'отправляется',
+  retry: 'повторить',
   'waiting for delivery': 'ждёт доставки',
   new: 'новое',
   '✓ acknowledged': '✓ принято',
