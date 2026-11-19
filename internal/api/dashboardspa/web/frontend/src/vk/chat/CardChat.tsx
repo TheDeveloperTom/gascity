@@ -132,8 +132,9 @@ function agentLine(chat: CardChatState): string | null {
   // a «reading» row already says it
   if (chat.rows.some((r) => r.state === 'reading')) return null;
   if (chat.who === 'mayor') return t('The Mayor is working — he will answer here');
-  // the desk serves every card: busy while this card is not being read = another question
-  if (chat.rows.length === 0) return null;
+  // D3 live check 19.11: only when the desk's current turn provably serves
+  // another card; busy with this card's own turn, or with unknown work, says nothing
+  if (chat.rows.length === 0 || !chat.agentOnOtherCard) return null;
   return t('The desk is answering another question');
 }
 

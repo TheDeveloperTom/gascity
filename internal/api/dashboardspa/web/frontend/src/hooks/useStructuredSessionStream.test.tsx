@@ -338,6 +338,51 @@ describe('useStructuredSessionStream', () => {
     expect(result.current.result.items).toHaveLength(1);
   });
 
+  // D3 live check 19.11: transcript frames carry the worker's tail words
+  // (`in_turn`, `unknown`: worker.TailActivity*), activity frames the
+  // stream's (`in-turn`). Each mid-turn transcript frame overwrote `in-turn`,
+  // and the panel's «Дежурный читает…» dropped although the turn went on.
+  function frameWithTail(id: string, activity: string): string {
+    const frame = JSON.parse(structuredFrame(id)) as SessionStreamStructuredMessageEvent;
+    frame.history.tail_state = { activity };
+    return JSON.stringify(frame);
+  }
+
+  it('keeps in-turn through mid-turn transcript frames until the turn really ends', async () => {
+    mockFetchStructuredTranscript.mockResolvedValue(envelope);
+    const { result } = renderHook(() => useStructuredSessionStream('gc-session-1', true));
+    await flush();
+
+    act(() => eventSources[0]?.emit('activity', JSON.stringify({ activity: 'in-turn' })));
+    act(() => eventSources[0]?.emit('structured', frameWithTail('m2', 'in_turn')));
+    if (result.current.status !== 'ready') throw new Error('expected ready');
+    expect(result.current.result.activity).toBe('in-turn');
+    act(() => eventSources[0]?.emit('structured', frameWithTail('m3', 'unknown')));
+    if (result.current.status !== 'ready') throw new Error('expected ready');
+    expect(result.current.result.activity).toBe('in-turn');
+    expect(result.current.result.items).toHaveLength(3);
+
+    // the turn really ends: the server's idle frame lands
+    act(() => eventSources[0]?.emit('activity', JSON.stringify({ activity: 'idle' })));
+    if (result.current.status !== 'ready') throw new Error('expected ready');
+    expect(result.current.result.activity).toBe('idle');
+  });
+
+  it('reads the worker tail words in the snapshot and in transcript frames', async () => {
+    mockFetchStructuredTranscript.mockResolvedValue({
+      ...envelope,
+      history: { ...envelope.history, tail_state: { activity: 'in_turn' } },
+    });
+    const { result } = renderHook(() => useStructuredSessionStream('gc-session-1', true));
+    await flush();
+    if (result.current.status !== 'ready') throw new Error('expected ready');
+    expect(result.current.result.activity).toBe('in-turn');
+
+    act(() => eventSources[0]?.emit('structured', frameWithTail('m2', 'idle')));
+    if (result.current.status !== 'ready') throw new Error('expected ready');
+    expect(result.current.result.activity).toBe('idle');
+  });
+
   it('appends pending interactions as items', async () => {
     mockFetchStructuredTranscript.mockResolvedValue(envelope);
     const { result } = renderHook(() => useStructuredSessionStream('gc-session-1', true));

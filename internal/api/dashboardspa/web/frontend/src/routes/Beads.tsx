@@ -353,7 +353,17 @@ export function BeadsPage() {
   );
   // A peer card is selected by its board key (`peer:<login>:<rig>:<id>`);
   // it opens the read-only peer window, never the bead panel.
-  const selectedPeer = useMemo(() => peerCardOf(peerSources, selectedId), [peerSources, selectedId]);
+  // D3 live check 19.11: a bare id (`?bead=dw-d43`, no `peer:` key) that our
+  // board does not hold but a peer board does names HIS card. Ours wins when
+  // both hold it, and nothing is decided before our board's read is in.
+  const peerKeyOfBareId = useMemo(() => {
+    if (selectedId === null || isPeerKey(selectedId) || !unscopedIn) return null;
+    const ours = (bead: SupervisorBead) => bead.id === selectedId;
+    if (allRows.some(ours) || routeBeads.some(ours) || serviceItems.some(ours)) return null;
+    return bareIdPeerKey(peerSources, selectedId);
+  }, [selectedId, unscopedIn, allRows, routeBeads, serviceItems, peerSources]);
+  const selectedKey = peerKeyOfBareId ?? selectedId;
+  const selectedPeer = useMemo(() => peerCardOf(peerSources, selectedKey), [peerSources, selectedKey]);
   // Part 4 (owner, 15.11): a card conversation is a Mayor topic linked to the
   // card (`topic.card`); there are no human comments on cards.
   const peerTopicCount = useMemo(() => {
@@ -435,7 +445,7 @@ export function BeadsPage() {
     },
     [setSearchParams],
   );
-  const ownSelectedId = selectedId !== null && isPeerKey(selectedId) ? null : selectedId;
+  const ownSelectedId = selectedKey !== null && isPeerKey(selectedKey) ? null : selectedKey;
   const filtered = project !== ALL_PROJECTS || epic !== ALL_EPICS || ownerFilter !== 'all';
   // owner 17.11: the open card's route step — its assignee is «Сейчас работает»
   // in the panel and the session «Смотреть, что пишет» opens.
@@ -882,7 +892,7 @@ export function BeadsPage() {
           <GraphFilterSwitch value={graphFilter} onChange={setGraphFilter} />
           <BoardGraphView
             graph={allGraph}
-            selectedId={selectedId}
+            selectedId={selectedKey}
             onSelect={focusChain}
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
             onToggleLane={toggleLane}
@@ -911,7 +921,7 @@ export function BeadsPage() {
           )}
           <GraphView
             model={graphModel}
-            selectedId={selectedId}
+            selectedId={selectedKey}
             onSelect={focusChain}
             onAnswer={(id) => setSelectedId(beadIdOf(id))}
           />
@@ -935,7 +945,7 @@ export function BeadsPage() {
             ).length === 0 && <IdleNotice idle={boardModel.idle} />}
           <BeadBoard
             model={boardModel}
-            selectedId={selectedId}
+            selectedId={selectedKey}
             attentionSeverity={beadAttentionSeverity}
             noteOf={beadNoteOf}
             sessions={boardSessions}
@@ -1206,6 +1216,12 @@ function peerCardOf(
     if (card !== undefined) return { peer, card };
   }
   return null;
+}
+
+/** The board key of the one peer card whose bead id is `id`; null when none or several. */
+function bareIdPeerKey(peers: readonly PeerBoardSource[], id: string): string | null {
+  const keys = peers.flatMap((peer) => peer.cards.filter((c) => c.bead.id === id).map((c) => `${peer.owner}:${c.rig}:${c.bead.id}`));
+  return keys.length === 1 ? keys[0]! : null;
 }
 
 function normalizeSelectedBeadParam(value: string | null): string | null {

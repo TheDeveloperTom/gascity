@@ -231,9 +231,21 @@ export function BeadDetailModal({
           ) : undefined
         }
         actions={actions}
-        footer={boardCard ? footer : (footer ?? (discussCtx ? <MayorMessageBox ctx={discussCtx} /> : null))}
+        footer={
+          boardCard
+            ? // D3 live check 19.11: a card's private chat only under a card our
+              // store holds — never under an id it does not know (yet). PR #3
+              // review I-1: `bead` lags `beadId` by one render (useBeadDetail
+              // resets it in an effect), so it must be THIS id's bead.
+              bead !== null && bead.id === beadId && !notFound
+              ? footer
+              : null
+            : (footer ?? (discussCtx ? <MayorMessageBox ctx={discussCtx} /> : null))
+        }
       >
-        {notFound ? (
+        {notFound && boardCard ? (
+          <p className="text-vk-text-low">{t('Card not found.')}</p>
+        ) : notFound ? (
           <div className="space-y-2">
             <p className="text-vk-text-low">{t('This decision was resolved or removed.')}</p>
             <p className="text-sm text-vk-text-low">
