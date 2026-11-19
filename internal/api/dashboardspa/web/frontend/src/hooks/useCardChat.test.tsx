@@ -343,21 +343,72 @@ describe('useCardChat', () => {
     expect(api.lookupSession).toHaveBeenCalledTimes(1);
   });
 
-  it('re-review R2: until an unknown source resolves (or if it does not), the row is neutral and has no buttons', async () => {
+  it('lane D R9: while an unknown source is being looked up, the row is neutral and has no buttons', async () => {
+    api.lookupSession.mockReturnValue(new Promise(() => {}));
+    const { result } = await mount([entry({ id: 'e2', seq: 2, who: 'mayor', source: 's-x', text: 'Закрыть?', ask: true })]);
+    expect(api.lookupSession).toHaveBeenCalledWith('devwork', 's-x');
+    expect(result.current.rows[0]).toMatchObject({ who: 'city' });
+    expect(result.current.rows[0]!.ask).toBeUndefined();
+  });
+
+  it('re-review R2: a source the city does not know (404) is labelled «Дежурный» and has no buttons', async () => {
     const { result } = await mount([entry({ id: 'e2', seq: 2, who: 'mayor', source: 's-x', text: 'Закрыть?', ask: true })]);
     expect(api.lookupSession).toHaveBeenCalledWith('devwork', 's-x');
     expect(result.current.rows[0]).toMatchObject({ who: 'desk' });
     expect(result.current.rows[0]!.ask).toBeUndefined();
   });
 
-  it('re-review R6: a stored failed turn older than a day is dropped on load', async () => {
+  it('lane D R8: a lookup that failed (not a 404) is tried again on the next thread change', async () => {
+    api.lookupSession.mockRejectedValueOnce(new Error('network')).mockResolvedValue({ id: 's-old', template: 'mayor' });
+    const ask = entry({ id: 'e2', seq: 2, who: 'desk', source: 's-old', text: 'Закрыть?', ask: true });
+    const { result } = await mount([ask]);
+    expect(api.lookupSession).toHaveBeenCalledTimes(1);
+    expect(result.current.rows[0]!.ask).toBeUndefined();
+    api.readThread.mockResolvedValueOnce([desk({ id: 'e3', seq: 3, text: 'ещё' })]);
+    act(() => fire({ type: 'extmsg.outbound', payload: { provider: 'board', conversation_id: 'dw-1' } }));
+    await flush();
+    expect(api.lookupSession).toHaveBeenCalledTimes(2);
+    expect(result.current.rows[0]).toMatchObject({ who: 'mayor', ask: { entryId: 'e2', answered: false } });
+  });
+
+  it('lane D R10: a failed turn ages from when it failed, not from when it was written', async () => {
+    const day = 24 * 3600_000;
+    const old = new Date(Date.now() - 3 * day).toISOString();
+    const recent = new Date(Date.now() - 3600_000).toISOString();
+    window.localStorage.setItem(
+      'gc.board-chat.turns.v1',
+      JSON.stringify([
+        { clientId: 'c-1', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'упало вчера', at: old, failedAt: recent, state: 'failed', origin: 'local' },
+        { clientId: 'c-2', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'упало давно', at: old, failedAt: old, state: 'failed', origin: 'local' },
+        { clientId: 'c-3', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: '', at: '', state: 'failed', origin: 'service' },
+      ]),
+    );
+    resetCardChatForTests();
+    const { result } = await mount([], [{ clientId: 'c-3', state: 'failed', attempts: 9, lastError: null, nextAt: null }]);
+    expect(result.current.rows.map((r) => r.key)).toEqual(['c-1', 'c-3']);
+    // a turn with no failure time (another device, or an older store) starts its day now
+    const stored = JSON.parse(window.localStorage.getItem('gc.board-chat.turns.v1')!) as { clientId: string; failedAt?: string }[];
+    expect(Date.parse(stored.find((t) => t.clientId === 'c-3')!.failedAt!)).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it('lane D R10: a send that fails records when it failed', async () => {
+    api.sendTurn.mockRejectedValueOnce(new BoardChatError('failed'));
+    const { result } = await mount();
+    act(() => result.current.send('вопрос'));
+    await flush();
+    expect(result.current.rows.at(-1)!.state).toBe('failed');
+    const stored = JSON.parse(window.localStorage.getItem('gc.board-chat.turns.v1')!) as { failedAt?: string }[];
+    expect(Date.parse(stored[0]!.failedAt!)).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it('re-review R6: a stored turn that failed over a day ago is dropped on load', async () => {
     const old = new Date(Date.now() - 2 * 24 * 3600_000).toISOString();
     const fresh = new Date().toISOString();
     window.localStorage.setItem(
       'gc.board-chat.turns.v1',
       JSON.stringify([
-        { clientId: 'c-1', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'старое', at: old, state: 'failed', origin: 'local' },
-        { clientId: 'c-2', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'свежее', at: fresh, state: 'failed', origin: 'local' },
+        { clientId: 'c-1', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'старое', at: old, failedAt: old, state: 'failed', origin: 'local' },
+        { clientId: 'c-2', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'свежее', at: fresh, failedAt: fresh, state: 'failed', origin: 'local' },
         { clientId: 'c-3', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'в очереди', at: old, state: 'queued', origin: 'local' },
       ]),
     );

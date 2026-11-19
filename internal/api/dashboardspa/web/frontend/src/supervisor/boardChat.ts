@@ -1,6 +1,7 @@
 import type { ConversationTranscriptRecord } from 'gas-city-dashboard-shared/gc-supervisor';
 import { withApiBase } from '../lib/apiBase';
 import { supervisorApi } from './client';
+import { SupervisorApiError } from './errors';
 
 // BOARD-CHAT (owner 19.11; plan BOARD-CHAT-PLAN.md Task C2, DOCCHECK DC#23).
 //
@@ -176,7 +177,9 @@ export async function sendTurn(city: string, card: ChatCard, text: string, clien
 
 /**
  * Re-review R2: one session the board's open list does not hold (a Mayor
- * session closed after a respawn), by id; null when the city has no such one.
+ * session closed after a respawn), by id; null when the city has no such one
+ * (404). Lane D R8: any other failure rejects, so the caller does not cache it
+ * and tries again later.
  */
 export async function lookupSession(
   city: string,
@@ -190,8 +193,9 @@ export async function lookupSession(
       ...(s.alias !== undefined ? { alias: s.alias } : {}),
       ...(s.agent_name !== undefined ? { agent_name: s.agent_name } : {}),
     };
-  } catch {
-    return null;
+  } catch (err) {
+    if (err instanceof SupervisorApiError && err.status === 404) return null;
+    throw err;
   }
 }
 

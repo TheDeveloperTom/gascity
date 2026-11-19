@@ -63,6 +63,8 @@ function ChatSkeleton() {
 
 function whoName(who: ChatRow['who']): string {
   if (who === 'owner') return t('You, in the card chat');
+  // lane D R9: neutral while the reply's session is still being looked up
+  if (who === 'city') return t('City');
   return who === 'mayor' ? t('Mayor') : t('Desk');
 }
 

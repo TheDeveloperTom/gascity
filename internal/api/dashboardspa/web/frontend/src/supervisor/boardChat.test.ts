@@ -297,6 +297,17 @@ describe('readThread', () => {
     await expect(lookupSession('devwork', 's-gone')).resolves.toBeNull();
   });
 
+  it('lane D R8: lookupSession rejects on a failure other than 404, so the caller can try again', async () => {
+    const spy = vi.fn(async (_input: RequestInfo | URL) => json(502, { title: 'Bad Gateway', status: 502 }));
+    setSupervisorApiForTests(createSupervisorApi({ baseUrl: 'http://gc.test', fetch: spy as typeof fetch }));
+    await expect(lookupSession('devwork', 's-old')).rejects.toBeTruthy();
+    const down = vi.fn(async (_input: RequestInfo | URL): Promise<Response> => {
+      throw new TypeError('Failed to fetch');
+    });
+    setSupervisorApiForTests(createSupervisorApi({ baseUrl: 'http://gc.test', fetch: down as typeof fetch }));
+    await expect(lookupSession('devwork', 's-old')).rejects.toBeTruthy();
+  });
+
   it('readBinding with no bound event is null', async () => {
     const spy = vi.fn(async (_input: RequestInfo | URL) => json(200, { items: [], total: 0 }));
     setSupervisorApiForTests(createSupervisorApi({ baseUrl: 'http://gc.test', fetch: spy as typeof fetch }));

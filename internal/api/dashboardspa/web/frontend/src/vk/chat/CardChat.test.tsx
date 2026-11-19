@@ -98,6 +98,16 @@ describe('CardChat', () => {
     expect(collectMissing()).toEqual([]);
   });
 
+  it('lane D R9: a reply whose session is still being looked up is labelled neutrally, with no buttons', () => {
+    chat.state = state({ rows: [row({ key: 'n', who: 'city', text: 'Закрыть?' })] });
+    render(<CardChat city="devwork" card={CARD} />);
+    const rows = screen.getAllByTestId('chat-row');
+    expect(within(rows[0]!).getByText('Город')).toBeTruthy();
+    expect(within(rows[0]!).queryByText('Дежурный')).toBeNull();
+    expect(within(rows[0]!).queryByRole('button', { name: 'Да' })).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
   it('reading and agent states', () => {
     chat.state = state({ rows: [row({ state: 'reading' })], agentActivity: 'in-turn' });
     const { unmount } = render(<CardChat city="devwork" card={CARD} />);

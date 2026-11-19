@@ -43,7 +43,8 @@ export type ChatRowState = 'sending' | 'queued' | 'delivered' | 'reading' | 'fai
 
 export interface ChatRow {
   key: string;
-  who: 'owner' | 'desk' | 'mayor';
+  /** `city`: lane D R9, a reply whose session is still being looked up (neutral, no buttons). */
+  who: 'owner' | 'desk' | 'mayor' | 'city';
   text: string;
   state?: ChatRowState;
   /** A failed turn: why (review M1), and whether «повторить» can help. */
@@ -85,6 +86,8 @@ interface StoredTurn {
   /** `local`: the service never accepted it (re-send); `service`: its outbox gave up (`/v1/retry`). */
   origin: 'local' | 'service';
   error?: BoardChatErrorCode | undefined;
+  /** Lane D R10: when the turn failed; a failed turn ages out from here. */
+  failedAt?: string | undefined;
 }
 
 /** Owner 19.11 point 5: how often to ask the service about a turn not delivered yet. */
@@ -117,14 +120,23 @@ function isStoredTurn(v: unknown): v is StoredTurn {
 /** Re-review R6: a turn that failed for good and was never retried ages out. */
 const FAILED_TTL_MS = 24 * 3600_000;
 
+/** Lane D R10: a failed turn keeps the time it first failed; one without a valid time gets now. */
+function withFailedAt(t: StoredTurn): StoredTurn {
+  return t.failedAt !== undefined && !Number.isNaN(Date.parse(t.failedAt)) ? t : { ...t, failedAt: new Date().toISOString() };
+}
+
 function loadTurns(): StoredTurn[] {
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     const parsed: unknown = raw === null ? [] : JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const now = Date.now();
-    // re-review R6: drop turns that failed more than a day ago
-    return parsed.filter(isStoredTurn).filter((t) => !(t.state === 'failed' && now - Date.parse(t.at) > FAILED_TTL_MS));
+    // re-review R6, lane D R10: drop turns that failed more than a day ago,
+    // counted from the failure; a failed turn with no failure time starts now
+    return parsed
+      .filter(isStoredTurn)
+      .map((t) => (t.state === 'failed' ? withFailedAt(t) : t))
+      .filter((t) => !(t.state === 'failed' && now - Date.parse(t.failedAt ?? '') > FAILED_TTL_MS));
   } catch {
     return [];
   }
@@ -178,7 +190,7 @@ function cardKey(city: string, cardId: string): string {
 function deliver(turn: StoredTurn, onAccepted: () => void): void {
   const key = cardKey(turn.city, turn.cardId);
   inFlight.add(turn.clientId);
-  patchTurn(turn.clientId, { state: 'sending' });
+  patchTurn(turn.clientId, { state: 'sending', failedAt: undefined });
   const next = (chains.get(key) ?? Promise.resolve())
     .catch(() => undefined)
     .then(() => sendTurn(turn.city, { rig: turn.rig, id: turn.cardId }, turn.text, turn.clientId, turn.replyTo))
@@ -193,7 +205,7 @@ function deliver(turn: StoredTurn, onAccepted: () => void): void {
         const code: BoardChatErrorCode = err instanceof BoardChatError ? err.code : 'failed';
         // re-review R1: the refused words stay, in a failed row that says why
         if (code === 'not_own_card') noChat.set(key, Date.now() + NO_CHAT_MS);
-        patchTurn(turn.clientId, { state: 'failed', origin: 'local', error: code });
+        patchTurn(turn.clientId, { state: 'failed', origin: 'local', error: code, failedAt: new Date().toISOString() });
       },
     );
   chains.set(key, next);
@@ -281,11 +293,17 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
       const sid = e.source;
       if (e.who === 'owner' || sid === undefined || whoBySession.has(sid) || looked.has(sid) || looking.has(sid)) continue;
       looking.add(sid);
-      void lookupSession(city, sid).then((s) => {
-        looking.delete(sid);
-        looked.set(sid, s);
-        if (live.current && s !== null) setLookedTick((n) => n + 1);
-      });
+      lookupSession(city, sid).then(
+        (s) => {
+          looking.delete(sid);
+          looked.set(sid, s);
+          if (live.current) setLookedTick((n) => n + 1);
+        },
+        () => {
+          // lane D R8: only a 404 is final; a failed lookup is tried again on the next thread change
+          looking.delete(sid);
+        },
+      );
     }
   }, [thread, whoBySession, city]);
 
@@ -382,19 +400,23 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
           next = next.map((t) => {
             if (t.city !== city || t.cardId !== card.id) return t;
             const item = byId.get(t.clientId);
-            if (item !== undefined) return { ...t, state: pendingState(item), origin: 'service' as const };
+            if (item !== undefined) {
+              const state = pendingState(item);
+              const held: StoredTurn = { ...t, state, origin: 'service' };
+              return state === 'failed' ? withFailedAt(held) : { ...held, failedAt: undefined };
+            }
             // a reloaded send whose answer never came, and the service does not hold it
-            if (t.state === 'sending' && !inFlight.has(t.clientId)) return { ...t, state: 'failed' as const, origin: 'local' as const };
+            if (t.state === 'sending' && !inFlight.has(t.clientId)) {
+              return { ...t, state: 'failed' as const, origin: 'local' as const, failedAt: new Date().toISOString() };
+            }
             return t;
           });
           const known = new Set(next.map((t) => t.clientId));
           for (const p of pending) {
             if (seen.has(p.clientId) || known.has(p.clientId)) continue;
             // sent from another tab or device: the service keeps no text
-            next = [
-              ...next,
-              { clientId: p.clientId, city, cardId: card.id, rig: card.rig, text: '', at: '', state: pendingState(p), origin: 'service' },
-            ];
+            const turn: StoredTurn = { clientId: p.clientId, city, cardId: card.id, rig: card.rig, text: '', at: '', state: pendingState(p), origin: 'service' };
+            next = [...next, turn.state === 'failed' ? withFailedAt(turn) : turn];
           }
           setTurns(next);
         }
@@ -496,13 +518,13 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
       }
       retryTurn(city, clientId).then(
         () => {
-          patchTurn(clientId, { state: 'queued', error: undefined });
+          patchTurn(clientId, { state: 'queued', error: undefined, failedAt: undefined });
           if (live.current) scheduleCheck();
         },
         (err: unknown) => {
           // not_failed: delivered, unknown or still waiting — the transcript and the check decide
           if (err instanceof BoardChatError && err.code === 'not_failed') {
-            patchTurn(clientId, { state: 'queued', error: undefined });
+            patchTurn(clientId, { state: 'queued', error: undefined, failedAt: undefined });
             if (live.current) {
               refresh();
               scheduleCheck();
@@ -515,7 +537,14 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
   );
 
   // Who holds the chat: the bound event, else the Mayor while his ask is open (I5), else the desk.
-  const sourceWho = useCallback((e: ThreadEntry): 'desk' | 'mayor' => (e.source !== undefined ? whoBySession.get(e.source) : undefined) ?? 'desk', [whoBySession]);
+  // Lane D R9: a source not known yet and not settled by a 404 is neutral until its lookup answers.
+  const sourceWho = useCallback(
+    (e: ThreadEntry): 'desk' | 'mayor' | 'city' => {
+      if (e.source === undefined) return 'desk';
+      return whoBySession.get(e.source) ?? (looked.has(e.source) ? 'desk' : 'city');
+    },
+    [whoBySession],
+  );
   const who = useMemo<'desk' | 'mayor'>(() => {
     if (bound !== null) return bound;
     const last = [...thread].reverse().find((e) => e.who !== 'owner');
