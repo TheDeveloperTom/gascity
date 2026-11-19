@@ -15,6 +15,7 @@ import (
 	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/formula"
 	"github.com/gastownhall/gascity/internal/githubmonitor"
 	"github.com/gastownhall/gascity/internal/molecule"
 	"github.com/spf13/cobra"
@@ -60,6 +61,16 @@ type githubPRBackfillOptions struct {
 	// listed mint or refresh a repair bead. Empty keeps the historical
 	// behavior (every actionable PR mints a bead).
 	failureKinds []string
+	// headRefPrefixes is an additional head-branch prefix allow-list supplied
+	// for this invocation. It unions with each monitor's configured
+	// head_ref_prefixes; when the combined list is non-empty, only actionable
+	// PRs whose head ref starts with a listed prefix mint or refresh a repair
+	// bead. Empty keeps the historical behavior.
+	headRefPrefixes []string
+	// repairVars holds NAME=TEMPLATE entries supplied for this invocation. They
+	// add to (and override) each monitor's configured repair_vars for the
+	// workflow attached to a newly created repair bead.
+	repairVars []string
 }
 
 type githubPRBackfillResult struct {
@@ -75,7 +86,8 @@ type githubPRBackfillResult struct {
 	UpdatedRepairs    int                    `json:"updated_repairs,omitempty"`
 	DispatchedRepairs int                    `json:"dispatched_repairs,omitempty"`
 	// SkippedRepairs counts actionable PRs that minted no repair bead because
-	// their failure kind is outside the repair-kind allow-list.
+	// their failure kind is outside the repair-kind allow-list or their head
+	// ref matches no head-ref prefix.
 	SkippedRepairs int `json:"skipped_repairs,omitempty"`
 }
 
@@ -150,7 +162,23 @@ with the monitor's repair_kinds. Then only PRs whose failure kind is listed
 mint or refresh a bead; the rest are still reported and counted as
 skipped_repairs. For example, --failure-kind merge_conflict --failure-kind
 checks_failed keeps repair agents off PRs that are only behind their base or
-blocked while checks run.`,
+blocked while checks run. A PR has exactly one failure kind, picked in this
+order: checks_failed (any failed check), merge_conflict, behind_base,
+checks_failed (UNSTABLE), blocked; so a conflicted PR with a failed check is
+checks_failed, and both kinds must be listed to repair conflicts reliably.
+
+A head-ref allow-list works the same way: --head-ref-prefix (repeatable)
+unioned with the monitor's head_ref_prefixes. Then only PRs whose head branch
+starts with a listed prefix mint or refresh a bead; the rest count as
+skipped_repairs. Use it when one GitHub login opens both automated and
+hand-made PRs, e.g. --head-ref-prefix devwork/task/alice/.
+
+--repair-var NAME=TEMPLATE (repeatable) adds a formula var to the repair
+workflow attached to a new repair bead, on top of the monitor's repair_vars.
+TEMPLATE may use {{bead_id}}, {{bead}}, {{title}}, {{pr}}, {{repo}},
+{{owner}}, {{branch}}, {{base}}, {{head_sha}}, {{failure_kind}},
+{{repair_route}}, {{rig}} and {{monitor}}, e.g. --repair-var base={{base}}
+--repair-var implementation_target={{repair_route}}.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -170,6 +198,8 @@ blocked while checks run.`,
 	cmd.Flags().BoolVar(&opts.createRepairs, "create-repair-beads", false, "create deduped repair beads for actionable PRs")
 	cmd.Flags().StringArrayVar(&opts.authors, "author", nil, "restrict to PRs by this GitHub author login (repeatable); fail-closed and unions with each monitor's configured authors")
 	cmd.Flags().StringArrayVar(&opts.failureKinds, "failure-kind", nil, "with --create-repair-beads, mint repair beads only for this failure kind (checks_failed, merge_conflict, behind_base, blocked; repeatable); unions with each monitor's configured repair_kinds")
+	cmd.Flags().StringArrayVar(&opts.headRefPrefixes, "head-ref-prefix", nil, "with --create-repair-beads, mint repair beads only for PRs whose head branch starts with this prefix (repeatable); unions with each monitor's configured head_ref_prefixes")
+	cmd.Flags().StringArrayVar(&opts.repairVars, "repair-var", nil, "with --create-repair-beads, pass NAME=TEMPLATE as a formula var to the attached repair workflow (repeatable; TEMPLATE may use {{base}}, {{repair_route}}, {{pr}} …); adds to and overrides each monitor's configured repair_vars")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", opts.timeout, "GitHub query timeout")
 	return cmd
 }
@@ -217,6 +247,25 @@ func doGitHubPRBackfill(opts githubPRBackfillOptions, stdout, stderr io.Writer) 
 			return 1
 		}
 	}
+	if len(opts.headRefPrefixes) > 0 && !opts.createRepairs {
+		fmt.Fprintln(stderr, "gc github pr backfill: --head-ref-prefix requires --create-repair-beads") //nolint:errcheck // best-effort stderr
+		return 1
+	}
+	for _, prefix := range opts.headRefPrefixes {
+		if strings.TrimSpace(prefix) == "" {
+			fmt.Fprintln(stderr, "gc github pr backfill: --head-ref-prefix must not be empty") //nolint:errcheck // best-effort stderr
+			return 1
+		}
+	}
+	if len(opts.repairVars) > 0 && !opts.createRepairs {
+		fmt.Fprintln(stderr, "gc github pr backfill: --repair-var requires --create-repair-beads") //nolint:errcheck // best-effort stderr
+		return 1
+	}
+	flagRepairVars, err := parseGitHubPRRepairVarFlags(opts.repairVars)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc github pr backfill: %v\n", err) //nolint:errcheck // best-effort stderr
+		return 1
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
 	defer cancel()
 
@@ -240,10 +289,13 @@ func doGitHubPRBackfill(opts githubPRBackfillOptions, stdout, stderr io.Writer) 
 		}
 		evaluated := githubmonitor.EvaluatePullRequestsWithAllowedAuthors(monitor, prs, opts.authors)
 		repairKinds := githubPRRepairKindSet(monitor, opts.failureKinds)
+		headRefPrefixes := githubPRHeadRefPrefixes(monitor, opts.headRefPrefixes)
+		monitor.RepairVars = mergeGitHubPRRepairVars(monitor.RepairVars, flagRepairVars)
 		for _, prResult := range evaluated {
 			if prResult.Actionable {
 				result.ActionableCount++
-				if opts.createRepairs && !githubPRRepairKindAllowed(repairKinds, prResult.FailureKind) {
+				if opts.createRepairs && (!githubPRRepairKindAllowed(repairKinds, prResult.FailureKind) ||
+					!githubPRHeadRefAllowed(headRefPrefixes, prResult.HeadRefName)) {
 					result.SkippedRepairs++
 				} else if opts.createRepairs {
 					outcome, err := ensureGitHubPRRepairBead(cityPath, cfg, monitor, prResult)
@@ -320,6 +372,78 @@ func githubPRRepairKindAllowed(allowed map[string]bool, failureKind string) bool
 		return true
 	}
 	return allowed[failureKind]
+}
+
+// githubPRHeadRefPrefixes unions a monitor's configured head_ref_prefixes with
+// the --head-ref-prefix flag values. It returns nil when both are empty, which
+// means "no head-ref restriction" (the historical behavior).
+func githubPRHeadRefPrefixes(monitor config.GitHubPRMonitor, extra []string) []string {
+	prefixes := monitor.HeadRefPrefixList()
+	for _, prefix := range extra {
+		prefix = strings.TrimSpace(prefix)
+		if prefix != "" && !slices.Contains(prefixes, prefix) {
+			prefixes = append(prefixes, prefix)
+		}
+	}
+	return prefixes
+}
+
+// githubPRHeadRefAllowed reports whether an actionable PR whose head branch is
+// headRef may mint or refresh a repair bead. An empty allow-list allows every
+// head ref; otherwise the match is a case-sensitive prefix, and an empty head
+// ref matches nothing (fail-closed).
+func githubPRHeadRefAllowed(prefixes []string, headRef string) bool {
+	if len(prefixes) == 0 {
+		return true
+	}
+	if headRef == "" {
+		return false
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(headRef, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseGitHubPRRepairVarFlags parses --repair-var NAME=TEMPLATE values with
+// the same rules as a monitor's repair_vars. A later flag for the same name
+// wins.
+func parseGitHubPRRepairVarFlags(values []string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	vars := make(map[string]string, len(values))
+	for _, value := range values {
+		name, template, ok := strings.Cut(value, "=")
+		if !ok {
+			return nil, fmt.Errorf("--repair-var %q: want NAME=TEMPLATE", value)
+		}
+		name = strings.TrimSpace(name)
+		if err := config.ValidateGitHubPRRepairVar(name, template); err != nil {
+			return nil, fmt.Errorf("--repair-var %q: %w", value, err)
+		}
+		vars[name] = template
+	}
+	return vars, nil
+}
+
+// mergeGitHubPRRepairVars returns the monitor's repair_vars with the flag
+// entries laid over them. It returns the configured map untouched when there
+// are no flag entries, so the default path carries no new map.
+func mergeGitHubPRRepairVars(configured, flags map[string]string) map[string]string {
+	if len(flags) == 0 {
+		return configured
+	}
+	merged := make(map[string]string, len(configured)+len(flags))
+	for k, v := range configured {
+		merged[k] = v
+	}
+	for k, v := range flags {
+		merged[k] = v
+	}
+	return merged
 }
 
 func ensureGitHubPRRepairBead(cityPath string, cfg *config.City, monitor config.GitHubPRMonitor, result githubmonitor.Result) (githubPRRepairOutcome, error) {
@@ -487,15 +611,18 @@ func defaultAttachGitHubPRRepairWorkflow(store beads.Store, graphStore beads.Gra
 	if _, err := cookOnClassRouted(ctx, store, graph, workflow, searchPaths, molecule.Options{
 		ParentID:       bead.ID,
 		IdempotencyKey: "github-pr-repair-workflow:" + bead.ID,
-		Vars:           githubPRRepairWorkflowVars(bead, result),
+		Vars:           githubPRRepairWorkflowVars(monitor, bead, result),
 	}); err != nil {
 		return fmt.Errorf("instantiating repair workflow %q: %w", workflow, err)
 	}
 	return nil
 }
 
-func githubPRRepairWorkflowVars(bead beads.Bead, result githubmonitor.Result) map[string]string {
-	return map[string]string{
+// githubPRRepairWorkflowVars returns the formula vars for a repair workflow:
+// the historical built-ins, then the monitor's repair_vars templates filled
+// from the PR. With no repair_vars it returns exactly the built-ins.
+func githubPRRepairWorkflowVars(monitor config.GitHubPRMonitor, bead beads.Bead, result githubmonitor.Result) map[string]string {
+	vars := map[string]string{
 		"bead_id": bead.ID,
 		"bead":    bead.ID,
 		"title":   bead.Title,
@@ -503,6 +630,26 @@ func githubPRRepairWorkflowVars(bead beads.Bead, result githubmonitor.Result) ma
 		"repo":    result.Owner + "/" + result.Repo,
 		"branch":  result.HeadRefName,
 	}
+	if len(monitor.RepairVars) == 0 {
+		return vars
+	}
+	// Templates read the PR, never another template's output: each entry is
+	// filled from this fixed context, so order and self-reference do not matter.
+	fill := make(map[string]string, len(vars)+7)
+	for k, v := range vars {
+		fill[k] = v
+	}
+	fill["owner"] = result.Owner
+	fill["base"] = result.BaseRefName
+	fill["head_sha"] = result.HeadSHA
+	fill["failure_kind"] = result.FailureKind
+	fill["repair_route"] = strings.TrimSpace(monitor.RepairRoute)
+	fill["rig"] = strings.TrimSpace(monitor.Rig)
+	fill["monitor"] = strings.TrimSpace(monitor.Name)
+	for name, template := range monitor.RepairVars {
+		vars[strings.TrimSpace(name)] = formula.Substitute(template, fill)
+	}
+	return vars
 }
 
 // defaultNudgeGitHubPRRepairWorker best-effort notifies an assigned worker that

@@ -2076,7 +2076,23 @@ with the monitor's repair_kinds. Then only PRs whose failure kind is listed
 mint or refresh a bead; the rest are still reported and counted as
 skipped_repairs. For example, --failure-kind merge_conflict --failure-kind
 checks_failed keeps repair agents off PRs that are only behind their base or
-blocked while checks run.
+blocked while checks run. A PR has exactly one failure kind, picked in this
+order: checks_failed (any failed check), merge_conflict, behind_base,
+checks_failed (UNSTABLE), blocked; so a conflicted PR with a failed check is
+checks_failed, and both kinds must be listed to repair conflicts reliably.
+
+A head-ref allow-list works the same way: --head-ref-prefix (repeatable)
+unioned with the monitor's head_ref_prefixes. Then only PRs whose head branch
+starts with a listed prefix mint or refresh a bead; the rest count as
+skipped_repairs. Use it when one GitHub login opens both automated and
+hand-made PRs, e.g. --head-ref-prefix devwork/task/alice/.
+
+--repair-var NAME=TEMPLATE (repeatable) adds a formula var to the repair
+workflow attached to a new repair bead, on top of the monitor's repair_vars.
+TEMPLATE may use &#123;&#123;bead_id&#125;&#125;, &#123;&#123;bead&#125;&#125;, &#123;&#123;title&#125;&#125;, &#123;&#123;pr&#125;&#125;, &#123;&#123;repo&#125;&#125;,
+&#123;&#123;owner&#125;&#125;, &#123;&#123;branch&#125;&#125;, &#123;&#123;base&#125;&#125;, &#123;&#123;head_sha&#125;&#125;, &#123;&#123;failure_kind&#125;&#125;,
+&#123;&#123;repair_route&#125;&#125;, &#123;&#123;rig&#125;&#125; and &#123;&#123;monitor&#125;&#125;, e.g. --repair-var base=&#123;&#123;base&#125;&#125;
+--repair-var implementation_target=&#123;&#123;repair_route&#125;&#125;.
 
 ```
 gc github pr backfill [monitor-name] [flags]
@@ -2088,7 +2104,9 @@ gc github pr backfill [monitor-name] [flags]
 | `--author` | stringArray |  | restrict to PRs by this GitHub author login (repeatable); fail-closed and unions with each monitor's configured authors |
 | `--create-repair-beads` | bool |  | create deduped repair beads for actionable PRs |
 | `--failure-kind` | stringArray |  | with --create-repair-beads, mint repair beads only for this failure kind (checks_failed, merge_conflict, behind_base, blocked; repeatable); unions with each monitor's configured repair_kinds |
+| `--head-ref-prefix` | stringArray |  | with --create-repair-beads, mint repair beads only for PRs whose head branch starts with this prefix (repeatable); unions with each monitor's configured head_ref_prefixes |
 | `--json` | bool |  | emit JSON |
+| `--repair-var` | stringArray |  | with --create-repair-beads, pass NAME=TEMPLATE as a formula var to the attached repair workflow (repeatable; TEMPLATE may use &#123;&#123;base&#125;&#125;, &#123;&#123;repair_route&#125;&#125;, &#123;&#123;pr&#125;&#125; …); adds to and overrides each monitor's configured repair_vars |
 | `--timeout` | duration | `45s` | GitHub query timeout |
 
 ## gc graph

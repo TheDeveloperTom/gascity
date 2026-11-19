@@ -146,6 +146,45 @@ func TestValidateGitHubPRMonitorsRejectsMissingRepoAndRoute(t *testing.T) {
 			},
 			want: `repair_kinds contains unknown failure kind "behind"`,
 		},
+		{
+			name: "empty head ref prefix",
+			monitor: GitHubPRMonitor{
+				Name:            "bad",
+				Owner:           "sample-org",
+				Repo:            "sample-repo",
+				BaseBranches:    []string{"main"},
+				Rig:             "sample",
+				RepairRoute:     "route-a",
+				HeadRefPrefixes: []string{"devwork/task/", "  "},
+			},
+			want: "head_ref_prefixes contains an empty prefix",
+		},
+		{
+			name: "repair var with invalid name",
+			monitor: GitHubPRMonitor{
+				Name:         "bad",
+				Owner:        "sample-org",
+				Repo:         "sample-repo",
+				BaseBranches: []string{"main"},
+				Rig:          "sample",
+				RepairRoute:  "route-a",
+				RepairVars:   map[string]string{"1base": "{{base}}"},
+			},
+			want: `repair_vars: invalid var name "1base"`,
+		},
+		{
+			name: "repair var with unknown placeholder",
+			monitor: GitHubPRMonitor{
+				Name:         "bad",
+				Owner:        "sample-org",
+				Repo:         "sample-repo",
+				BaseBranches: []string{"main"},
+				Rig:          "sample",
+				RepairRoute:  "route-a",
+				RepairVars:   map[string]string{"base": "{{base_ref}}"},
+			},
+			want: `repair_vars.base: unknown placeholder "{{base_ref}}"`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &City{
@@ -354,6 +393,80 @@ func TestGitHubPRMonitorRepairKindSet(t *testing.T) {
 	set := (GitHubPRMonitor{RepairKinds: []string{" merge_conflict ", "checks_failed", "merge_conflict"}}).RepairKindSet()
 	if len(set) != 2 || !set["merge_conflict"] || !set["checks_failed"] {
 		t.Fatalf("RepairKindSet() = %v, want trimmed deduped {merge_conflict,checks_failed}", set)
+	}
+}
+
+func TestParseGitHubPRMonitorHeadRefPrefixesAndRepairVars(t *testing.T) {
+	cfg, err := Parse([]byte(`
+[workspace]
+name = "test"
+
+[[rigs]]
+name = "sample"
+path = "sample"
+
+[[github.pr_monitor]]
+name = "sample-main"
+owner = "sample-org"
+repo = "sample-repo"
+base_branches = ["main"]
+rig = "sample"
+repair_route = "sample/implementer"
+head_ref_prefixes = ["devwork/task/me/"]
+repair_vars = { base = "{{base}}", implementation_target = "{{repair_route}}", devwork_repo = "{{repo}}", fixed = "literal" }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	m := cfg.GitHub.PRMonitors[0]
+	if len(m.HeadRefPrefixes) != 1 || m.HeadRefPrefixes[0] != "devwork/task/me/" {
+		t.Fatalf("HeadRefPrefixes = %v, want [devwork/task/me/]", m.HeadRefPrefixes)
+	}
+	if m.RepairVars["base"] != "{{base}}" || m.RepairVars["implementation_target"] != "{{repair_route}}" ||
+		m.RepairVars["devwork_repo"] != "{{repo}}" || m.RepairVars["fixed"] != "literal" {
+		t.Fatalf("RepairVars = %v", m.RepairVars)
+	}
+	if err := ValidateGitHubPRMonitors(cfg); err != nil {
+		t.Fatalf("ValidateGitHubPRMonitors() = %v, want nil", err)
+	}
+}
+
+func TestGitHubPRMonitorHeadRefPrefixList(t *testing.T) {
+	// No prefixes configured means no restriction (nil): every head ref may
+	// mint a repair bead, the historical behavior.
+	if got := (GitHubPRMonitor{}).HeadRefPrefixList(); got != nil {
+		t.Fatalf("HeadRefPrefixList() = %v, want nil for no prefixes", got)
+	}
+	got := (GitHubPRMonitor{HeadRefPrefixes: []string{" devwork/task/me/ ", "fix/", "fix/"}}).HeadRefPrefixList()
+	if len(got) != 2 || got[0] != "devwork/task/me/" || got[1] != "fix/" {
+		t.Fatalf("HeadRefPrefixList() = %v, want trimmed deduped [devwork/task/me/ fix/]", got)
+	}
+}
+
+func TestValidateGitHubPRRepairVar(t *testing.T) {
+	for _, tc := range []struct {
+		name, tmpl, want string
+	}{
+		{name: "base", tmpl: "{{base}}"},
+		{name: "implementation_target", tmpl: "{{repair_route}}"},
+		{name: "mixed", tmpl: "pr-{{pr}}-on-{{branch}}"},
+		{name: "literal", tmpl: "x"},
+		{name: "empty_value", tmpl: ""},
+		{name: "", tmpl: "x", want: `invalid var name ""`},
+		{name: "has-dash", tmpl: "x", want: `invalid var name "has-dash"`},
+		{name: "base", tmpl: "{{ base }}", want: `unknown placeholder "{{ base }}"`},
+		{name: "base", tmpl: "{{nope}}", want: `unknown placeholder "{{nope}}"`},
+	} {
+		err := ValidateGitHubPRRepairVar(tc.name, tc.tmpl)
+		if tc.want == "" {
+			if err != nil {
+				t.Errorf("ValidateGitHubPRRepairVar(%q, %q) = %v, want nil", tc.name, tc.tmpl, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("ValidateGitHubPRRepairVar(%q, %q) = %v, want %q", tc.name, tc.tmpl, err, tc.want)
+		}
 	}
 }
 

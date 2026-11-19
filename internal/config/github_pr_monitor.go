@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -59,6 +61,27 @@ type GitHubPRMonitor struct {
 	// merely behind their base or blocked while checks run. Unions with the
 	// backfill --failure-kind flag.
 	RepairKinds []string `toml:"repair_kinds,omitempty"`
+	// HeadRefPrefixes is an optional allow-list of PR head-branch prefixes
+	// that may mint repair beads under `gc github pr backfill
+	// --create-repair-beads`. When empty, every actionable PR may mint a repair
+	// bead (the historical behavior). When non-empty, only actionable PRs whose
+	// head ref starts with one of the prefixes (case-sensitive) mint or refresh
+	// a repair bead; the others are still reported as actionable and counted as
+	// skipped_repairs. A PR with an empty head ref matches no prefix. Use it
+	// when one GitHub login opens both automated and hand-made PRs, so authors
+	// cannot tell them apart, e.g. ["devwork/task/alice/"]. Unions with the
+	// backfill --head-ref-prefix flag.
+	HeadRefPrefixes []string `toml:"head_ref_prefixes,omitempty"`
+	// RepairVars adds formula vars to the repair workflow attached to a newly
+	// created repair bead. Keys are formula var names; values are templates
+	// whose {{name}} placeholders are filled from the pull request: bead_id,
+	// bead, title, pr, repo (owner/name), owner, branch (head ref), base (base
+	// ref), head_sha, failure_kind, repair_route, rig and monitor. When empty,
+	// the workflow gets only bead_id, bead, title, pr, repo and branch (the
+	// historical behavior). An entry overrides a built-in var of the same name.
+	// Example: { base = "{{base}}", implementation_target = "{{repair_route}}" }.
+	// The backfill --repair-var flag adds or overrides entries per invocation.
+	RepairVars map[string]string `toml:"repair_vars,omitempty"`
 	// WebhookSecretEnv is the environment variable containing the webhook
 	// HMAC secret. The secret value itself must not be stored in city.toml.
 	WebhookSecretEnv string `toml:"webhook_secret_env,omitempty"`
@@ -131,6 +154,56 @@ func (m GitHubPRMonitor) RepairKindSet() map[string]bool {
 		return nil
 	}
 	return set
+}
+
+// HeadRefPrefixList returns the trimmed, deduped head-ref prefixes allowed to
+// mint repair beads for this monitor, in configured order. A nil result means
+// "no restriction" (every head ref may mint a bead).
+func (m GitHubPRMonitor) HeadRefPrefixList() []string {
+	var out []string
+	seen := make(map[string]bool, len(m.HeadRefPrefixes))
+	for _, prefix := range m.HeadRefPrefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" || seen[prefix] {
+			continue
+		}
+		seen[prefix] = true
+		out = append(out, prefix)
+	}
+	return out
+}
+
+// gitHubPRRepairVarPlaceholders lists the {{name}} placeholders a repair_vars
+// template may use. cmd/gc fills exactly these from the pull request.
+var gitHubPRRepairVarPlaceholders = []string{
+	"bead_id", "bead", "title", "pr", "repo", "owner", "branch", "base",
+	"head_sha", "failure_kind", "repair_route", "rig", "monitor",
+}
+
+// GitHubPRRepairVarPlaceholders returns the placeholder names accepted in
+// repair_vars templates and the backfill --repair-var flag.
+func GitHubPRRepairVarPlaceholders() []string {
+	return append([]string(nil), gitHubPRRepairVarPlaceholders...)
+}
+
+var (
+	gitHubPRRepairVarName        = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	gitHubPRRepairVarPlaceholder = regexp.MustCompile(`\{\{[^{}]*\}\}`)
+)
+
+// ValidateGitHubPRRepairVar checks one repair_vars entry: the name must be a
+// formula var name and every {{...}} in the template must be a known
+// placeholder, written exactly as {{name}}.
+func ValidateGitHubPRRepairVar(name, template string) error {
+	if !gitHubPRRepairVarName.MatchString(name) {
+		return fmt.Errorf("invalid var name %q (want a formula var name: letters, digits, underscore)", name)
+	}
+	for _, match := range gitHubPRRepairVarPlaceholder.FindAllString(template, -1) {
+		if !slices.Contains(gitHubPRRepairVarPlaceholders, match[2:len(match)-2]) {
+			return fmt.Errorf("unknown placeholder %q (valid: {{%s}})", match, strings.Join(gitHubPRRepairVarPlaceholders, "}}, {{"))
+		}
+	}
+	return nil
 }
 
 // MergeQueuePolicyOrDefault returns the normalized merge-queue policy.
@@ -244,6 +317,24 @@ func ValidateGitHubPRMonitors(cfg *City) error {
 			if !IsGitHubPRFailureKind(kind) {
 				return fmt.Errorf("%s %q: repair_kinds contains unknown failure kind %q (valid: %s)",
 					ctx, name, kind, strings.Join(gitHubPRFailureKinds, ", "))
+			}
+		}
+		for _, prefix := range monitor.HeadRefPrefixes {
+			if strings.TrimSpace(prefix) == "" {
+				return fmt.Errorf("%s %q: head_ref_prefixes contains an empty prefix", ctx, name)
+			}
+		}
+		varNames := make([]string, 0, len(monitor.RepairVars))
+		for varName := range monitor.RepairVars {
+			varNames = append(varNames, varName)
+		}
+		slices.Sort(varNames)
+		for _, varName := range varNames {
+			if !gitHubPRRepairVarName.MatchString(varName) {
+				return fmt.Errorf("%s %q: repair_vars: %w", ctx, name, ValidateGitHubPRRepairVar(varName, ""))
+			}
+			if err := ValidateGitHubPRRepairVar(varName, monitor.RepairVars[varName]); err != nil {
+				return fmt.Errorf("%s %q: repair_vars.%s: %w", ctx, name, varName, err)
 			}
 		}
 		if envName := strings.TrimSpace(monitor.WebhookSecretEnv); envName != "" && !envVarName.MatchString(envName) {
