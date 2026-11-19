@@ -29,6 +29,7 @@ function state(over: Partial<CardChatState> = {}): CardChatState {
     status: 'ready',
     who: 'desk',
     agentActivity: 'idle',
+    agentOnOtherCard: false,
     ...over,
   };
 }
@@ -113,10 +114,24 @@ describe('CardChat', () => {
     const { unmount } = render(<CardChat city="devwork" card={CARD} />);
     expect(screen.getByText('Дежурный читает…')).toBeTruthy();
     unmount();
-    chat.state = state({ rows: [row({ state: 'delivered' }), row({ key: 'r2', who: 'desk', text: 'ответ' })], agentActivity: 'in-turn' });
+    chat.state = state({
+      rows: [row({ state: 'delivered' }), row({ key: 'r2', who: 'desk', text: 'ответ' })],
+      agentActivity: 'in-turn',
+      agentOnOtherCard: true,
+    });
     const second = render(<CardChat city="devwork" card={CARD} />);
     expect(screen.getByText('Дежурный отвечает на другой вопрос')).toBeTruthy();
     second.unmount();
+    // D3 live check 19.11: busy, but not provably with another card (here: this
+    // card's own second turn) — no claim at all
+    chat.state = state({
+      rows: [row({ state: 'delivered' }), row({ key: 'r2', who: 'desk', text: 'ответ' })],
+      agentActivity: 'in-turn',
+      agentOnOtherCard: false,
+    });
+    const third = render(<CardChat city="devwork" card={CARD} />);
+    expect(screen.queryByText('Дежурный отвечает на другой вопрос')).toBeNull();
+    third.unmount();
     chat.state = state({ rows: [row({ state: 'delivered' })], who: 'mayor', agentActivity: 'in-turn' });
     render(<CardChat city="devwork" card={CARD} />);
     expect(screen.getByText('Мэр работает — ответит здесь')).toBeTruthy();

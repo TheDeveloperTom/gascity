@@ -70,6 +70,8 @@ beforeEach(() => {
       const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
       requests.push(url.pathname);
       if (url.pathname === PEER_URL) return peerResponse();
+      // Richard's id: our store does not hold it (D3 live check 19.11)
+      if (url.pathname === '/v0/city/test-city/bead/dw-d43') return json({ title: 'Not Found', status: 404 }, 404);
       if (url.pathname === '/v0/city/test-city/beads') {
         return json({ items: [MINE], total: 1 });
       }
@@ -404,6 +406,35 @@ describe('BeadsPage with Richard’s board', () => {
     expect(await within(dialog).findByText('Чат есть у задач и эпиков продукта')).toBeTruthy();
     expect(within(dialog).queryByTestId('card-chat-skeleton')).toBeNull();
     expect(within(dialog).queryByRole('textbox', { name: 'Спросить про эту карточку' })).toBeNull();
+  });
+
+  // D3 live check 19.11: `?bead=dw-d43` — Richard's id without the `peer:` key —
+  // opened OUR drawer («решение принято или удалено») with OUR private chat box.
+  it('a bare id that is not on our board but is on his opens HIS card, never our chat', async () => {
+    const body = peerBody({ snapshotAt: minutesAgo(1) });
+    const card = body.peers[0]!.cards[0] as Record<string, unknown>;
+    card.id = 'dw-d43';
+    card.rig = 'devwork';
+    peerResponse = () => json(body);
+    renderPage('/beads?bead=dw-d43');
+    // until our board's read is in, the id may be ours: our drawer, but no chat box
+    await screen.findByRole('dialog');
+    expect(screen.queryByRole('textbox', { name: 'Спросить про эту карточку' })).toBeNull();
+    await waitFor(() => expect(screen.getByText(/только для чтения/)).toBeTruthy());
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Схема users меняется.')).toBeTruthy();
+    expect(within(dialog).queryByRole('textbox', { name: 'Спросить про эту карточку' })).toBeNull();
+    expect(within(dialog).queryByRole('region', { name: 'Чат по карточке' })).toBeNull();
+    // our private chat was never mounted: nothing read from or sent to board-chat
+    expect(requests.some((p) => p.includes('/svc/board-chat/'))).toBe(false);
+  });
+
+  it('a bare id on BOTH boards stays ours', async () => {
+    peerResponse = () => json(peerBody({ snapshotAt: minutesAgo(1) }));
+    renderPage('/beads?bead=dw-ab12');
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('region', { name: 'Чат по карточке' })).toBeTruthy();
+    expect(within(dialog).queryByText(/только для чтения/)).toBeNull();
   });
 
   it('read-only dashboard: no comment box (M-5)', async () => {

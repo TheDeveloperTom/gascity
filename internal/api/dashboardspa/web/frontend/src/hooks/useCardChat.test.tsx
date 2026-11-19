@@ -36,14 +36,14 @@ vi.mock('./useGcEvents', () => ({
   },
 }));
 
-const stream = vi.hoisted(() => ({ sessions: [] as (string | null)[], activity: 'idle' }));
+const stream = vi.hoisted(() => ({ sessions: [] as (string | null)[], activity: 'idle', items: [] as unknown[] }));
 
 vi.mock('./useStructuredSessionStream', () => ({
   useStructuredSessionStream: (sessionId: string | null) => {
     stream.sessions.push(sessionId);
     return {
       status: 'ready',
-      result: { provider: 'claude', template: 'desk', history: null, items: [], activity: stream.activity },
+      result: { provider: 'claude', template: 'desk', history: null, items: stream.items, activity: stream.activity },
       stream: { status: 'open' },
     };
   },
@@ -90,6 +90,7 @@ beforeEach(() => {
   api.lookupSession.mockReset().mockResolvedValue(null);
   stream.sessions = [];
   stream.activity = 'idle';
+  stream.items = [];
   events.state = 'open';
 });
 afterEach(() => {
@@ -163,6 +164,58 @@ describe('useCardChat', () => {
     await flush();
     rerender();
     expect(result.current.rows[0]!.state).toBe('delivered');
+  });
+
+  // D3 live check 19.11: «Дежурный отвечает на другой вопрос» was guessed from
+  // «busy and nothing here is being read». The current turn's card is in the
+  // prompt the engine wrote into the desk's transcript (extmsg reminder:
+  // «New message in shared conversation board/<card>:»).
+  const prompt = (id: string, text: string) => ({
+    kind: 'message',
+    message: { id, role: 'user', status: 'final', blocks: [{ type: 'text', text }] },
+  });
+  const boardPrompt = (id: string, card: string) =>
+    prompt(id, `<system-reminder>\nNew message in shared conversation board/${card}:\n\n- Артём (human): вопрос\n</system-reminder>`);
+  const toolStep = (id: string) => ({
+    kind: 'message',
+    message: { id, role: 'assistant', status: 'final', stop_reason: 'tool_use', blocks: [{ type: 'tool_use', name: 'Bash' }] },
+  });
+  const toolResult = (id: string) => ({
+    kind: 'message',
+    message: { id, role: 'user', status: 'final', blocks: [{ type: 'tool_result', content: 'board/dw-9 ok' }] },
+  });
+
+  it('the desk is on another card only when its current turn names another card', async () => {
+    stream.activity = 'in-turn';
+    stream.items = [boardPrompt('u1', 'dw-1'), toolStep('a1'), boardPrompt('u2', 'dw-2'), toolStep('a2'), toolResult('t2')];
+    const { result } = await mount([entry({ id: 'e1', seq: 1 })]);
+    expect(result.current.agentOnOtherCard).toBe(true);
+    // this card awaits a reply, but the desk is provably reading another one
+    expect(result.current.rows[0]!.state).toBe('delivered');
+  });
+
+  it('this card’s own turn is not «another question»', async () => {
+    stream.activity = 'in-turn';
+    stream.items = [boardPrompt('u1', 'dw-2'), toolStep('a1'), boardPrompt('u2', 'dw-1'), toolStep('a2')];
+    const { result } = await mount([entry({ id: 'e1', seq: 1 }), desk({ id: 'e2', seq: 2, text: 'ответ' })]);
+    expect(result.current.agentActivity).toBe('in-turn');
+    expect(result.current.agentOnOtherCard).toBe(false);
+  });
+
+  it('an unknown current turn claims nothing', async () => {
+    stream.activity = 'in-turn';
+    stream.items = [boardPrompt('u1', 'dw-2'), toolStep('a1'), prompt('u2', 'проверь очередь'), toolStep('a2')];
+    const { result } = await mount([entry({ id: 'e1', seq: 1 }), desk({ id: 'e2', seq: 2, text: 'ответ' })]);
+    expect(result.current.agentOnOtherCard).toBe(false);
+    stream.items = [];
+    const empty = await mount([entry({ id: 'e1', seq: 1 }), desk({ id: 'e2', seq: 2, text: 'ответ' })]);
+    expect(empty.result.current.agentOnOtherCard).toBe(false);
+  });
+
+  it('an idle desk is on no card', async () => {
+    stream.items = [boardPrompt('u1', 'dw-2'), toolStep('a1')];
+    const { result } = await mount([entry({ id: 'e1', seq: 1 })]);
+    expect(result.current.agentOnOtherCard).toBe(false);
   });
 
   it('extmsg.bound naming mayor switches who and the activity stream', async () => {

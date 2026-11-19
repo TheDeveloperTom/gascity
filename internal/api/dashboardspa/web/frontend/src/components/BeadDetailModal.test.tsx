@@ -83,6 +83,39 @@ describe('BeadDetailModal', () => {
     expect(screen.queryByTestId('mayor-message')).toBeNull();
   });
 
+  // D3 live check 19.11: `?bead=dw-d43` (Richard's id, not on our board) drew
+  // «Это решение уже принято или удалено» with OUR private chat box under it.
+  it('a board card that is not in our store: «Card not found.», no chat box', () => {
+    mockUseBeadDetail.mockReturnValue(detailState({ notFound: true }));
+    render(
+      <BeadDetailModal
+        open
+        onClose={() => {}}
+        beadId="dw-d43"
+        boardCard
+        footer={<CardChat city="devwork" card={{ rig: 'devwork', id: 'dw-d43' }} />}
+      />,
+    );
+    expect(screen.getByText('Card not found.')).toBeTruthy();
+    expect(screen.queryByText(/resolved or removed/i)).toBeNull();
+    expect(screen.queryByTestId('task-drawer-footer')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('a board card not known yet (not on the board, still being read): no chat box until it is found', () => {
+    mockUseBeadDetail.mockReturnValue(detailState({ loading: true }));
+    render(
+      <BeadDetailModal
+        open
+        onClose={() => {}}
+        beadId="dw-d43"
+        boardCard
+        footer={<CardChat city="devwork" card={{ rig: 'devwork', id: 'dw-d43' }} />}
+      />,
+    );
+    expect(screen.queryByTestId('task-drawer-footer')).toBeNull();
+  });
+
   it('a board card with no footer shows no box at all', () => {
     mockUseBeadDetail.mockReturnValue(detailState({ bead }));
     render(<BeadDetailModal open onClose={() => {}} beadId="dw-1" boardCard footer={null} />);

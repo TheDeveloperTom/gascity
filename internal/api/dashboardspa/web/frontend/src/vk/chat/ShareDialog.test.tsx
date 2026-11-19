@@ -43,6 +43,7 @@ beforeEach(() => {
     status: 'ready',
     who: 'desk',
     agentActivity: 'idle',
+    agentOnOtherCard: false,
   };
 });
 afterEach(() => {

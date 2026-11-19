@@ -47,6 +47,8 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   'Loading the chat…': 'Загружается чат…',
   'The chat could not be read.': 'Чат не загрузился.',
   'Card chat': 'Чат по карточке',
+  // D3 live check 19.11: a link to a card our store does not hold
+  'Card not found.': 'Карточка не найдена.',
   'You, in the card chat': 'Вы',
   Desk: 'Дежурный',
   Yes: 'Да',

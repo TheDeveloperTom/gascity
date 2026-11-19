@@ -114,7 +114,7 @@ export function useStructuredSessionStream(
           envelope.operation === 'upsert'
             ? mergeStructuredItems(current.items, messages)
             : replaceStructuredMessages(current.items, messages),
-        activity: envelope.history.tail_state.activity,
+        activity: nextActivity(current.activity, envelope.history.tail_state.activity),
       };
     };
 
@@ -132,7 +132,7 @@ export function useStructuredSessionStream(
             template: envelope.template,
             history: envelope.history,
             items: messageItems(structuredMessagesFromEnvelope(envelope)),
-            activity: envelope.history.tail_state.activity,
+            activity: tailActivity(envelope.history.tail_state.activity) ?? 'unknown',
           },
           stream: { status: canStream ? 'connecting' : 'idle' },
         });
@@ -261,6 +261,26 @@ export function useStructuredSessionStream(
   }, [sessionId, stream]);
 
   return state;
+}
+
+/**
+ * The transcript's `tail_state.activity` speaks the worker's words (`idle`,
+ * `in_turn`, `unknown`: worker.TailActivity*), while `activity` frames speak
+ * the stream's (`idle`, `in-turn`; api.historySnapshotActivity). Normalize the
+ * tail to the stream's words; an unknown tail carries no news, so a frame
+ * keeps the last known state — the server sends no `activity` frame for it
+ * either. Before this, every transcript frame in a turn replaced `in-turn`
+ * with `in_turn`, which no reader knew (D3 live check 19.11: «Дежурный
+ * читает…» dropped 1.7 s before the turn really ended).
+ */
+function tailActivity(tail: string): 'idle' | 'in-turn' | null {
+  if (tail === 'idle') return 'idle';
+  if (tail === 'in_turn' || tail === 'in-turn') return 'in-turn';
+  return null;
+}
+
+function nextActivity(current: string, tail: string): string {
+  return tailActivity(tail) ?? current;
 }
 
 function mergeStructuredItems(

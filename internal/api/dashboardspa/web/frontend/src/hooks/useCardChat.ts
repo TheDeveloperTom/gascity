@@ -16,7 +16,7 @@ import {
   type ThreadEntry,
 } from '../supervisor/boardChat';
 import { useGcEventRefresh, type GcEventEnvelope } from './useGcEvents';
-import { useStructuredSessionStream } from './useStructuredSessionStream';
+import { useStructuredSessionStream, type StructuredStreamItem } from './useStructuredSessionStream';
 
 // BOARD-CHAT Task C3 (plan BOARD-CHAT-PLAN.md; contract C6; DOCCHECK DC#24-26),
 // with the lane C review fixes.
@@ -63,6 +63,11 @@ export interface CardChat {
   status: 'loading' | 'ready' | 'error' | 'no_chat';
   who: 'desk' | 'mayor';
   agentActivity: 'idle' | 'in-turn' | 'unknown';
+  /**
+   * The agent is in a turn that provably serves another card: the prompt that
+   * opened it names only other board conversations. False when unknown.
+   */
+  agentOnOtherCard: boolean;
 }
 
 /** The sessions the board already reads; enough to tell the desk from the Mayor (I6). */
@@ -559,6 +564,11 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
   const activity = sessionState.status === 'ready' ? sessionState.result.activity : 'unknown';
   const agentActivity: CardChat['agentActivity'] =
     activity === 'in-turn' ? 'in-turn' : activity === 'idle' ? 'idle' : 'unknown';
+  // D3 live check 19.11: «busy with another card» is read from the turn's own
+  // prompt, never inferred from «busy and nothing here is being read».
+  const items = sessionState.status === 'ready' ? sessionState.result.items : null;
+  const turnCards = useMemo(() => (items === null ? null : currentTurnCards(items)), [items]);
+  const agentOnOtherCard = agentActivity === 'in-turn' && turnCards !== null && !turnCards.includes(card.id);
 
   const delivered = useMemo(
     () => new Set(thread.map((e) => e.providerMessageId).filter((id): id is string => id !== undefined)),
@@ -580,7 +590,7 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
           key: e.id,
           who: 'owner',
           text: e.text,
-          state: e.id === awaiting && agentActivity === 'in-turn' ? 'reading' : 'delivered',
+          state: e.id === awaiting && agentActivity === 'in-turn' && !agentOnOtherCard ? 'reading' : 'delivered',
           at: e.at,
         };
       }
@@ -610,7 +620,7 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
       });
     }
     return out;
-  }, [thread, local, delivered, agentActivity, sourceWho]);
+  }, [thread, local, delivered, agentActivity, agentOnOtherCard, sourceWho]);
 
   // re-review R1: the no-chat mark lasts a minute; re-render when it ends
   const until = noChat.get(key) ?? 0;
@@ -622,5 +632,30 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
   }, [until]);
   const chatless = all !== null && until > Date.now();
 
-  return { rows, send, retry, answer, status: chatless ? 'no_chat' : status, who, agentActivity };
+  return { rows, send, retry, answer, status: chatless ? 'no_chat' : status, who, agentActivity, agentOnOtherCard };
+}
+
+// The engine delivers a card turn into the agent's session as a reminder that
+// names the conversation (api.formatExtmsgNotifyReminder): «New message in
+// shared conversation board/<card id>:». Several queued turns can share one
+// prompt, so every match counts.
+const BOARD_CONVERSATION = new RegExp(`New message in shared conversation ${BOARD_PROVIDER}/([^\\s:]+):`, 'g');
+
+/**
+ * The cards the agent's current turn serves: the board conversations named by
+ * the newest prompt in its transcript (a user message with text, not a tool
+ * result). Null when unknown: no prompt, or a prompt that names no card.
+ */
+export function currentTurnCards(items: readonly StructuredStreamItem[]): string[] | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item === undefined || item.kind !== 'message' || item.message.role !== 'user') continue;
+    const blocks = item.message.blocks;
+    if (blocks.some((b) => b.type === 'tool_result')) continue;
+    const text = blocks.map((b) => (b.type === 'text' ? (b.text ?? '') : '')).join('\n');
+    if (text.trim() === '') continue;
+    const cards = [...text.matchAll(BOARD_CONVERSATION)].map((m) => m[1]!);
+    return cards.length > 0 ? cards : null;
+  }
+  return null;
 }
