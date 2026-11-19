@@ -146,19 +146,53 @@ async function call(city: string, route: string, init: RequestInit): Promise<unk
   throw new BoardChatError(code, typeof body.reason === 'string' ? body.reason : undefined);
 }
 
+/**
+ * Re-review R3: a `/v1/send` that hangs this long fails («повторить»), so the
+ * card's later sends, which wait for it to keep their order, can go.
+ */
+export const SEND_TIMEOUT_MS = 20_000;
+
 /** C2 `POST /v1/send`: the service answers 202 once the turn is in its outbox. */
 export async function sendTurn(city: string, card: ChatCard, text: string, clientId: string, replyTo?: string): Promise<void> {
-  await call(city, 'send', {
-    method: 'POST',
-    // review I1: a tab closed right after Enter still delivers the turn (body ≤ ~8 KB)
-    keepalive: true,
-    body: JSON.stringify({
-      card: { rig: card.rig, id: card.id },
-      text,
-      client_id: clientId,
-      ...(replyTo !== undefined ? { reply_to: replyTo } : {}),
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
+  try {
+    await call(city, 'send', {
+      method: 'POST',
+      // review I1: a tab closed right after Enter still delivers the turn (body ≤ ~8 KB)
+      keepalive: true,
+      signal: controller.signal,
+      body: JSON.stringify({
+        card: { rig: card.rig, id: card.id },
+        text,
+        client_id: clientId,
+        ...(replyTo !== undefined ? { reply_to: replyTo } : {}),
+      }),
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Re-review R2: one session the board's open list does not hold (a Mayor
+ * session closed after a respawn), by id; null when the city has no such one.
+ */
+export async function lookupSession(
+  city: string,
+  sessionId: string,
+): Promise<{ id: string; template?: string; alias?: string; agent_name?: string } | null> {
+  try {
+    const s = await supervisorApi().getSession(city, sessionId);
+    return {
+      id: s.id,
+      template: s.template,
+      ...(s.alias !== undefined ? { alias: s.alias } : {}),
+      ...(s.agent_name !== undefined ? { agent_name: s.agent_name } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function str(v: unknown): string | null {

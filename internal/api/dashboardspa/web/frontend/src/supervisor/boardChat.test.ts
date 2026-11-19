@@ -5,12 +5,14 @@ import {
   BoardChatError,
   getPending,
   isRetryable,
+  lookupSession,
   MARKER,
   newClientId,
   parseReply,
   readBinding,
   readThread,
   retryTurn,
+  SEND_TIMEOUT_MS,
   sendTurn,
   shareCard,
   splitTurnText,
@@ -149,6 +151,27 @@ describe('sendTurn', () => {
     expect(codes).toEqual(['own_login_unknown', 'outbox_unreadable', 'too_large']);
   });
 
+  it('re-review R3: a stalled /v1/send fails after 20 s so the card’s later sends can go', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchSpy.mockImplementationOnce(
+        (_input, init) =>
+          new Promise((_, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          }),
+      );
+      const sent = sendTurn('devwork', { rig: 'dw', id: 'dw-1' }, 'x', 'c-1');
+      const caught = sent.catch((err: unknown) => err);
+      await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS);
+      const err = await caught;
+      expect(err).toBeInstanceOf(BoardChatError);
+      expect((err as BoardChatError).code).toBe('failed');
+      expect(SEND_TIMEOUT_MS).toBe(20_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a network failure is a BoardChatError failed', async () => {
     fetchSpy.mockRejectedValueOnce(new TypeError('offline'));
     await expect(sendTurn('devwork', { rig: 'dw', id: 'dw-1' }, 'x', 'c-1')).rejects.toMatchObject({ code: 'failed' });
@@ -257,6 +280,21 @@ describe('readThread', () => {
     expect(url.pathname).toBe('/v0/city/devwork/events');
     expect(url.searchParams.get('type')).toBe('extmsg.bound');
     expect(url.searchParams.get('since')).toBeTruthy();
+  });
+
+  it('re-review R2: lookupSession reads one session by id (closed ones too)', async () => {
+    const spy = vi.fn(async (_input: RequestInfo | URL) =>
+      json(200, { id: 's-old', template: 'mayor', alias: 'mayor', state: 'closed', provider: 'claude', running: false, attached: false, created_at: 't', session_name: 'x', title: '' }),
+    );
+    setSupervisorApiForTests(createSupervisorApi({ baseUrl: 'http://gc.test', fetch: spy as typeof fetch }));
+    await expect(lookupSession('devwork', 's-old')).resolves.toMatchObject({ id: 's-old', template: 'mayor', alias: 'mayor' });
+    expect(new URL(urlOf(spy.mock.calls[0]![0])).pathname).toBe('/v0/city/devwork/session/s-old');
+  });
+
+  it('lookupSession of an unknown id is null', async () => {
+    const spy = vi.fn(async (_input: RequestInfo | URL) => json(404, { title: 'Not Found', status: 404 }));
+    setSupervisorApiForTests(createSupervisorApi({ baseUrl: 'http://gc.test', fetch: spy as typeof fetch }));
+    await expect(lookupSession('devwork', 's-gone')).resolves.toBeNull();
   });
 
   it('readBinding with no bound event is null', async () => {

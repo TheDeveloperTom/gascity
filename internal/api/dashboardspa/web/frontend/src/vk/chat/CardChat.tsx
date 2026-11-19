@@ -69,6 +69,8 @@ function whoName(who: ChatRow['who']): string {
 /** Review M1: why a turn was refused, in plain words. */
 function refusal(code: BoardChatErrorCode | undefined): string {
   switch (code) {
+    case 'not_own_card':
+      return t('not delivered: the chat is only for product tasks and epics');
     case 'too_long':
     case 'too_large':
       return t('not delivered: longer than {max} characters', { max: CHAT_TEXT_MAX });
@@ -161,7 +163,21 @@ function LiveCardChat({ city, card, title, peer, sessions }: LiveProps) {
   const [value, setValue] = useState('');
 
   if (chat.status === 'loading') return <ChatSkeleton />;
-  if (chat.status === 'no_chat') return <NoChat />;
+  if (chat.status === 'no_chat') {
+    // re-review R1: the refused words stay, with why and «повторить»
+    const refused = chat.rows.filter((r) => r.state === 'failed' && r.error === 'not_own_card');
+    return (
+      <section aria-label={t('Card chat')} className="flex w-full min-w-0 flex-col gap-2">
+        <NoChat />
+        {refused.map((row) => (
+          <div key={row.key} data-testid="chat-row" data-who="owner" className="flex flex-col gap-1 border-l-2 border-vk-mine pl-2">
+            <p className="m-0 whitespace-pre-wrap text-base text-vk-text-low [overflow-wrap:anywhere]">{row.text}</p>
+            <RowState row={row} who={chat.who} onRetry={() => chat.retry(row.key)} />
+          </div>
+        ))}
+      </section>
+    );
+  }
 
   const send = () => {
     const text = value.trim();

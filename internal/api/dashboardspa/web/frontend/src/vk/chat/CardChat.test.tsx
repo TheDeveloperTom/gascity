@@ -201,6 +201,26 @@ describe('CardChat', () => {
     expect(collectMissing()).toEqual([]);
   });
 
+  it('re-review R1: in the no-chat state the refused words stay on screen, with why and «повторить»', () => {
+    chat.state = state({
+      status: 'no_chat',
+      rows: [
+        row({ key: 'old', who: 'desk', text: 'давний ответ' }),
+        row({ key: 'c-1', text: 'что это за карточка?', state: 'failed', error: 'not_own_card', retryable: true }),
+      ],
+    });
+    render(<CardChat city="devwork" card={CARD} />);
+    expect(screen.getByText('Чат есть у задач и эпиков продукта')).toBeTruthy();
+    const kept = screen.getByTestId('chat-row');
+    expect(within(kept).getByText('что это за карточка?')).toBeTruthy();
+    expect(within(kept).getByText('не доставлено: чат есть только у задач и эпиков продукта')).toBeTruthy();
+    fireEvent.click(within(kept).getByRole('button', { name: 'повторить' }));
+    expect(chat.state.retry).toHaveBeenCalledWith('c-1');
+    expect(screen.queryByText('давний ответ')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(collectMissing()).toEqual([]);
+  });
+
   it('review M1: a refusal says why; «повторить» only where it can help', () => {
     chat.state = state({
       rows: [

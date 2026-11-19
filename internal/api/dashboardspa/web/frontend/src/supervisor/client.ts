@@ -16,6 +16,7 @@ import {
   getV0CityByCityNameRigs,
   getV0CityByCityNameRunsCensus,
   getV0CityByCityNameSessionByIdPending,
+  getV0CityByCityNameSessionById,
   getV0CityByCityNameSessionByIdTranscript,
   getV0CityByCityNameSessions,
   getV0CityByCityNameStatus,
@@ -58,6 +59,7 @@ import type {
   MailListBody,
   Message,
   ListBodySessionResponse,
+  SessionResponse,
   OkResponseBody,
   PostV0CityByCityNameMailByIdArchiveData,
   PostV0CityByCityNameMailByIdMarkUnreadData,
@@ -164,6 +166,8 @@ export interface SupervisorApi {
   ): string;
   listSessions(cityName: string): Promise<ListBodySessionResponse>;
   sessionPending(cityName: string, sessionId: string): Promise<SessionPendingResponse>;
+  /** BOARD-CHAT re-review R2: one session by id, alias or name (closed ones too). */
+  getSession(cityName: string, sessionId: string): Promise<SessionResponse>;
   respondSession(
     cityName: string,
     sessionId: string,
@@ -527,6 +531,15 @@ export function createSupervisorApi(options: CreateSupervisorApiOptions = {}): S
           body,
         }) as Promise<SupervisorResult<RespondSessionResponse>>,
         'gc supervisor session respond response was empty',
+      );
+    },
+    getSession(cityName, sessionId) {
+      return unwrapSupervisorResult<SessionResponse>(
+        getV0CityByCityNameSessionById({
+          client,
+          path: { cityName, id: sessionId },
+        }) as Promise<SupervisorResult<SessionResponse>>,
+        'gc supervisor session response was empty',
       );
     },
     sessionTranscript(cityName, sessionId, format, options) {

@@ -4,6 +4,7 @@ import {
   BoardChatError,
   getPending,
   isRetryable,
+  lookupSession,
   newClientId,
   readBinding,
   readThread,
@@ -113,11 +114,17 @@ function isStoredTurn(v: unknown): v is StoredTurn {
   );
 }
 
+/** Re-review R6: a turn that failed for good and was never retried ages out. */
+const FAILED_TTL_MS = 24 * 3600_000;
+
 function loadTurns(): StoredTurn[] {
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     const parsed: unknown = raw === null ? [] : JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isStoredTurn) : [];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    // re-review R6: drop turns that failed more than a day ago
+    return parsed.filter(isStoredTurn).filter((t) => !(t.state === 'failed' && now - Date.parse(t.at) > FAILED_TTL_MS));
   } catch {
     return [];
   }
@@ -129,8 +136,17 @@ const listeners = new Set<() => void>();
 const inFlight = new Set<string>();
 /** Review M5: one card's sends go out one after another, in order. */
 const chains = new Map<string, Promise<unknown>>();
-/** Cards the service said have no chat (409 not_own_card). */
-const noChat = new Set<string>();
+/**
+ * Cards the service said have no chat (409 not_own_card), until when. Re-review
+ * R1: a new product card gets this 409 until the live frame catches up, so the
+ * mark lasts one mount and at most a minute.
+ */
+const noChat = new Map<string, number>();
+/** Re-review R1: how long a 409 not_own_card hides the chat. */
+export const NO_CHAT_MS = 60_000;
+/** Re-review R2: sessions looked up by id (closed ones too), once each. */
+const looked = new Map<string, SessionLike | null>();
+const looking = new Set<string>();
 
 function setTurns(next: readonly StoredTurn[]): void {
   turns = next;
@@ -175,11 +191,8 @@ function deliver(turn: StoredTurn, onAccepted: () => void): void {
       (err: unknown) => {
         inFlight.delete(turn.clientId);
         const code: BoardChatErrorCode = err instanceof BoardChatError ? err.code : 'failed';
-        if (code === 'not_own_card') {
-          noChat.add(key);
-          setTurns(turns.filter((t) => t.clientId !== turn.clientId));
-          return;
-        }
+        // re-review R1: the refused words stay, in a failed row that says why
+        if (code === 'not_own_card') noChat.set(key, Date.now() + NO_CHAT_MS);
         patchTurn(turn.clientId, { state: 'failed', origin: 'local', error: code });
       },
     );
@@ -192,6 +205,8 @@ export function resetCardChatForTests(): void {
   inFlight.clear();
   chains.clear();
   noChat.clear();
+  looked.clear();
+  looking.clear();
 }
 
 // ---- helpers -----------------------------------------------------------------
@@ -242,16 +257,37 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
   localRef.current = local;
 
   // Review I6: who a session is, from the sessions the board reads.
+  const [lookedTick, setLookedTick] = useState(0);
   const whoBySession = useMemo(() => {
     const m = new Map<string, 'desk' | 'mayor'>();
+    for (const s of looked.values()) {
+      const w = s === null ? null : sessionWho(s);
+      if (s !== null && w !== null) m.set(s.id, w);
+    }
     for (const s of sessions) {
       const w = sessionWho(s);
       if (w !== null) m.set(s.id, w);
     }
     return m;
-  }, [sessions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, lookedTick]);
   const whoRef = useRef(whoBySession);
   whoRef.current = whoBySession;
+
+  // Re-review R2: a reply from a session the board no longer lists (a respawned
+  // Mayor) is looked up once by id, so its author and buttons stay right.
+  useEffect(() => {
+    for (const e of thread) {
+      const sid = e.source;
+      if (e.who === 'owner' || sid === undefined || whoBySession.has(sid) || looked.has(sid) || looking.has(sid)) continue;
+      looking.add(sid);
+      void lookupSession(city, sid).then((s) => {
+        looking.delete(sid);
+        looked.set(sid, s);
+        if (live.current && s !== null) setLookedTick((n) => n + 1);
+      });
+    }
+  }, [thread, whoBySession, city]);
 
   const applyThread = useCallback((entries: readonly ThreadEntry[]) => {
     for (const e of entries) {
@@ -319,6 +355,7 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
   // Mount (and card change): history, the service's pending turns, who holds the chat.
   useEffect(() => {
     live.current = true;
+    noChat.delete(key); // re-review R1: a new mount asks again
     lastSeq.current = undefined;
     reading.current = true;
     readAgain.current = false;
@@ -536,7 +573,9 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
         text: l.text,
         state: l.state,
         ...(l.state === 'failed'
-          ? { retryable: l.origin === 'service' || isRetryable(l.error ?? 'failed'), ...(l.error !== undefined ? { error: l.error } : {}) }
+          ? {
+              // not_own_card: a new card may enter the frame (re-review R1)
+              retryable: l.origin === 'service' || l.error === 'not_own_card' || isRetryable(l.error ?? 'failed'), ...(l.error !== undefined ? { error: l.error } : {}) }
           : {}),
         at: l.at,
       });
@@ -544,8 +583,15 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
     return out;
   }, [thread, local, delivered, agentActivity, sourceWho]);
 
-  // `all` changes when a send ends; read the no-chat mark then
-  const chatless = all !== null && noChat.has(key);
+  // re-review R1: the no-chat mark lasts a minute; re-render when it ends
+  const until = noChat.get(key) ?? 0;
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    if (until <= Date.now()) return;
+    const timer = setTimeout(() => setNow(Date.now()), until - Date.now());
+    return () => clearTimeout(timer);
+  }, [until]);
+  const chatless = all !== null && until > Date.now();
 
   return { rows, send, retry, answer, status: chatless ? 'no_chat' : status, who, agentActivity };
 }

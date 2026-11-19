@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   retryTurn: vi.fn(),
   readThread: vi.fn(),
   readBinding: vi.fn(),
+  lookupSession: vi.fn(),
 }));
 
 vi.mock('../supervisor/boardChat', async (importOriginal) => {
@@ -86,6 +87,7 @@ beforeEach(() => {
   api.retryTurn.mockReset().mockResolvedValue(undefined);
   api.readThread.mockReset().mockResolvedValue([]);
   api.readBinding.mockReset().mockResolvedValue(null);
+  api.lookupSession.mockReset().mockResolvedValue(null);
   stream.sessions = [];
   stream.activity = 'idle';
   events.state = 'open';
@@ -293,6 +295,75 @@ describe('useCardChat', () => {
     act(() => result.current.send('что это?'));
     await flush();
     expect(result.current.status).toBe('no_chat');
+  });
+
+  it('re-review R1: a 409 not_own_card keeps the refused words in a failed row; the next mount clears no-chat', async () => {
+    api.sendTurn.mockRejectedValueOnce(new BoardChatError('not_own_card', 'not_in_frame'));
+    const first = await mount();
+    act(() => first.result.current.send('что это за карточка?'));
+    await flush();
+    expect(first.result.current.status).toBe('no_chat');
+    expect(first.result.current.rows).toHaveLength(1);
+    expect(first.result.current.rows[0]).toMatchObject({
+      text: 'что это за карточка?',
+      state: 'failed',
+      error: 'not_own_card',
+      // a new card gets this 409 until the frame catches up: «повторить» may pass then
+      retryable: true,
+    });
+    first.unmount();
+    const { result } = await mount();
+    expect(result.current.status).toBe('ready');
+    expect(result.current.rows[0]).toMatchObject({ text: 'что это за карточка?', state: 'failed', error: 'not_own_card' });
+  });
+
+  it('re-review R1: the no-chat state clears after a minute', async () => {
+    api.sendTurn.mockRejectedValueOnce(new BoardChatError('not_own_card', 'not_in_frame'));
+    const { result } = await mount();
+    vi.useFakeTimers();
+    act(() => result.current.send('что это?'));
+    await flush();
+    expect(result.current.status).toBe('no_chat');
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(result.current.status).toBe('ready');
+  });
+
+  it('re-review R2: an open ask from a Mayor session the board no longer lists keeps «Мэр» and its buttons', async () => {
+    api.lookupSession.mockResolvedValue({ id: 's-old', template: 'mayor' });
+    const { result, rerender } = await mount([entry({ id: 'e1', seq: 1 }), entry({ id: 'e2', seq: 2, who: 'desk', source: 's-old', text: 'Закрыть?', ask: true })]);
+    await flush();
+    expect(api.lookupSession).toHaveBeenCalledWith('devwork', 's-old');
+    expect(result.current.rows[1]).toMatchObject({ who: 'mayor', ask: { entryId: 'e2', answered: false } });
+    expect(result.current.who).toBe('mayor');
+    rerender();
+    await flush();
+    // once per id
+    expect(api.lookupSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-review R2: until an unknown source resolves (or if it does not), the row is neutral and has no buttons', async () => {
+    const { result } = await mount([entry({ id: 'e2', seq: 2, who: 'mayor', source: 's-x', text: 'Закрыть?', ask: true })]);
+    expect(api.lookupSession).toHaveBeenCalledWith('devwork', 's-x');
+    expect(result.current.rows[0]).toMatchObject({ who: 'desk' });
+    expect(result.current.rows[0]!.ask).toBeUndefined();
+  });
+
+  it('re-review R6: a stored failed turn older than a day is dropped on load', async () => {
+    const old = new Date(Date.now() - 2 * 24 * 3600_000).toISOString();
+    const fresh = new Date().toISOString();
+    window.localStorage.setItem(
+      'gc.board-chat.turns.v1',
+      JSON.stringify([
+        { clientId: 'c-1', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'старое', at: old, state: 'failed', origin: 'local' },
+        { clientId: 'c-2', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'свежее', at: fresh, state: 'failed', origin: 'local' },
+        { clientId: 'c-3', city: 'devwork', cardId: 'dw-1', rig: 'dw', text: 'в очереди', at: old, state: 'queued', origin: 'local' },
+      ]),
+    );
+    resetCardChatForTests();
+    const { result } = await mount([], [{ clientId: 'c-3', state: 'retrying', attempts: 9, lastError: null, nextAt: null }]);
+    expect(result.current.rows.map((r) => r.text)).toEqual(['свежее', 'в очереди']);
   });
 
   it('review M5: two quick sends reach the service in order, one after the other', async () => {

@@ -59,6 +59,7 @@ export const RU_VKFINAL: Readonly<Record<string, string | RuPlural>> = {
   '{name} sees only what you showed him': '{name} видит только то, что вы ему показали',
   // lane C review (Q3, M1)
   'The chat is for product tasks and epics': 'Чат есть у задач и эпиков продукта',
+  'not delivered: the chat is only for product tasks and epics': 'не доставлено: чат есть только у задач и эпиков продукта',
   'not delivered: longer than {max} characters': 'не доставлено: длиннее {max} знаков',
   'not delivered: only the board owner can write here': 'не доставлено: писать сюда может только хозяин доски',
   'not delivered: the chat is unavailable now': 'не доставлено: чат сейчас недоступен',
