@@ -14,13 +14,15 @@ import { buildBoardGraph } from './boardModel';
 //   - 2 city waits «ждёт «да» на план m06 / blind-columns-drop» (gc.gate_type=plan-yes),
 //     with their open planning tickets «План m06» (in work) and «План blind-columns-drop»;
 //   - 3 agent session waits wait:* (gc:wait, session:*);
-//   - ВВ-6 (dw-v60o) answered: the verified answer closed its gate (city PR #95),
-//     and its placeholder dw-cs2w «M04 — ответ владельца на ВВ-6 …»;
+//   - ВВ-6 (dw-v60o): still an OPEN human gate with its posted question today
+//     (the sweep closes it only once city #95 lands), and its placeholder
+//     dw-cs2w «M04 — ответ владельца на ВВ-6 …» waiting on it;
 //   - 4 tasks in work.
 //   - dw-eog7 «PR #630: что с ним делать?»: an asked human gate whose type is
 //     only bd's await_type (VERIFY-human-gate-model.md §5).
-// Expected: exactly 1 owner debt (dw-eog7) everywhere; the 10 plan gates are ordinary steps with
-// their plan's status; the agent waits are nowhere.
+// Expected today: 2 owner debts (dw-eog7, dw-v60o) on both screens; after #95
+// closes ВВ-6: 1. The 10 plan gates are ordinary steps with their plan's
+// status; the agent waits are nowhere.
 
 const NOW = Date.parse('2026-11-20T13:30:00Z');
 const AT = '2026-11-16T10:00:00Z';
@@ -41,7 +43,7 @@ const STAGES: ReadonlyArray<[string, string, number]> = [
   ['M13', 'dw-c4mc', 6],
 ];
 
-function liveBoard(): BoardData {
+function liveBoard(vv6: 'open' | 'closed' = 'open'): BoardData {
   const items: SupervisorBead[] = [];
   const serviceItems: SupervisorBead[] = [];
   for (const [stage, gate, waiting] of STAGES) {
@@ -116,8 +118,26 @@ function liveBoard(): BoardData {
       },
     }),
   );
-  // ВВ-6: answered, so its gate is closed (it is not in the open read); the
-  // placeholder task waits on nothing open any more.
+  // ВВ-6: today its gate is still open with the posted question (live dw-v60o);
+  // once closed (after #95) it is not in the open read and the placeholder
+  // waits on nothing open any more.
+  if (vv6 === 'open') {
+    serviceItems.push(
+      bead('dw-v60o', 'ВВ-6: канал оплаты клиента', {
+        issue_type: 'gate',
+        labels: ['needs/operator'],
+        metadata: {
+          'decision.question_id': 'f16f85bd4fad8a5b6db20ebb',
+          'decision.approve_qid': '27119454f5a78d124bef783e',
+          'decision.chat_url': 'https://discord.com/channels/1/2/1573083321863245918',
+          'decision.decide': 'ВВ-6: способ оплаты клиента',
+          'devwork.gate_kind': 'action',
+          'devwork.owner_gate': 'true',
+          'gc.gate_type': 'human',
+        },
+      }),
+    );
+  }
   items.push(
     bead('dw-cs2w', 'M04 — ответ владельца на ВВ-6 (способ оплаты клиентом) в m04-client-payment-channel.md', {
       labels: ['milestone:M04'],
@@ -144,18 +164,26 @@ function needsQuestions(data: BoardData): number {
 }
 
 describe('one owner-debt rule on the live board of 20.11', () => {
-  it('«От тебя» count equals «Нужно от меня» count: today both are 1 (dw-eog7)', () => {
-    const data = liveBoard();
+  it('today (ВВ-6 still open): «От тебя» == «Нужно от меня» == 2 (dw-eog7, dw-v60o)', () => {
+    const data = liveBoard('open');
+    expect(fromYou(data)).toBe(needsQuestions(data));
+    expect(fromYou(data)).toBe(2);
+    const needs = needsFromBoard(data, [], [], NOW, false, []);
+    expect(needs.count).toBe(2);
+    expect([...needs.needs.map((n) => n.id)].sort()).toEqual(['dw-eog7', 'dw-v60o']);
+    const questions = graphOf(data).nodes.filter((n) => n.kind === 'question').map((n) => n.id);
+    expect(questions.sort()).toEqual(['dw-eog7', 'dw-v60o']);
+  });
+
+  it('after city #95 closes ВВ-6: both are 1 (dw-eog7)', () => {
+    const data = liveBoard('closed');
     expect(fromYou(data)).toBe(needsQuestions(data));
     expect(fromYou(data)).toBe(1);
-    const needs = needsFromBoard(data, [], [], NOW, false, []);
-    expect(needs.count).toBe(1);
-    expect(needs.needs.map((n) => n.id)).toEqual(['dw-eog7']);
-    expect(graphOf(data).nodes.filter((n) => n.kind === 'question').map((n) => n.id)).toEqual(['dw-eog7']);
+    expect(needsFromBoard(data, [], [], NOW, false, []).needs.map((n) => n.id)).toEqual(['dw-eog7']);
   });
 
   it('dw-eog7 counts only through await_type: without it the gate is no human gate', () => {
-    const data = liveBoard();
+    const data = liveBoard('closed');
     data.serviceItems = data.serviceItems.map((b) => {
       if (b.id !== 'dw-eog7') return b;
       const { await_type: _dropped, ...rest } = b;
@@ -163,6 +191,44 @@ describe('one owner-debt rule on the live board of 20.11', () => {
     });
     expect(fromYou(data)).toBe(0);
     expect(needsQuestions(data)).toBe(0);
+  });
+
+  // Before city #95, `owner ask --bead <card>` (no --gate), `--approve` without
+  // --gate and topic asks with --bead put the question on a plain card.
+  it('before #95: a plain-card question counts on both screens; with an answer gate, once', () => {
+    const data = liveBoard('open');
+    data.items = [
+      ...data.items,
+      bead('dw-pc1', 'M05 #2 — тарифы', {
+        labels: ['milestone:M05', 'needs/operator'],
+        metadata: {
+          'decision.question_id': 'aa11bb22cc33dd44ee55ff66',
+          'decision.chat_url': 'https://discord.com/channels/1/2/42',
+          'decision.decide': 'Как называть тарифы?',
+        },
+      }),
+      bead('dw-pc2', 'M05 #3 — в работе с вопросом', {
+        status: 'in_progress',
+        assignee: 'devwork/w-9',
+        labels: ['milestone:M05', 'needs/operator'],
+        metadata: { 'decision.question_id': 'q-topic-1', 'owner.link': 'https://discord.com/channels/1/2/43' },
+      }),
+    ];
+    expect(fromYou(data)).toBe(4);
+    expect(needsQuestions(data)).toBe(4);
+    // #95 adds the answer gate for dw-pc1: still counted once (the gate)
+    data.serviceItems = [
+      ...data.serviceItems,
+      bead('dw-ag1', 'ответ на M05 #2', {
+        issue_type: 'gate',
+        await_type: 'human',
+        metadata: { 'devwork.gate_kind': 'answer', 'devwork.answer_for': 'dw-pc1' },
+      }),
+    ];
+    data.items = data.items.map((b) => (b.id === 'dw-pc1' ? { ...b, dependencies: [blocks('dw-pc1', 'dw-ag1')] } : b));
+    expect(fromYou(data)).toBe(4);
+    expect(needsQuestions(data)).toBe(4);
+    expect(needsFromBoard(data, [], [], NOW, false, []).needs.map((n) => n.id)).toContain('dw-ag1');
   });
 
   it('the 10 plan gates are ordinary steps with their plan’s status, never questions', () => {
@@ -182,30 +248,34 @@ describe('one owner-debt rule on the live board of 20.11', () => {
   });
 
   it('no owner counter counts the plan gates or the agent waits', () => {
-    const graph = graphOf(liveBoard());
+    const graph = graphOf(liveBoard('open'));
     const ids = graph.nodes.map((n) => n.id);
     for (const id of ['gcg-1396737', 'gcg-1397761', 'gcg-1474561']) expect(ids).not.toContain(id);
-    expect(graph.nodes.some((n) => n.kind === 'task' && n.state === 'waits_owner')).toBe(false);
-    expect(graph.columns[0]?.verdict).toMatch(/^1 вопрос · больше всех держит /u);
-    expect(graph.columns.map((c) => c.verdict).join(' ')).not.toMatch(/твоих ответов|твоего ответа/u);
+    // the only task waiting on the owner is the ВВ-6 placeholder, behind the real question
+    expect(graph.nodes.filter((n) => n.kind === 'task' && n.state === 'waits_owner').map((n) => n.id)).toEqual(['dw-cs2w']);
+    expect(graph.columns[0]?.verdict).toMatch(/^2 вопроса · больше всех держит /u);
     expect(graph.headline).not.toMatch(/больше всех держит да на план/u);
     // the 32 wave-1 tasks wait on their plan step, as city work
     const waiting = graph.nodes.filter((n) => /^ждёт: план M/u.test(n.reason));
     expect(waiting).toHaveLength(32);
-    // «держит меня» shows only the real question, none of the plan steps
-    const holdsMe = buildBoardGraph([...liveBoard().items, ...liveBoard().serviceItems], { nowMs: NOW, filter: 'holds_me' });
-    expect(holdsMe.nodes.map((n) => n.id)).toEqual(['dw-eog7']);
+    // after #95, nothing on the board waits on the owner's answers
+    const after = graphOf(liveBoard('closed'));
+    expect(after.columns.map((c) => c.verdict).join(' ')).not.toMatch(/твоих ответов|твоего ответа/u);
+    // «держит меня» shows only the real questions and what they hold, none of the plan steps
+    const today = liveBoard('open');
+    const holdsMe = buildBoardGraph([...today.items, ...today.serviceItems], { nowMs: NOW, filter: 'holds_me' });
+    expect(holdsMe.nodes.map((n) => n.id).sort()).toEqual(['dw-cs2w', 'dw-eog7', 'dw-v60o']);
   });
 
   it('the placeholder for an answered question is plain work, not a question', () => {
-    const graph = graphOf(liveBoard());
+    const graph = graphOf(liveBoard('closed'));
     const placeholder = graph.nodes.find((n) => n.id === 'dw-cs2w');
     expect(placeholder?.kind).toBe('task');
     expect(graph.laneOf['dw-cs2w']).toBe('M04');
   });
 
-  it('once the city posts the M06 question, both counts move together to 2', () => {
-    const data = liveBoard();
+  it('once the city posts the M06 question, both counts move together (1 → 2 after #95)', () => {
+    const data = liveBoard('closed');
     data.serviceItems = data.serviceItems.map((b) =>
       b.id === 'dw-bl2e'
         ? {

@@ -128,6 +128,30 @@ describe('attention audience', () => {
     expect(m.owner.items).toEqual([]);
   });
 
+  // Review of fork #6, B1/B2: the owner plate reads the same rule and index as
+  // the board — a plain-card question counts, and a card behind an open answer
+  // gate is the owner's through that gate (ref = the gate, counted once).
+  it('a plain-card question is owner; a card behind an answer gate is owner via the gate', () => {
+    const card = (id: string): Bead => ({ ...question(id), issue_type: 'task' });
+    const plain = model(beadsFacts({ decisions: [card('dw-c1')] }));
+    expect(plain.owner.items.map((i) => [i.audience, i.ref])).toEqual([['owner', 'dw-c1']]);
+
+    const gated = model(
+      beadsFacts({
+        decisions: [card('dw-c2')],
+        serviceItems: [
+          bead({
+            id: 'dw-ag2',
+            issue_type: 'gate',
+            await_type: 'human',
+            metadata: { 'devwork.gate_kind': 'answer', 'devwork.answer_for': 'dw-c2' },
+          }),
+        ],
+      }),
+    );
+    expect(gated.owner.items.map((i) => [i.audience, i.ref])).toEqual([['owner', 'dw-ag2']]);
+  });
+
   it('owner total equals owner questions', () => {
     const m = model({
       ...beadsFacts({

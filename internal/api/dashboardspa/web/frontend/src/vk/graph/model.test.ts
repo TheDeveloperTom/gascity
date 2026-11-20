@@ -260,6 +260,35 @@ describe('buildGraph edges of the live data', () => {
     expect(node(m, ID.qv6).kind).toBe('task');
   });
 
+  it('plain-card fallback: an in-work card carrying its own open question gets a question card (no gate needed)', () => {
+    const beads = [
+      bead(ID.m3, 'M04 #3 — Сделать invalidation', {
+        status: 'in_progress',
+        labels: ['milestone:M04', 'needs/operator'],
+        metadata: {
+          'decision.question_id': 'b736',
+          'decision.decide': 'ВВ-4: применять ли миграцию 0426',
+          'owner.link': 'https://discord.com/channels/1/2/3',
+        },
+      }),
+      bead(ID.s3, 'M04 #33 — Не затирать', { needs: [ID.m3] }),
+      // a waiting card with its own question is itself the question card
+      bead('dw-pq', 'M04 ВВ-7: какой тариф', {
+        labels: ['milestone:M04', 'needs/operator'],
+        metadata: { 'decision.question_id': 'q7', 'decision.chat_url': 'https://discord.com/channels/1/2/7' },
+      }),
+    ];
+    const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
+    expect(node(m, ID.m3).kind).toBe('task');
+    expect(node(m, ID.m3).reason).toBe('ждёт тебя: ВВ-4');
+    const qid = questionNodeId(ID.m3);
+    expect(node(m, qid).kind).toBe('question');
+    expect(node(m, qid).label).toBe('вопрос · ВВ-4');
+    expect(m.edges).toContainEqual({ from: qid, to: ID.m3 });
+    expect(node(m, 'dw-pq').kind).toBe('question');
+    expect(m.nodes.filter((n) => n.kind === 'question')).toHaveLength(2);
+  });
+
   it('marks an untaken free task «никто не взял · N дн» and says so in the subline', () => {
     const beads = [bead('dw-a', 'M04 #9 — Старое', { created_at: new Date(NOW - 5 * DAY).toISOString() })];
     const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });

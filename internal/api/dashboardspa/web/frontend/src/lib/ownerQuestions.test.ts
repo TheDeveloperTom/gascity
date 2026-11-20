@@ -8,6 +8,8 @@ import {
   isUnaskedHumanGate,
   isUnlinkedOwnerQuestion,
   OWNER_QUESTION_LABEL,
+  gateQuestionWithoutLink,
+  ownerDebtIndex,
   ownerDebtOf,
   ownerQuestionOf,
 } from './ownerQuestions';
@@ -164,8 +166,35 @@ describe('ownerDebtOf: the one native rule', () => {
     expect(isOwnerDebt({ ...GATE, await_type: 'timer' })).toBe(false);
   });
 
-  it('a card is never the debt itself, even with the label and a question: its gate is', () => {
-    expect(isOwnerDebt(QUESTION)).toBe(false);
+  // Review of fork #6, B1/B3 (VERIFY §5): before every card question has its
+  // own answer gate, the city asks on plain cards; they must still count.
+  it('plain-card fallback: label + posted question on an open card counts', () => {
+    expect(isOwnerDebt(QUESTION)).toBe(true);
+    expect(ownerDebtOf(QUESTION)?.beadId).toBe('dw-x');
+    // an in-work card counts the same (no gate needed)
+    expect(isOwnerDebt({ ...QUESTION, status: 'in_progress' })).toBe(true);
+  });
+
+  it('plain-card fallback needs the label, the posted question and an open card', () => {
+    expect(isOwnerDebt({ ...QUESTION, labels: ['milestone:M03'] })).toBe(false);
+    expect(isOwnerDebt({ ...QUESTION, status: 'closed' })).toBe(false);
+    const noLink = { ...QUESTION, metadata: { ...QUESTION.metadata } };
+    delete noLink.metadata['decision.chat_url'];
+    expect(isOwnerDebt(noLink)).toBe(false);
+    expect(isOwnerDebt({ ...QUESTION, labels: [...(QUESTION.labels ?? []), 'gc:wait'] })).toBe(false);
+  });
+
+  it('a card with an open answer gate is not counted itself: the gate is, once', () => {
+    const answerGate = bead('dw-ag', {
+      issue_type: 'gate',
+      metadata: { 'gc.gate_type': 'human', 'devwork.gate_kind': 'answer', 'devwork.answer_for': 'dw-x' },
+    });
+    const index = ownerDebtIndex([QUESTION, answerGate]);
+    expect(ownerDebtOf(QUESTION, index)).toBeNull();
+    expect(ownerDebtOf(answerGate, index)?.questionId).toBe('q-2026-11-15-1');
+    // a closed answer gate no longer holds the card: it counts again
+    const closed = ownerDebtIndex([QUESTION, { ...answerGate, status: 'closed' }]);
+    expect(ownerDebtOf(QUESTION, closed)?.beadId).toBe('dw-x');
   });
 
   it('only a human gate: a typeless, plan-yes or timer gate is not owner debt', () => {
@@ -186,8 +215,11 @@ describe('ownerDebtOf: the one native rule', () => {
     });
     expect(isOwnerDebt(planGate)).toBe(false);
     expect(isUnaskedHumanGate(planGate)).toBe(true);
-    // a question id with no Discord link is not posted either
-    expect(isOwnerDebt({ ...planGate, metadata: { ...planGate.metadata, 'devwork.plan_qid': 'q-9' } })).toBe(false);
+    // a question id with no Discord link is not posted either: asked, link missing
+    const noLink = { ...planGate, metadata: { ...planGate.metadata, 'devwork.plan_qid': 'q-9' } };
+    expect(isOwnerDebt(noLink)).toBe(false);
+    expect(gateQuestionWithoutLink(noLink)).toBe(true);
+    expect(gateQuestionWithoutLink(planGate)).toBe(false);
     // plan ask posted: devwork.plan_qid + the card's link
     const asked = {
       ...planGate,
@@ -204,12 +236,12 @@ describe('ownerDebtOf: the one native rule', () => {
       title: 'ответ на dw-card',
       metadata: { 'gc.gate_type': 'human', 'devwork.gate_kind': 'answer', 'devwork.answer_for': 'dw-card' },
     });
-    const lookup = (id: string) => (id === 'dw-card' ? card : undefined);
-    const debt = ownerDebtOf(answerGate, lookup);
+    const index = ownerDebtIndex([card, answerGate]);
+    const debt = ownerDebtOf(answerGate, index);
     expect(debt?.beadId).toBe('dw-ag');
     expect(debt?.questionId).toBe('q-2026-11-15-1');
     expect(ownerDebtOf(answerGate)).toBeNull();
-    expect(ownerDebtOf({ ...answerGate, status: 'closed' }, lookup)).toBeNull();
+    expect(ownerDebtOf({ ...answerGate, status: 'closed' }, index)).toBeNull();
   });
 
   it('an agent session wait (gc:wait, session:*) is never owner debt, whatever it carries', () => {

@@ -284,5 +284,12 @@ describe('buildBoardGraph', () => {
     const graph = buildBoardGraph(withGate, { nowMs: NOW });
     expect(graph.laneOf.ag7).toBe('ask');
     expect(graph.laneOf.t7).toBe('M03');
+    // counted once: the gate, not also the card's own question card
+    expect(graph.laneOf[questionNodeId('t7')]).toBeUndefined();
+    // before city #95 (no answer gate) the posted question on the card counts itself
+    const preGate = withGate.filter((b) => b.id !== 'ag7').map((b) => (b.id === 't7' ? { ...b, needs: [] } : b));
+    const pre = buildBoardGraph(preGate, { nowMs: NOW });
+    expect(pre.laneOf[questionNodeId('t7')]).toBe('ask');
+    expect(pre.laneOf.t7).toBe('M03');
   });
 });

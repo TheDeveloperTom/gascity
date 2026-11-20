@@ -10,7 +10,7 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
 import { transitiveWaiters } from './holds';
-import { ownerDebtOf } from './ownerQuestions';
+import { ownerDebtIndex, ownerDebtOf } from './ownerQuestions';
 import { milestoneOf } from './waitReasons';
 
 // «Нужно от меня» (vk lane 3): one model for the page and for the red badge,
@@ -146,12 +146,12 @@ export function needsFromBoard(
   const everything = [...data.items, ...data.serviceItems];
   const byId = new Map(everything.map((bead) => [bead.id, bead]));
 
-  const lookup = (id: string) => byId.get(id);
+  const index = ownerDebtIndex(everything);
   // The one owner-debt rule (lib/ownerQuestions ownerDebtOf), the same the
   // graph's «От тебя» column draws: an open human gate with a posted question.
   const questions = everything
     .flatMap((bead) => {
-      const q = ownerDebtOf(bead, lookup);
+      const q = ownerDebtOf(bead, index);
       return q === null ? [] : [q];
     })
     .map((q): NeedItem => {
@@ -191,7 +191,7 @@ export function needsFromBoard(
         href: item.href,
         // Only the one owner-debt rule makes a stall the owner's; the
         // `needs/operator` label alone is display (DIAG 20.11, D5).
-        forOwner: bead !== undefined && ownerDebtOf(bead, lookup) !== null,
+        forOwner: bead !== undefined && ownerDebtOf(bead, index) !== null,
         mayorKnows: item.mayor === 'knows',
         // stuckItems (c): «Никто не взял, а её ждёт …»
         unclaimedBlocker: item.key.startsWith('blocker:'),

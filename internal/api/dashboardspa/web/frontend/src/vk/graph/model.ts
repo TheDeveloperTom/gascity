@@ -12,7 +12,7 @@
 
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { milestoneOf } from '../../lib/waitReasons';
-import { ownerDebtOf, type OwnerQuestion } from '../../lib/ownerQuestions';
+import { ownerDebtIndex, ownerDebtOf, type OwnerQuestion } from '../../lib/ownerQuestions';
 import { cardLabel } from '../board/cardLabel';
 import { cityStepOf, type CityStep } from './planStep';
 
@@ -81,7 +81,8 @@ function isRouteBead(bead: GraphBead): boolean {
 /**
  * What a bead is on the graph. One rule for the owner (DIAG-board-vs-needs-you
  * 20.11): a question card in «От тебя» is exactly lib/ownerQuestions
- * ownerDebtOf — an open human gate with a question posted — the same rule
+ * ownerDebtOf — an open human gate with a question posted, or the plain-card
+ * fallback (a card carrying its own posted question, no answer gate) — the same rule
  * «Нужно от меня» counts. An open gate the city still works on (a plan «да»
  * nobody asked yet, planStep.ts) is an ordinary step. Everything else that is
  * a gate, a route bead, an epic or a convoy is plumbing; agents' session waits
@@ -93,16 +94,16 @@ interface Classifier {
   plumbing: (bead: GraphBead) => boolean;
 }
 
-function classifier(byId: ReadonlyMap<string, GraphBead>, all: ReadonlyArray<GraphBead>): Classifier {
-  const lookup = (id: string) => byId.get(id);
+function classifier(all: ReadonlyArray<GraphBead>): Classifier {
+  const index = ownerDebtIndex(all);
   const debts = new Map<string, OwnerQuestion | null>();
   const steps = new Map<string, CityStep | null>();
   const debt = (b: GraphBead) => {
-    if (!debts.has(b.id)) debts.set(b.id, ownerDebtOf(b, lookup));
+    if (!debts.has(b.id)) debts.set(b.id, ownerDebtOf(b, index));
     return debts.get(b.id) ?? null;
   };
   const step = (b: GraphBead) => {
-    if (!steps.has(b.id)) steps.set(b.id, debt(b) === null ? cityStepOf(b, lookup, all) : null);
+    if (!steps.has(b.id)) steps.set(b.id, debt(b) === null ? cityStepOf(b, index, all) : null);
     return steps.get(b.id) ?? null;
   };
   const plumbing = (b: GraphBead) => {
@@ -111,6 +112,11 @@ function classifier(byId: ReadonlyMap<string, GraphBead>, all: ReadonlyArray<Gra
     return b.issue_type === 'gate' || isRouteBead(b);
   };
   return { debt, step, plumbing };
+}
+
+/** An in-work, non-gate card that is itself the owner's debt: shown as task + its own question card. */
+function ownQuestionCard(bead: GraphBead, cls: Classifier): boolean {
+  return bead.issue_type !== 'gate' && bead.status === 'in_progress' && cls.debt(bead) !== null;
 }
 
 const QUESTION_SUFFIX = '::q';
@@ -183,7 +189,8 @@ function draftOf(
   const parent = bead.parent ? byId.get(bead.parent) : undefined;
   const epicTitle = parent !== undefined && parent.issue_type === 'epic' ? parent.title : null;
   const debt = cls.debt(bead);
-  if (debt !== null) {
+  // An in-work card stays a task; its own question becomes a separate card (below).
+  if (debt !== null && !ownQuestionCard(bead, cls)) {
     // An answer gate shows the question of the card it holds.
     const derived = cardLabel({ title: debt.title, milestone: milestoneOf(bead), epicTitle, id: bead.id });
     const vv = VV.exec(derived.label ?? '') ?? VV.exec(debt.title) ?? VV.exec(debt.question);
@@ -266,7 +273,7 @@ export function buildGraph(
   const all = beads.filter(isBead);
   const byId = new Map<string, GraphBead>();
   for (const b of all) if (!byId.has(b.id)) byId.set(b.id, b);
-  const cls = classifier(byId, all);
+  const cls = classifier([...byId.values()]);
   const live = (id: string): GraphBead | undefined => {
     const b = byId.get(id);
     return b !== undefined && b.status !== 'closed' && !cls.plumbing(b) ? b : undefined;
@@ -322,8 +329,22 @@ export function buildGraph(
     const b = byId.get(id) as GraphBead;
     drafts.set(id, draftOf(b, byId, cls, !inEpic(b), liveBlockers(b).filter((d) => inSet.has(d))));
   }
-  // A card's own question is no separate card here: natively it waits behind
-  // its answer gate (`devwork.answer_for`), and that gate is the question node.
+  // A card in work that carries the owner's open question itself (the
+  // plain-card fallback: no answer gate yet) gets a separate question card that
+  // blocks it. With an answer gate, that gate is the question node instead.
+  for (const id of [...members]) {
+    const task = drafts.get(id) as Draft;
+    if (!ownQuestionCard(task.bead, cls)) continue;
+    const q = cls.debt(task.bead) as OwnerQuestion;
+    const vv = VV.exec(q.question) ?? VV.exec(task.bead.title) ?? VV.exec(task.label);
+    const short = vv !== null ? vv[0] : shorten(q.question);
+    const qid = questionNodeId(id);
+    const title = q.question.charAt(0).toLocaleUpperCase('ru') + q.question.slice(1);
+    drafts.set(qid, { bead: task.bead, kind: 'question', label: `вопрос · ${short}`, title, short, outside: false, blockers: [] });
+    task.blockers = [qid, ...task.blockers];
+    members.push(qid);
+    inSet.add(qid);
+  }
   const direct = new Map<string, string[]>();
   for (const [id, d] of drafts) direct.set(id, d.blockers);
   const edges = reducedEdges(members, direct);

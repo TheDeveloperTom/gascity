@@ -365,6 +365,7 @@ export async function fetchBeadsAttention(
   if (list.status === 'fulfilled') {
     facts.items = list.value.items;
     facts.routeItems = list.value.route_items ?? [];
+    facts.serviceItems = list.value.service_items ?? [];
     if (list.value.routes_complete !== undefined) facts.routesComplete = list.value.routes_complete;
     facts.partial = list.value.partial === true;
   } else {

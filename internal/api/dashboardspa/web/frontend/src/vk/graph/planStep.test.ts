@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupervisorBead } from '../../supervisor/beadReads';
+import { ownerDebtIndex } from '../../lib/ownerQuestions';
 import { cityStepOf } from './planStep';
 
 // A plan «да» gate nobody has asked about yet is the city's work: an ordinary
@@ -29,7 +30,7 @@ const planTicket = (id: string, slug: string, extra: Record<string, string> = {}
 
 const step = (gate: SupervisorBead, others: SupervisorBead[]) => {
   const all = [gate, ...others];
-  return cityStepOf(gate, (id) => all.find((b) => b.id === id), all);
+  return cityStepOf(gate, ownerDebtIndex(all), all);
 };
 
 describe('cityStepOf', () => {
@@ -54,19 +55,31 @@ describe('cityStepOf', () => {
     expect(step(gate, [bead('dp-x', 'Правки плана m06, круг 1')])?.reason).toBe('план M06 пишется');
   });
 
-  it('staged, nothing open: «готов — спрашиваем тебя»', () => {
+  it('staged, nothing open: «готов — город спросит» (nothing posted yet)', () => {
     const gate = stageGate('dw-bl2e', 'M06');
-    expect(step(gate, [yesWait('dp-vd3', 'm06', 'dw-bl2e')])?.reason).toBe('план M06 готов — спрашиваем тебя');
+    expect(step(gate, [yesWait('dp-vd3', 'm06', 'dw-bl2e')])?.reason).toBe('план M06 готов — город спросит');
+  });
+
+  it('asked but no Discord link: «вопрос задан, ссылка не записана», not «ещё не задан»', () => {
+    const plan = stageGate('dw-bl2e', 'M06');
+    const planNoLink = { ...plan, metadata: { ...plan.metadata, 'devwork.plan_qid': 'q-6' } };
+    expect(step(planNoLink, [])?.reason).toBe('план M06: вопрос задан, ссылка не записана');
+    const action = bead('dw-a', 'PR #1: что с ним делать?', {
+      issue_type: 'gate',
+      await_type: 'human',
+      metadata: { 'decision.question_id': 'q-1' },
+    });
+    expect(step(action, [])).toEqual({ label: 'PR #1: что с ним делать?', reason: 'вопрос задан, ссылка не записана' });
   });
 
   it('a city plan-yes wait takes its stage name from its plan gate, else its slug', () => {
     const gate = stageGate('dw-bl2e', 'M06');
     const wait = yesWait('dp-vd3', 'm06', 'dw-bl2e');
     const all = [gate, wait, planTicket('dp-62p', 'm06', { 'devwork.yes_wait': 'dp-vd3' })];
-    expect(cityStepOf(wait, (id) => all.find((b) => b.id === id), all)).toEqual({ label: 'план M06', reason: 'план M06 пишется' });
+    expect(cityStepOf(wait, ownerDebtIndex(all), all)).toEqual({ label: 'план M06', reason: 'план M06 пишется' });
     const bcd = yesWait('dp-9u0', 'blind-columns-drop');
     const all2 = [bcd, planTicket('dp-2bk', 'blind-columns-drop', { 'devwork.yes_wait': 'dp-9u0' }, 'open')];
-    expect(cityStepOf(bcd, (id) => all2.find((b) => b.id === id), all2)?.reason).toBe('план blind-columns-drop пишется');
+    expect(cityStepOf(bcd, ownerDebtIndex(all2), all2)?.reason).toBe('план blind-columns-drop пишется');
   });
 
   it('another unasked human gate is an ordinary step: «вопрос ещё не задан»', () => {

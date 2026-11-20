@@ -131,12 +131,11 @@ type Bead struct {
 	Type   string `json:"issue_type"` // "task" default; matches bd wire format
 	// AwaitType is bd's await_type column: what a gate bead waits on (bd's
 	// vocabulary gh:run, gh:pr, timer, human, mail), set by `bd gate create
-	// --type=<t>` (beads v1.3.4 internal/types/types.go:165). Read-only here:
-	// the bd-CLI and native Dolt stores read it, no write path sets it. A gate
-	// a formula synthesized carries its type as gc.gate_type metadata instead
-	// (D:18512-18520); readers take await_type first, then gc.gate_type, as the
-	// core pack's human-gate order does
-	// (packs/core/assets/scripts/notify-on-human-gate-creation.sh:169-173).
+	// --type=<t>`. Read-only here: the bd-CLI and native Dolt stores read it,
+	// no write path sets it. A gate a formula's [steps.gate] synthesized
+	// carries its type as gc.gate_type metadata instead (see the formula
+	// reference, "Gates and waits_for"); readers take await_type first, then
+	// gc.gate_type, as the core pack's notify-on-human-gate-creation order does.
 	AwaitType string    `json:"await_type,omitempty"`
 	Priority  *int      `json:"priority,omitempty"`
 	CreatedAt time.Time `json:"created_at"`

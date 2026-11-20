@@ -8,15 +8,13 @@ import (
 	beadslib "github.com/steveyegge/beads"
 )
 
-// A gate bd created (`bd gate create --type=human`, the city's `owner ask
-// --gate action` gates such as dw-eog7) carries its type only in bd's
-// await_type column (beads v1.3.4 internal/types/types.go:165), not in
-// gc.gate_type metadata. The API serializes beads.Bead, so a mapping that
+// A gate bd created (`bd gate create --type=human`) carries its type only in
+// bd's await_type column, not in gc.gate_type metadata. The API serializes beads.Bead, so a mapping that
 // drops await_type hides every such human gate from the dashboard.
 
 func TestBdIssueToBeadCarriesAwaitType(t *testing.T) {
 	var issue bdIssue
-	raw := `{"id":"dw-eog7","title":"вопрос","status":"open","issue_type":"gate","await_type":"human"}`
+	raw := `{"id":"gc-gate","title":"approve?","status":"open","issue_type":"gate","await_type":"human"}`
 	if err := json.Unmarshal([]byte(raw), &issue); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
@@ -35,8 +33,8 @@ func TestBdIssueToBeadCarriesAwaitType(t *testing.T) {
 
 func TestBeadFromNativeIssueCarriesAwaitType(t *testing.T) {
 	bead, err := beadFromNativeIssue(&beadslib.Issue{
-		ID:        "dw-eog7",
-		Title:     "вопрос",
+		ID:        "gc-gate",
+		Title:     "approve?",
 		Status:    beadslib.StatusOpen,
 		IssueType: beadslib.IssueType("gate"),
 		AwaitType: "human",
@@ -50,7 +48,7 @@ func TestBeadFromNativeIssueCarriesAwaitType(t *testing.T) {
 }
 
 func TestBeadWireCarriesAwaitTypeOnlyWhenSet(t *testing.T) {
-	gate, err := json.Marshal(Bead{ID: "dw-eog7", Type: "gate", AwaitType: "human"})
+	gate, err := json.Marshal(Bead{ID: "gc-gate", Type: "gate", AwaitType: "human"})
 	if err != nil {
 		t.Fatal(err)
 	}

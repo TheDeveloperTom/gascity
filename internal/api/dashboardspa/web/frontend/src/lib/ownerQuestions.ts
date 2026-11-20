@@ -27,7 +27,13 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 //   - never an agent's session wait (`gc:wait` / `session:*` labels): that is
 //     an agent waiting on an agent (D:12103-12115, D:13266-13317, D:14072).
 //
-// The `needs/operator` label is display only: it decides nothing here.
+// Plain-card fallback (VERIFY-human-gate-model §5; review of fork #6, B1/B3):
+// until every card question waits behind its own answer gate, the city still
+// asks on a plain card (`owner ask --bead <card>` without `--gate`, a topic ask
+// with `--bead`, an in-work card). Such an open card counts while it carries
+// the owner's question — the `needs/operator` label plus a posted question
+// (id + Discord link) — and NO open answer gate points at it
+// (`devwork.answer_for`); when one does, that gate is the debt, counted once.
 // The owner answers only in Discord; the dashboard opens that link and sends
 // nothing.
 
@@ -150,6 +156,30 @@ export function ownerQuestionOf(bead: SupervisorBead): OwnerQuestion | null {
   };
 }
 
+/**
+ * What the owner-debt rule may read besides the bead itself: other beads of
+ * the same read by id (the card an answer gate holds), and whether an open
+ * answer gate points at a card. Build it once per read with ownerDebtIndex.
+ */
+export interface OwnerDebtIndex {
+  lookup: BeadLookup;
+  /** The open answer gate (`devwork.answer_for`) that holds this card, if the read has one. */
+  answerGateOf: (cardId: string) => SupervisorBead | undefined;
+}
+
+/** The index over one read's beads (board rows, service items, the decision queue). */
+export function ownerDebtIndex(beads: Iterable<SupervisorBead>): OwnerDebtIndex {
+  const byId = new Map<string, SupervisorBead>();
+  const gates = new Map<string, SupervisorBead>();
+  for (const b of beads) {
+    if (!byId.has(b.id)) byId.set(b.id, b);
+    if (!isOpenHumanGate(b)) continue;
+    const card = meta(b, ANSWER_FOR_KEY);
+    if (card.length > 0 && !gates.has(card)) gates.set(card, b);
+  }
+  return { lookup: (id) => byId.get(id), answerGateOf: (id) => gates.get(id) };
+}
+
 /** The bead that carries the gate's question: the gate itself, else the card it answers for. */
 function questionCarrierOf(gate: SupervisorBead, lookup?: BeadLookup): SupervisorBead {
   if (questionIdOf(gate).length > 0) return gate;
@@ -158,29 +188,50 @@ function questionCarrierOf(gate: SupervisorBead, lookup?: BeadLookup): Superviso
   return held ?? gate;
 }
 
-/**
- * THE owner-debt rule: an open human gate with a question posted for it. The
- * result is keyed by the gate (the bead that blocks the work); its text comes
- * from whichever bead carries the question.
- */
-export function ownerDebtOf(bead: SupervisorBead, lookup?: BeadLookup): OwnerQuestion | null {
-  if (!isOpenHumanGate(bead)) return null;
-  const carrier = questionCarrierOf(bead, lookup);
-  const q = ownerQuestionOf(carrier);
-  if (q === null) return null;
-  return carrier.id === bead.id ? q : { ...q, beadId: bead.id };
+function carriesOwnerLabel(bead: SupervisorBead): boolean {
+  return (bead.labels ?? []).some((label) => label.trim() === OWNER_QUESTION_LABEL);
 }
 
-export function isOwnerDebt(bead: SupervisorBead, lookup?: BeadLookup): boolean {
-  return ownerDebtOf(bead, lookup) !== null;
+/**
+ * THE owner-debt rule. (1) An open human gate with a question posted for it,
+ * keyed by the gate (the bead that blocks the work); its text comes from
+ * whichever bead carries the question. (2) The plain-card fallback: an open,
+ * non-gate card with the owner's label and a posted question, when no open
+ * answer gate points at it.
+ */
+export function ownerDebtOf(bead: SupervisorBead, index?: OwnerDebtIndex): OwnerQuestion | null {
+  if (bead.issue_type === 'gate') {
+    if (!isOpenHumanGate(bead)) return null;
+    const carrier = questionCarrierOf(bead, index?.lookup);
+    const q = ownerQuestionOf(carrier);
+    if (q === null) return null;
+    return carrier.id === bead.id ? q : { ...q, beadId: bead.id };
+  }
+  if (bead.status === 'closed' || isAgentWait(bead) || !carriesOwnerLabel(bead)) return null;
+  if (index?.answerGateOf(bead.id) !== undefined) return null;
+  return ownerQuestionOf(bead);
+}
+
+export function isOwnerDebt(bead: SupervisorBead, index?: OwnerDebtIndex): boolean {
+  return ownerDebtOf(bead, index) !== null;
 }
 
 /**
  * An open human gate nobody has asked the owner about yet (no question posted):
  * the city's work, shown as an ordinary step, never counted as the owner's.
  */
-export function isUnaskedHumanGate(bead: SupervisorBead, lookup?: BeadLookup): boolean {
-  return isOpenHumanGate(bead) && !isOwnerDebt(bead, lookup);
+export function isUnaskedHumanGate(bead: SupervisorBead, index?: OwnerDebtIndex): boolean {
+  return isOpenHumanGate(bead) && !isOwnerDebt(bead, index);
+}
+
+/**
+ * A gate whose question was asked but whose Discord link was never written: a
+ * question id on the gate (or on the card it answers for) and no valid link.
+ * The owner cannot act on it; it is the Mayor's to ask again (V3).
+ */
+export function gateQuestionWithoutLink(gate: SupervisorBead, index?: OwnerDebtIndex): boolean {
+  const carrier = questionCarrierOf(gate, index?.lookup);
+  return questionIdOf(carrier).length > 0 && discordLinkOf(carrier) === null;
 }
 
 /**
