@@ -15,6 +15,7 @@ import {
   type PendingItem,
   type ThreadEntry,
 } from '../supervisor/boardChat';
+import { useHiddenPaused } from '../lib/hiddenPause';
 import { useGcEventRefresh, type GcEventEnvelope } from './useGcEvents';
 import { useStructuredSessionStream, type StructuredStreamItem } from './useStructuredSessionStream';
 
@@ -29,7 +30,11 @@ import { useStructuredSessionStream, type StructuredStreamItem } from './useStru
 //    reconnects or the page becomes visible (review I3);
 //  - who holds the chat: `extmsg.bound` (read once at mount, then live; I5);
 //  - who wrote a reply: the entry's source session, never its text (I6);
-//  - «читает»: the bound agent's session stream `activity` (DC#25);
+//  - «читает»: the bound agent's session stream `activity` (DC#25), opened
+//    only while a reply is awaited or the Mayor holds the chat, and not in a
+//    tab hidden past the grace time (D3 19.11, HOST cause 5: it was a third
+//    long-lived connection per tab, and two tabs used up the six HTTP/1.1
+//    connections per host, so POST /v1/send never started);
 //  - delivered: the turn's client_id appears as a ProviderMessageID (DC#26).
 // Only the abnormal path asks the board-chat service (`/v1/pending`, C2):
 // every 15 s while a turn it accepted is not in the transcript (I2).
@@ -478,13 +483,32 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
     wasOpen.current = true;
   }, [conn, refresh, status]);
 
+  // Review of PR #5 (finding 1): who holds the chat is read at mount and
+  // from live extmsg.bound events; a tab paused while hidden may have missed
+  // one (the stream resumes from its last sequence, this is the belt).
+  const rereadBinding = useCallback(() => {
+    readBinding(city, card.id).then(
+      (binding) => {
+        if (!live.current || binding === null) return;
+        const w =
+          agentOf(binding.agent) ??
+          (binding.sessionId !== null ? (whoRef.current.get(binding.sessionId) ?? null) : null) ??
+          (binding.agent !== null ? 'desk' : null);
+        if (w !== null) setBound(w);
+      },
+      () => {},
+    );
+  }, [city, card.id]);
+
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && live.current) refresh();
+      if (document.visibilityState !== 'visible' || !live.current) return;
+      refresh();
+      rereadBinding();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refresh]);
+  }, [refresh, rereadBinding]);
 
   const sendWith = useCallback(
     (text: string, replyTo?: string) => {
@@ -560,7 +584,13 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
     return 'desk';
   }, [bound, thread, sourceWho]);
 
-  const sessionState = useStructuredSessionStream(who, true);
+  // HOST cause 5: the stream is needed only while this card awaits a reply
+  // («читает», «другой вопрос») or while the Mayor holds it («Мэр работает»).
+  const hidden = useHiddenPaused();
+  const awaitingReply =
+    thread.at(-1)?.who === 'owner' ||
+    local.some((l) => l.state !== 'failed' && !thread.some((e) => e.providerMessageId === l.clientId));
+  const sessionState = useStructuredSessionStream(!hidden && (who === 'mayor' || awaitingReply) ? who : null, true);
   const activity = sessionState.status === 'ready' ? sessionState.result.activity : 'unknown';
   const agentActivity: CardChat['agentActivity'] =
     activity === 'in-turn' ? 'in-turn' : activity === 'idle' ? 'idle' : 'unknown';

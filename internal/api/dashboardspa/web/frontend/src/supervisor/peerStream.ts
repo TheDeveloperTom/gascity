@@ -1,4 +1,5 @@
 import { withApiBase } from '../lib/apiBase';
+import { watchHiddenPause } from '../lib/hiddenPause';
 
 // BOARD-LIVE L7 (contract C5, L12): our own peer-boards service streams
 // `GET /v1/stream` — `event: changed` with `{v, at}` whenever any of its
@@ -9,6 +10,9 @@ import { withApiBase } from '../lib/apiBase';
 // it polls every 3 s instead; a later successful open stops the poll.
 // 16.11: a REopen (after a drop) reads once, since a change made while the
 // stream was down (e.g. the service restarting) sends no `changed` later.
+// BOARD-CHAT D3 19.11 (HOST cause 5): a tab hidden for HIDDEN_PAUSE_MS closes
+// the stream (HTTP/1.1 allows six connections per host across tabs) and
+// reopens it when shown; that reopen reads once like any other.
 
 export const PEER_STREAM_DEBOUNCE_MS = 200;
 export const PEER_POLL_MS = 3_000;
@@ -49,6 +53,8 @@ export function subscribePeerStream(
   let delay = BACKOFF_MIN_MS;
   let failedOpens = 0;
   let everOpened = false;
+  // review of PR #5: the first open after a resume reads, even if none opened before
+  let readOnOpen = false;
 
   const startPoll = () => {
     if (poll !== null) return;
@@ -85,8 +91,9 @@ export function subscribePeerStream(
       failedOpens = 0;
       delay = BACKOFF_MIN_MS;
       stopPoll();
-      if (everOpened) changed();
+      if (everOpened || readOnOpen) changed();
       everOpened = true;
+      readOnOpen = false;
     };
     es.addEventListener('changed', changed as EventListener);
     es.onerror = () => {
@@ -110,8 +117,32 @@ export function subscribePeerStream(
   if (enabled) connect();
   else startPoll();
 
+  const stopWatch = enabled
+    ? watchHiddenPause({
+        pause: () => {
+          if (stopped) return;
+          const es = source;
+          source = null;
+          es?.close();
+          if (retry !== null) clearTimeout(retry);
+          retry = null;
+          if (debounce !== null) clearTimeout(debounce);
+          debounce = null;
+          stopPoll();
+        },
+        resume: () => {
+          if (stopped || source !== null) return;
+          delay = BACKOFF_MIN_MS;
+          failedOpens = 0;
+          readOnOpen = true;
+          connect();
+        },
+      })
+    : () => {};
+
   return () => {
     stopped = true;
+    stopWatch();
     source?.close();
     source = null;
     if (debounce !== null) clearTimeout(debounce);
