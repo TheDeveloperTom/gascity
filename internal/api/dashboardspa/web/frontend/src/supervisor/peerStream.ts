@@ -53,6 +53,8 @@ export function subscribePeerStream(
   let delay = BACKOFF_MIN_MS;
   let failedOpens = 0;
   let everOpened = false;
+  // review of PR #5: the first open after a resume reads, even if none opened before
+  let readOnOpen = false;
 
   const startPoll = () => {
     if (poll !== null) return;
@@ -89,8 +91,9 @@ export function subscribePeerStream(
       failedOpens = 0;
       delay = BACKOFF_MIN_MS;
       stopPoll();
-      if (everOpened) changed();
+      if (everOpened || readOnOpen) changed();
       everOpened = true;
+      readOnOpen = false;
     };
     es.addEventListener('changed', changed as EventListener);
     es.onerror = () => {
@@ -131,6 +134,7 @@ export function subscribePeerStream(
           if (stopped || source !== null) return;
           delay = BACKOFF_MIN_MS;
           failedOpens = 0;
+          readOnOpen = true;
           connect();
         },
       })

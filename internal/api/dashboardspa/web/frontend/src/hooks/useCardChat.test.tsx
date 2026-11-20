@@ -246,6 +246,36 @@ describe('useCardChat', () => {
       expect(stream.sessions.at(-1)).toBeNull();
     });
 
+    // Review of PR #5 (finding 1): who holds the chat was read only at mount
+    // and from live extmsg.bound events; one sent while the tab was paused
+    // was lost. Shown again, the card re-reads the binding.
+    it('a Mayor take-over or release while hidden is read when the tab is shown', async () => {
+      const setVisible = (visible: boolean) => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (visible ? 'visible' : 'hidden') });
+        act(() => {
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+      };
+      onTestFinished(() => setVisible(true));
+      const { result } = await mount([entry({ id: 'e1', seq: 1 }), desk({ id: 'e2', seq: 2, text: 'ответ' })]);
+      expect(result.current.who).toBe('desk');
+
+      setVisible(false);
+      api.readBinding.mockResolvedValueOnce({ agent: 'mayor', sessionId: 's-mayor' });
+      setVisible(true);
+      await flush();
+      expect(result.current.who).toBe('mayor');
+      expect(stream.sessions.at(-1)).toBe('mayor');
+
+      setVisible(false);
+      api.readBinding.mockResolvedValueOnce({ agent: 'desk', sessionId: 's-desk' });
+      setVisible(true);
+      await flush();
+      expect(result.current.who).toBe('desk');
+      // nothing awaits a reply: the Mayor's session stream is closed, the desk's is not opened
+      expect(stream.sessions.at(-1)).toBeNull();
+    });
+
     it('a tab hidden past the grace time closes it; shown again it reopens', async () => {
       const setHidden = (hidden: boolean) => {
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });

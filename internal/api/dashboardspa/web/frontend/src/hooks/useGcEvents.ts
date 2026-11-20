@@ -258,6 +258,12 @@ interface SharedStream {
   /** HOST cause 5: closed while the tab is hidden; the first open after it resyncs. */
   paused: boolean;
   resyncOnOpen: boolean;
+  /**
+   * Review of PR #5: the id (event seq) of the last frame seen. A reopen
+   * resumes after it (after_seq), so the server replays what was sent while
+   * the stream was closed, and every listener's side effects see it.
+   */
+  lastEventId: string | null;
   stopWatch: () => void;
 }
 
@@ -277,6 +283,7 @@ function subscribeSharedStream(
       retryDelayMs: 1_000,
       paused: false,
       resyncOnOpen: false,
+      lastEventId: null,
       stopWatch: () => {},
     };
     sharedStreams.set(url, created);
@@ -295,7 +302,8 @@ function subscribeSharedStream(
       },
       resume: () => {
         created.paused = false;
-        created.resyncOnOpen = true;
+        // with no sequence to resume from, the gap cannot be replayed: read once
+        created.resyncOnOpen = created.lastEventId === null;
         created.retryDelayMs = 1_000;
         if (created.subscribers.size > 0 && created.source === null) openSharedStream(EventSourceCtor, url, created);
       },
@@ -327,7 +335,7 @@ function openSharedStream(
 ): void {
   // The browser sends Last-Event-ID automatically on reconnect; the
   // supervisor event stream accepts that header directly.
-  const source = new EventSourceCtor(url);
+  const source = new EventSourceCtor(stream.lastEventId === null ? url : resumeUrl(url, stream.lastEventId));
   stream.source = source;
   for (const sub of [...stream.subscribers]) sub.connecting(source);
   source.onopen = () => {
@@ -341,6 +349,7 @@ function openSharedStream(
   };
   const dispatch = (msg: MessageEvent<string>) => {
     if (stream.source !== source) return;
+    if (msg.lastEventId) stream.lastEventId = msg.lastEventId;
     for (const sub of [...stream.subscribers]) sub.data(msg);
   };
   source.onmessage = dispatch;
@@ -358,6 +367,14 @@ function openSharedStream(
       if (stream.subscribers.size > 0 && !stream.paused) openSharedStream(EventSourceCtor, url, stream);
     }, stream.retryDelayMs);
   };
+}
+
+/** The stream URL resuming after seq (the supervisor's `after_seq`, strictly greater). */
+function resumeUrl(url: string, seq: string): string {
+  const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  const resumed = new URL(url, base);
+  resumed.searchParams.set('after_seq', seq);
+  return resumed.toString();
 }
 
 function reportMalformedEvent(reason: string): void {

@@ -419,6 +419,39 @@ describe('useGcEventRefresh', () => {
       expect(onMatch).toHaveBeenCalledTimes(1);
     });
 
+    // Review of PR #5 (finding 1): a fresh EventSource starts at the head, so
+    // events sent while it was closed (an extmsg.bound among them) were lost
+    // for every listener's side effects. The reopen resumes from the last
+    // seen sequence instead (after_seq), and the server replays the gap.
+    it('reopens after a pause from the last seen sequence; the replay needs no resync', () => {
+      const onMatch = vi.fn();
+      renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], onMatch));
+      act(() => eventSources[0]?.open());
+      act(() => eventSources[0]?.emitNamed('event', JSON.stringify({ type: 'session.woke' }), '41'));
+      setHidden(true);
+      act(() => {
+        vi.advanceTimersByTime(HIDDEN_PAUSE_MS);
+      });
+      setHidden(false);
+      expect(eventSources).toHaveLength(2);
+      expect(new URL(String(eventSources[1]?.url)).searchParams.get('after_seq')).toBe('41');
+      act(() => eventSources[1]?.open());
+      expect(onMatch).not.toHaveBeenCalled();
+      act(() => eventSources[1]?.emitNamed('event', JSON.stringify({ type: 'bead.updated' }), '42'));
+      expect(onMatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('a reconnect after an error resumes from the last seen sequence too', () => {
+      renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], vi.fn()));
+      act(() => eventSources[0]?.open());
+      act(() => eventSources[0]?.emitNamed('event', JSON.stringify({ type: 'bead.updated' }), '7'));
+      act(() => eventSources[0]?.error());
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(new URL(String(eventSources[1]?.url)).searchParams.get('after_seq')).toBe('7');
+    });
+
     it('a quick tab switch keeps the stream and reads nothing', () => {
       const onMatch = vi.fn();
       renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], onMatch));
@@ -473,8 +506,8 @@ class FakeEventSource {
     this.onerror?.(new Event('error'));
   }
 
-  emitNamed(type: string, data: string): void {
-    const event = new MessageEvent<string>(type, { data });
+  emitNamed(type: string, data: string, lastEventId?: string): void {
+    const event = new MessageEvent<string>(type, { data, ...(lastEventId !== undefined ? { lastEventId } : {}) });
     this.listeners.get(type)?.forEach((listener) => listener(event));
     if (type === 'message') this.onmessage?.(event);
   }

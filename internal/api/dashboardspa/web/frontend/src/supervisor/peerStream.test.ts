@@ -161,6 +161,26 @@ describe('subscribePeerStream', () => {
     stop();
   });
 
+  // Review of PR #5: a stream that never opened before the pause (service down
+  // at mount) also missed whatever changed; its first open after resume reads.
+  it('the first open after a resume reads once even if the stream never opened before', () => {
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    const onChanged = vi.fn();
+    const stop = subscribePeerStream('test-city', onChanged);
+    onTestFinished(() => setHidden(false));
+    setHidden(true);
+    vi.advanceTimersByTime(HIDDEN_PAUSE_MS);
+    setHidden(false);
+    latest().open();
+    vi.advanceTimersByTime(PEER_STREAM_DEBOUNCE_MS);
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it('PEER_STREAM off: no EventSource, a 3 s poll', () => {
     const onChanged = vi.fn();
     const stop = subscribePeerStream('test-city', onChanged, { enabled: false });

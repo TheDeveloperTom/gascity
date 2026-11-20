@@ -483,13 +483,32 @@ export function useCardChat(city: string, card: ChatCard, sessions: readonly Ses
     wasOpen.current = true;
   }, [conn, refresh, status]);
 
+  // Review of PR #5 (finding 1): who holds the chat is read at mount and
+  // from live extmsg.bound events; a tab paused while hidden may have missed
+  // one (the stream resumes from its last sequence, this is the belt).
+  const rereadBinding = useCallback(() => {
+    readBinding(city, card.id).then(
+      (binding) => {
+        if (!live.current || binding === null) return;
+        const w =
+          agentOf(binding.agent) ??
+          (binding.sessionId !== null ? (whoRef.current.get(binding.sessionId) ?? null) : null) ??
+          (binding.agent !== null ? 'desk' : null);
+        if (w !== null) setBound(w);
+      },
+      () => {},
+    );
+  }, [city, card.id]);
+
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && live.current) refresh();
+      if (document.visibilityState !== 'visible' || !live.current) return;
+      refresh();
+      rereadBinding();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refresh]);
+  }, [refresh, rereadBinding]);
 
   const sendWith = useCallback(
     (text: string, replyTo?: string) => {
