@@ -1,0 +1,73 @@
+{
+  "_comment": "The gateway <-> page contract (design rev 2.1 §2.2, §4.3; lane B = engine fork PR #7). contract.test.mjs pins the gateway to this file; lane B copies it into its own tests. Change both sides together.",
+  "city": "devwork-platform",
+  "reads": [
+    "/v0/cities",
+    "/v0/city/{c}/status",
+    "/v0/city/{c}/beads",
+    "/v0/city/{c}/beads/ready",
+    "/v0/city/{c}/bead/{id}",
+    "/v0/city/{c}/bead/{id}/deps",
+    "/v0/city/{c}/rigs",
+    "/v0/city/{c}/sessions",
+    "/v0/city/{c}/runs/census",
+    "/api/city/{c}/runs/summary",
+    "/api/city/{c}/config",
+    "/api/city/{c}/supervisor-status",
+    "/api/health"
+  ],
+  "beads_query_keys": ["limit", "status", "label", "rig", "assignee", "all", "uncapped"],
+  "gateway": {
+    "token": {
+      "method": "POST",
+      "path": "/api/activity/token",
+      "request": ["code", "instance_id"],
+      "reply_required": ["session", "access_token", "user_id"],
+      "reply_optional": ["board_url", "role", "expires_at", "instance_confirmed"]
+    },
+    "whoami": { "method": "GET", "path": "/api/activity/whoami", "reply": ["user_id", "role"] },
+    "launch": {
+      "method": "GET",
+      "path": "/api/activity/launch",
+      "query": ["after", "resync"],
+      "reply": ["launch", "head"],
+      "launch_fields": ["seq", "kind", "bead", "at"],
+      "kinds": ["bead", "graph"]
+    },
+    "client_errors": { "method": "POST", "path": "/api/client-errors", "status": 204 }
+  },
+  "session_headers": ["authorization", "x-activity-instance"],
+  "statuses": { "no_session": 401, "discord_unavailable": 503, "denied": 404 },
+  "static": ["/", "/index.html", "/city/{c}/*", "/assets/*", "/icons/*.png", "/manifest.webmanifest", "/favicon-*.svg"],
+  "denied_examples": [
+    "/sw.js",
+    "/v0/city/{c}/mail",
+    "/v0/city/{c}/extmsg/transcript",
+    "/v0/city/{c}/session/{id}/stream",
+    "/v0/city/{c}/events/stream",
+    "/v0/city/{c}/svc/peer-boards/v1/boards",
+    "/api/city/{c}/attachments/{id}/x.png",
+    "/api/builds",
+    "/api/git/commits",
+    "/api/health/local-tools",
+    "/api/city/{c}/runs/{id}/detail"
+  ],
+  "metadata_prefixes": ["decision."],
+  "metadata_keys": [
+    "await_type", "dashboard.label", "dashboard.stage",
+    "devwork.hold_reason", "devwork.intake_needs_person", "devwork.intake_reason", "devwork.kind", "devwork.land_bead",
+    "devwork.pause_reason", "devwork.plan_status", "devwork.pr_number", "devwork.pr_url", "devwork.step",
+    "devwork.stopped_card", "devwork.task", "devwork.tdd_refusal",
+    "gc.await_type", "gc.cancel_requested", "gc.checkpoint", "gc.checkpoint_hold", "gc.cross_store_blocker",
+    "gc.cross_store_gate_owner", "gc.drain_control_id", "gc.drain_count", "gc.drain_member_id", "gc.founder_gate",
+    "gc.kind", "gc.last_heartbeat_at", "gc.outcome", "gc.root_bead_id", "gc.root_store_ref", "gc.run_id",
+    "gc.scope_kind", "gc.scope_ref", "gc.session_id", "gc.source_anchor_id", "gc.source_bead_id", "gc.var.issue",
+    "gc.waiting_on", "gc.workflow_id",
+    "land_source", "owner.link", "pr_number", "pr_url", "rejection_reason", "root_bead_id", "run_id", "step", "workflow_id"
+  ],
+  "metadata_dropped": {
+    "devwork.attachments": "image URLs into /api/city/{c}/attachments, a denied family; the drawer stubs attachments, and the key would expose file names for nothing",
+    "session_id": "routes/AgentDetail.tsx only; the agents page is not in embed",
+    "session_name": "routes/AgentDetail.tsx only; the agents page is not in embed"
+  }
+}

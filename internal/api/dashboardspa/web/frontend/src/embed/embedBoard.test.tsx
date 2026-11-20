@@ -20,6 +20,7 @@ import { setLocale } from '../i18n';
 import { LocaleProvider } from '../i18n/LocaleProvider';
 import { enterDiscordFrame, leaveDiscordFrame } from '../test/discordFrame';
 import { embedRequestAllowed } from './allowlist';
+import contract from './gateway-contract.json';
 import { setAuthHeaders } from './mode';
 import { TAILSCALE_NOTE } from './TailscaleNote';
 
@@ -28,25 +29,18 @@ vi.setConfig({ testTimeout: 30_000 });
 
 const C = 'test-city';
 const SEG = '[A-Za-z0-9._-]{1,64}';
-// DESIGN-discord-activity-return §4.3, «Allowed (v1)», A1-A12 and G.
+// The gateway <-> page contract, a verbatim copy of the city's
+// assets/activity-gw/test/contract.json (lane A, city PR #103 3f1d5a64):
+// both sides are pinned to the same file. Change both together.
+const toRe = (template: string) =>
+  new RegExp(`^${template.replace(/\{c\}|\{id\}/g, SEG).replace(/\*/g, '.*')}$`);
 const DESIGN_ALLOWED_GETS = [
-  '^/v0/cities$',
-  `^/v0/city/${SEG}/status$`,
-  `^/v0/city/${SEG}/beads$`,
-  `^/v0/city/${SEG}/beads/ready$`,
-  `^/v0/city/${SEG}/bead/${SEG}$`,
-  `^/v0/city/${SEG}/bead/${SEG}/deps$`,
-  `^/v0/city/${SEG}/rigs$`,
-  `^/v0/city/${SEG}/sessions$`,
-  `^/v0/city/${SEG}/runs/census$`,
-  `^/api/city/${SEG}/runs/summary$`,
-  `^/api/city/${SEG}/config$`,
-  `^/api/city/${SEG}/supervisor-status$`,
-  '^/api/health$',
-  '^/api/activity/whoami$',
-  '^/api/activity/launch$',
-].map((s) => new RegExp(s));
-const BEAD_QUERY_KEYS = new Set(['limit', 'status', 'label', 'rig', 'assignee', 'all', 'uncapped']);
+  ...contract.reads,
+  contract.gateway.whoami.path,
+  contract.gateway.launch.path,
+].map(toRe);
+const BEAD_QUERY_KEYS = new Set(contract.beads_query_keys);
+const fill = (template: string) => template.replace('{c}', C).replace('{id}', 'dw-a');
 
 const BEAD = {
   id: 'dw-a',
@@ -150,7 +144,7 @@ function install(): void {
       if (p === `/v0/city/${C}/rigs`)
         return json({ items: [{ name: 'devwork', prefix: 'dw', path: '/r' }], total: 1 });
       if (p === `/api/city/${C}/config`) return json(CONFIG);
-      if (p === '/api/activity/launch') return new Response(null, { status: 204 });
+      if (p === contract.gateway.launch.path) return json({ launch: null, head: 0 });
       if (p === `/v0/city/${C}/status`) return json(STATUS);
       if (p.startsWith(`/v0/city/${C}/`)) return json({ items: [], total: 0 });
       return json({ error: 'not stubbed' }, 404);
@@ -227,6 +221,7 @@ describe('the board inside Discord', () => {
     for (const s of sent) {
       expect(s.headers['x-gc-request'], s.path).toBeUndefined();
       expect(s.headers.authorization, s.path).toBe('Bearer S1');
+      for (const h of contract.session_headers) expect(s.headers[h], `${s.path} ${h}`).toBeTruthy();
       expect(s.headers['x-activity-instance'], s.path).toBe('inst-1');
       if (/\/beads(\/ready)?$/.test(s.path)) {
         expect(
@@ -298,9 +293,37 @@ describe('the plain web app is unchanged (owner 20.11: nothing that works today 
   });
 });
 
-describe('the allowlist module matches the design', () => {
+describe('the allowlist module matches the shared contract', () => {
   beforeEach(() => enterDiscordFrame());
   const o = 'https://1571490006042939402.discordsays.com';
+
+  it('is the city for this board', () => {
+    expect(contract.city).toBe('devwork-platform');
+  });
+
+  it.each(contract.reads)('contract read %s is allowed (GET only)', (t) => {
+    expect(embedRequestAllowed('GET', `${o}${fill(t)}`)).toBe(true);
+    expect(embedRequestAllowed('POST', `${o}${fill(t)}`)).toBe(false);
+  });
+
+  it.each(contract.denied_examples)('contract denied %s is never sent', (t) => {
+    expect(embedRequestAllowed('GET', `${o}${fill(t)}`)).toBe(false);
+  });
+
+  it('the gateway routes, each with its own method', () => {
+    const g = contract.gateway;
+    expect(embedRequestAllowed(g.token.method, `${o}${g.token.path}`)).toBe(true);
+    expect(embedRequestAllowed(g.whoami.method, `${o}${g.whoami.path}`)).toBe(true);
+    expect(embedRequestAllowed(g.launch.method, `${o}${g.launch.path}?after=1&resync=1`)).toBe(
+      true,
+    );
+    // read-only v1: the page posts nothing but the token exchange (the sink stays unused)
+    expect(embedRequestAllowed(g.client_errors.method, `${o}${g.client_errors.path}`)).toBe(false);
+  });
+
+  it('the session headers the page sends are the contract ones', () => {
+    expect(contract.session_headers).toEqual(['authorization', 'x-activity-instance']);
+  });
 
   it.each([
     '/v0/cities',

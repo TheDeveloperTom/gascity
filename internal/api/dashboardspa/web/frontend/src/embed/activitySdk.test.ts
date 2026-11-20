@@ -8,6 +8,7 @@ import { supervisorApi } from '../supervisor/client';
 import { APP_ID, enterDiscordFrame, leaveDiscordFrame } from '../test/discordFrame';
 import { bootActivity, runActivityBoot } from './activitySdk';
 import { authHeaders, embedClientId, tailscaleCardUrl } from './mode';
+import contract from './gateway-contract.json';
 
 const m = vi.hoisted(() => ({
   constructed: [] as string[],
@@ -190,6 +191,53 @@ describe('bootActivity', () => {
     await bootActivity(APP_ID, gateway({}).fetchMock);
     expect(tailscaleCardUrl('test-city', 'dw-1')).toBe(
       'https://mac.tail.ts.net/city/test-city/beads?bead=dw-1',
+    );
+  });
+});
+
+describe('the shared contract (city PR #103 assets/activity-gw/test/contract.json)', () => {
+  const t = contract.gateway.token;
+  it('the token exchange sends exactly the contract request fields', async () => {
+    const gw = gateway({});
+    await bootActivity(APP_ID, gw.fetchMock);
+    const call = gw.calls[0]!;
+    expect([call.method, call.path]).toEqual([t.method, t.path]);
+    expect(Object.keys(call.body as object).sort()).toEqual([...t.request].sort());
+  });
+
+  it('a reply with only the required fields signs in; board_url absent → no Tailscale button', async () => {
+    const body = Object.fromEntries(
+      t.reply_required.map((f) => [f, f === 'user_id' ? OWNER : `v-${f}`]),
+    );
+    await bootActivity(APP_ID, gateway({ tokens: [{ status: 200, body }] }).fetchMock);
+    expect(authHeaders()).toEqual({
+      Authorization: 'Bearer v-session',
+      'X-Activity-Instance': 'inst-1',
+    });
+    expect(tailscaleCardUrl('test-city', 'dw-1')).toBeNull();
+  });
+
+  it('the optional fields do not break sign-in', async () => {
+    const body = {
+      session: 'S9',
+      access_token: SECRET_TOKEN,
+      user_id: OWNER,
+      board_url: 'https://mac.tail.ts.net',
+      role: 'owner',
+      expires_at: 1,
+      instance_confirmed: false,
+    };
+    expect(
+      Object.keys(body).every((k) => [...t.reply_required, ...t.reply_optional].includes(k)),
+    ).toBe(true);
+    await bootActivity(APP_ID, gateway({ tokens: [{ status: 200, body }] }).fetchMock);
+    expect(authHeaders().Authorization).toBe('Bearer S9');
+  });
+
+  it('session headers are the contract ones', async () => {
+    await bootActivity(APP_ID, gateway({}).fetchMock);
+    expect(Object.keys(authHeaders()).map((h) => h.toLowerCase())).toEqual(
+      contract.session_headers,
     );
   });
 });

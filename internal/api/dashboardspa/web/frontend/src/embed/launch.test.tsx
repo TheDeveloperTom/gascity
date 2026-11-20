@@ -13,9 +13,36 @@ import {
   type Launch,
 } from './launch';
 import { setAuthHeaders } from './mode';
+import contract from './gateway-contract.json';
 
 const L = (seq: number, kind: 'bead' | 'graph' = 'bead', bead = `dw-${seq}`) => ({
   launch: { seq, kind, bead },
+});
+
+describe('the shared contract (city PR #103 assets/activity-gw/test/contract.json)', () => {
+  const g = contract.gateway.launch;
+  it('route, method and query keys are the ones the page sends', () => {
+    expect([g.method, g.path]).toEqual(['GET', '/api/activity/launch']);
+    expect(g.query).toEqual(['after', 'resync']);
+  });
+  it('a reply with every contract field parses; extra fields are ignored', () => {
+    const launch = Object.fromEntries(
+      g.launch_fields.map((f) => [
+        f,
+        f === 'seq' ? 4 : f === 'kind' ? 'graph' : f === 'bead' ? 'dw-q' : '2026-11-20T15:00:00Z',
+      ]),
+    );
+    const reply = Object.fromEntries(g.reply.map((f) => [f, f === 'launch' ? launch : 4]));
+    expect(parseLaunchReply(reply)).toEqual({ seq: 4, kind: 'graph', bead: 'dw-q' });
+  });
+  it('the always-200 «nothing new» reply opens nothing', () => {
+    expect(parseLaunchReply({ launch: null, head: 4 })).toBeNull();
+  });
+  it.each(g.kinds)('kind %s is understood', (kind) => {
+    expect(
+      parseLaunchReply({ launch: { seq: 1, kind, bead: 'dw-1', at: 'x' }, head: 1 })?.kind,
+    ).toBe(kind);
+  });
 });
 
 describe('parseLaunchReply', () => {
@@ -168,7 +195,10 @@ describe('<EmbedLaunchOpener />', () => {
     fetchMock = vi.fn(async (_input: RequestInfo | URL) => {
       const r = replies.shift();
       return r === undefined
-        ? new Response(null, { status: 204 })
+        ? new Response(JSON.stringify({ launch: null, head: 0 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
         : new Response(JSON.stringify(r), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
