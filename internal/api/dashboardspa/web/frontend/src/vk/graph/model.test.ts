@@ -18,8 +18,15 @@ function bead(id: string, title: string, extra: Partial<GraphBead> = {}): GraphB
     ...extra,
   };
 }
+// An owner question as the engine holds it (DIAG 20.11): an open human gate
+// with a question posted (id + Discord link); the label is display only.
+const asked = (id: string) => ({
+  'gc.gate_type': 'human',
+  'decision.question_id': `q-${id}`,
+  'owner.link': `https://discord.com/channels/1/2/${id}`,
+});
 const q = (id: string, title: string, milestone = 'M04') =>
-  bead(id, title, { labels: [`milestone:${milestone}`, 'needs/operator'] });
+  bead(id, title, { issue_type: 'gate', labels: [`milestone:${milestone}`, 'needs/operator'], metadata: asked(id) });
 const blocks = (issue: string, target: string) => ({ issue_id: issue, depends_on_id: target, type: 'blocks' });
 
 const ID = {
@@ -160,7 +167,7 @@ describe('buildGraph on the M04 chain', () => {
   it('writes the headline and subline', () => {
     expect(m.headline).toBe('M04: 5 из 17 закрыто. Всё дальше стоит за M04 #3.3: она ждёт M04 #3 и M03 #6.2.');
     expect(m.subline).toBe(
-      'Без причины не стоит ничего: всё, что сейчас не в работе, ждёт твоих ответов — они слева, в колонке «От тебя».',
+      'Без причины не стоит ничего: что не в работе, ждёт других задач или твоих ответов — они слева, в колонке «От тебя».',
     );
   });
 
@@ -218,14 +225,25 @@ describe('buildGraph edges of the live data', () => {
     expect(m.nodes.map((n) => n.id).sort()).toEqual(['dw-t', 'dw-u']);
   });
 
-  it('a task in work that carries its own owner decision gets a question card in column 0 (live M04 #3)', () => {
+  it('a card’s own question is its answer gate in column 0, never the card (native gates, DIAG 20.11)', () => {
     const beads = [
       bead(ID.m3, 'M04 #3 — Сделать invalidation', {
         status: 'in_progress',
         labels: ['milestone:M04', 'needs/operator'],
-        metadata: { 'decision.question_id': 'b736', 'decision.decide': 'ВВ-4: применять ли миграцию 0426' },
+        needs: ['dw-ag'],
+        metadata: {
+          'decision.question_id': 'b736',
+          'decision.decide': 'ВВ-4: применять ли миграцию 0426',
+          'owner.link': 'https://discord.com/channels/1/2/3',
+        },
+      }),
+      bead('dw-ag', 'ответ на M04 #3', {
+        issue_type: 'gate',
+        labels: ['milestone:M04'],
+        metadata: { 'gc.gate_type': 'human', 'devwork.gate_kind': 'answer', 'devwork.answer_for': ID.m3 },
       }),
       bead(ID.s3, 'M04 #33 — Не затирать', { needs: [ID.m3] }),
+      // A title is no question: the old «ответ владельца» placeholder is a plain task.
       bead(ID.qv6, 'M04 — ответ владельца на ВВ-6 (способ оплаты)'),
     ];
     const m = buildGraph(beads, { epicId: 'M04', nowMs: NOW });
@@ -233,14 +251,13 @@ describe('buildGraph edges of the live data', () => {
     expect(task.kind).toBe('task');
     expect(task.state).toBe('in_work');
     expect(task.reason).toBe('ждёт тебя: ВВ-4');
-    const qid = questionNodeId(ID.m3);
-    expect(node(m, qid).kind).toBe('question');
-    expect(node(m, qid).label).toBe('вопрос · ВВ-4');
-    expect(beadIdOf(qid)).toBe(ID.m3);
-    expect(m.edges).toContainEqual({ from: qid, to: ID.m3 });
-    expect(node(m, qid).holds).toBe(2);
-    expect(node(m, ID.qv6).kind).toBe('question');
-    expect(node(m, ID.qv6).label).toBe('вопрос · ВВ-6');
+    expect(node(m, 'dw-ag').kind).toBe('question');
+    expect(node(m, 'dw-ag').label).toBe('вопрос · ВВ-4');
+    expect(m.edges).toContainEqual({ from: 'dw-ag', to: ID.m3 });
+    expect(node(m, 'dw-ag').holds).toBe(2);
+    expect(m.nodes.some((n) => n.id === questionNodeId(ID.m3))).toBe(false);
+    expect(beadIdOf(questionNodeId(ID.m3))).toBe(ID.m3);
+    expect(node(m, ID.qv6).kind).toBe('task');
   });
 
   it('marks an untaken free task «никто не взял · N дн» and says so in the subline', () => {

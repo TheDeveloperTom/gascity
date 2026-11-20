@@ -22,7 +22,7 @@ import { eventTitle } from './eventTitles';
 import { beadRowSummary } from './rowCopy';
 import { agentDisplayName } from '../lib/agentNames';
 import { t, tn } from '../i18n';
-import { ownerQuestionOf } from '../lib/ownerQuestions';
+import { ownerDebtOf, ownerQuestionOf } from '../lib/ownerQuestions';
 import type {
   AgentResponse,
   Bead,
@@ -650,8 +650,11 @@ function mayorDecisionAttention(bead: Bead): AttentionItem {
   // decision.question_id + owner.link) is the owner's, and its link is that
   // Discord message (ruling C1). A legacy or link-less decision stays with the
   // city until the Mayor backfills or re-asks it (V3, V8, Task 5).
+  // DIAG 20.11: the owner's audience only by the one owner-debt rule (an open
+  // human gate with a posted question); a card that carries a question shows
+  // its link, but its answer gate is what the board and «Нужно от меня» count.
   const question = ownerQuestionOf(bead);
-  const isOwnerQuestion = question !== null;
+  const isOwnerQuestion = ownerDebtOf(bead) !== null;
   const chatHref = question !== null ? question.chatUrl : decisionChatHref(bead);
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,

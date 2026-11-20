@@ -92,7 +92,8 @@ describe('«Нужно от меня» shelves', () => {
   it('shows three shelves, the first counting the same needs as the badge', () => {
     const { model } = show();
     expect(screen.getByRole('button', { name: `Нужно от меня ${model.count}` })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Нужно от меня 4' })).toBeTruthy();
+    // two question gates + the mail ask; a card's question id without a link is the Mayor's (DIAG 20.11)
+    expect(screen.getByRole('button', { name: 'Нужно от меня 3' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Работает 2' })).toBeTruthy();
     const quiet = screen.getByRole('button', { name: 'Тихо' });
     expect(quiet.getAttribute('aria-expanded')).toBe('false');

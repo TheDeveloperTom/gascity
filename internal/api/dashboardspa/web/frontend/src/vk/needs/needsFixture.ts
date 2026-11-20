@@ -2,9 +2,10 @@ import type { AttentionItem } from '../../attention/compose';
 import type { BoardData } from '../../lib/boardModel';
 import type { SupervisorBead } from '../../supervisor/beadReads';
 
-// One local fixture for the «Нужно от меня» tests (lane 3): a Mayor question
-// that 22 tasks wait on (M04 10, M03 4, 8 with no stage), a second question
-// that nobody waits on, a marked question with no Discord link, an
+// One local fixture for the «Нужно от меня» tests (lane 3): an owner question
+// (an open human gate with a posted question, DIAG 20.11) that 22 tasks wait
+// on (M04 10, M03 4, 8 with no stage), a second question gate that nobody
+// waits on, a card carrying a question id with no Discord link, an
 // unassigned blocker of a current-milestone card, and two cards at work.
 
 export const NOW_MS = Date.parse('2026-11-15T16:46:00Z');
@@ -30,6 +31,7 @@ const QUESTION = bead(QUESTION_ID, {
   title: 'M03 #2 / L1: перенос ящика',
   labels: ['needs/operator'],
   metadata: {
+    'gc.gate_type': 'human',
     'decision.question_id': 'q-1',
     'decision.decide': 'Когда окно для переноса ящика на основной аккаунт?',
     'decision.why': 'Gmail, доступ и собеседования переедут на твой основной аккаунт.',
@@ -44,9 +46,11 @@ const QUESTION = bead(QUESTION_ID, {
 });
 
 const SECOND_QUESTION = bead(SECOND_QUESTION_ID, {
+  issue_type: 'gate',
   title: 'Считать ли ветку интеграции M01 закрытой',
   labels: ['needs/operator'],
   metadata: {
+    'gc.gate_type': 'human',
     'decision.question_id': 'q-2',
     'owner.link': 'https://discord.com/channels/1/2/4',
     'decision.asked_at': '2026-11-15T14:42:00Z',

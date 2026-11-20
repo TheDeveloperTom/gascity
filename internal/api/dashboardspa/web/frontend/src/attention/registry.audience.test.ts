@@ -22,12 +22,16 @@ function bead(overrides: Partial<Bead>): Bead {
   };
 }
 
+// DIAG 20.11: an owner question is an open human gate with a posted question
+// (lib/ownerQuestions ownerDebtOf); the label rides along for the decision queue.
 function question(id: string, metadata: Record<string, string> = {}): Bead {
   return bead({
     id,
+    issue_type: 'gate',
     title: 'Merge the login change?',
     labels: [LABEL],
     metadata: {
+      'gc.gate_type': 'human',
       'decision.question_id': `q-${id}`,
       'owner.link': `https://discord.com/channels/1/2/${id}`,
       ...metadata,

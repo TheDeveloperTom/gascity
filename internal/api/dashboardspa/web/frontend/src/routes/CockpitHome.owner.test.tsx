@@ -169,10 +169,10 @@ describe('<CockpitHomePage> owner home', () => {
 
   it('the needs shelf counts the needs model; city items stay in the city strip', async () => {
     setLocale('ru');
-    // Questions 2 + the mail ask + the owner-marked stall; the 40 city items stay out.
+    // Question gates 2 + the mail ask (a label alone is no owner debt, DIAG 20.11); the 40 city items stay out.
     needsModel.current = needsFromBoard(needsBoard(), [], [], NOW_MS, false, [ownerItem]);
     home([ownerItem, ...Array.from({ length: 40 }, (_, i) => cityItem(i))]);
-    expect(screen.getByRole('button', { name: 'Нужно от меня 4' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Нужно от меня 3' })).toBeTruthy();
     const problems = screen.getByText('Неполадки', { selector: 'dt' })
       .nextElementSibling as HTMLElement;
     expect(problems.querySelector('[data-count]')?.textContent).toBe('40');

@@ -34,8 +34,12 @@ function board(): GraphBead[] {
     epic('e11', 'M11', 'M11. Остаток', false),
     epic('e13', 'M13', 'M13. Финальная приёмка', false),
     epic('one', null, 'Один тип пользователя вместо наставника и ученика'),
-    // L1: a decision gate (no route metadata) holding M03, M04 and «Один тип».
-    bead('l1', 'Окно L1 и ключ Clerk', { issue_type: 'gate' }),
+    // L1: an owner question — an open human gate with a posted question
+    // (DIAG 20.11) — holding M03, M04 and «Один тип».
+    bead('l1', 'Окно L1 и ключ Clerk', {
+      issue_type: 'gate',
+      metadata: { 'gc.gate_type': 'human', 'decision.question_id': 'q-l1', 'owner.link': 'https://discord.com/channels/1/2/3' },
+    }),
     bead('t6', 'M03 #6 — Допуск по своему ящику', { labels: ms('M03'), parent: 'e03', needs: ['l1'] }),
     bead('t7', 'M03 #7 — Портал', { labels: ms('M03'), parent: 'e03', status: 'in_progress', assignee: 'devwork/worker-1' }),
     bead('s3', 'M04 #3 — Не затирать оценку', { labels: ms('M04'), parent: 'e04', dependencies: [blocks('s3', 't6')] }),
@@ -117,11 +121,11 @@ describe('buildBoardGraph', () => {
     expect(buildBoardGraph(beads, { nowMs: NOW }).laneOf.o3).toBe('one');
   });
 
-  it('does not count owner-answer placeholders in the epic progress', () => {
+  it('a title is no question: an «ответ владельца» task is ordinary epic work (DIAG 20.11, D3)', () => {
     const beads = [...board(), bead('qa', 'M04 — ответ владельца на ВВ-6', { labels: ms('M04'), parent: 'e04' })];
     const graph = buildBoardGraph(beads, { nowMs: NOW });
-    expect(graph.laneOf.qa).toBe('ask');
-    expect(graph.lanes.find((l) => l.key === 'M04')?.total).toBe(2);
+    expect(graph.laneOf.qa).toBe('M04');
+    expect(graph.lanes.find((l) => l.key === 'M04')?.total).toBe(3);
   });
 
   it('keeps cross-epic links (M03→M11, M06→M07/M08)', () => {
@@ -259,12 +263,26 @@ describe('buildBoardGraph', () => {
     expect(ids).not.toContain('s4');
   });
 
-  it('gives an in-work task with its own decision a question card in «От тебя»', () => {
-    const beads = board().map((b) =>
+  it('an in-work task’s own question is its answer gate in «От тебя»; the label alone makes nothing', () => {
+    const labelled = board().map((b) =>
       b.id === 't7' ? { ...b, labels: [...ms('M03'), 'needs/operator'], metadata: { 'decision.decide': 'какой портал' } } : b,
     );
-    const graph = buildBoardGraph(beads, { nowMs: NOW });
-    expect(graph.laneOf[questionNodeId('t7')]).toBe('ask');
+    const plain = buildBoardGraph(labelled, { nowMs: NOW });
+    expect(plain.laneOf[questionNodeId('t7')]).toBeUndefined();
+    expect(plain.laneOf.t7).toBe('M03');
+    const withGate = [
+      ...labelled.map((b) =>
+        b.id === 't7'
+          ? { ...b, needs: ['ag7'], metadata: { 'decision.question_id': 'q-7', 'decision.decide': 'какой портал', 'owner.link': 'https://discord.com/channels/1/2/7' } }
+          : b,
+      ),
+      bead('ag7', 'ответ на M03 #7', {
+        issue_type: 'gate',
+        metadata: { 'gc.gate_type': 'human', 'devwork.gate_kind': 'answer', 'devwork.answer_for': 't7' },
+      }),
+    ];
+    const graph = buildBoardGraph(withGate, { nowMs: NOW });
+    expect(graph.laneOf.ag7).toBe('ask');
     expect(graph.laneOf.t7).toBe('M03');
   });
 });

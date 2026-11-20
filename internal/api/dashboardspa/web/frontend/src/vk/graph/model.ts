@@ -12,8 +12,9 @@
 
 import type { SupervisorBead } from '../../supervisor/beadReads';
 import { milestoneOf } from '../../lib/waitReasons';
-import { OWNER_QUESTION_LABEL } from '../../lib/ownerQuestions';
+import { ownerDebtOf, type OwnerQuestion } from '../../lib/ownerQuestions';
 import { cardLabel } from '../board/cardLabel';
+import { cityStepOf, type CityStep } from './planStep';
 
 /** The bead element the graph reads: exactly what the board loads. */
 export type GraphBead = SupervisorBead;
@@ -59,7 +60,6 @@ export interface Chain {
 const DAY_MS = 86_400_000;
 /** Dependency types that do not block (shown elsewhere, never a wait). */
 const NON_BLOCKING = new Set(['parent-child', 'related', 'relates-to', 'discovered-from', 'duplicates', 'supersedes', 'replies-to', 'tracks']);
-const DECISION_KEYS = ['decision.question_id', 'decision.decide'];
 const VV = /ВВ-\d+/u;
 const SHORT_MAX = 28;
 
@@ -78,31 +78,39 @@ function isRouteBead(bead: GraphBead): boolean {
   return ['gc.kind', 'gc.root_bead_id', 'gc.cross_store_blocker', 'gc.cross_store_gate_owner'].some((k) => meta(bead, k).length > 0);
 }
 
-/** Marked for the owner: `needs/operator`, or a Mayor decision on it. */
-function ownerMarked(bead: GraphBead): boolean {
-  if ((bead.labels ?? []).some((l) => l.trim() === OWNER_QUESTION_LABEL)) return true;
-  return DECISION_KEYS.some((k) => meta(bead, k).length > 0);
+/**
+ * What a bead is on the graph. One rule for the owner (DIAG-board-vs-needs-you
+ * 20.11): a question card in «От тебя» is exactly lib/ownerQuestions
+ * ownerDebtOf — an open human gate with a question posted — the same rule
+ * «Нужно от меня» counts. An open gate the city still works on (a plan «да»
+ * nobody asked yet, planStep.ts) is an ordinary step. Everything else that is
+ * a gate, a route bead, an epic or a convoy is plumbing; agents' session waits
+ * (`gc:wait`) are plumbing too.
+ */
+interface Classifier {
+  debt: (bead: GraphBead) => OwnerQuestion | null;
+  step: (bead: GraphBead) => CityStep | null;
+  plumbing: (bead: GraphBead) => boolean;
 }
 
-/** A bead that is itself the owner's question (a card in «От тебя»). */
-function isQuestionBead(bead: GraphBead): boolean {
-  if (bead.issue_type === 'gate') {
-    const await_ = meta(bead, 'await_type') || meta(bead, 'gc.await_type');
-    if (await_ === 'human') return true;
-    // A decision gate (dw-ssmbcp) carries no route metadata; route and
-    // cross-store gates always do.
-    return await_.length === 0 && !isRouteBead(bead);
-  }
-  // A task in work stays a task; its decision becomes a separate question card.
-  if (bead.status === 'in_progress') return false;
-  if (ownerMarked(bead)) return true;
-  // «M04 — ответ владельца на ВВ-6 (…)»: a placeholder task for an answer.
-  return /(^|[\s:—–-])ответ владельца/iu.test(bead.title);
-}
-
-/** The question card of an in-work task that carries its own owner decision. */
-function hasOwnQuestion(bead: GraphBead): boolean {
-  return bead.status === 'in_progress' && ownerMarked(bead);
+function classifier(byId: ReadonlyMap<string, GraphBead>, all: ReadonlyArray<GraphBead>): Classifier {
+  const lookup = (id: string) => byId.get(id);
+  const debts = new Map<string, OwnerQuestion | null>();
+  const steps = new Map<string, CityStep | null>();
+  const debt = (b: GraphBead) => {
+    if (!debts.has(b.id)) debts.set(b.id, ownerDebtOf(b, lookup));
+    return debts.get(b.id) ?? null;
+  };
+  const step = (b: GraphBead) => {
+    if (!steps.has(b.id)) steps.set(b.id, debt(b) === null ? cityStepOf(b, lookup, all) : null);
+    return steps.get(b.id) ?? null;
+  };
+  const plumbing = (b: GraphBead) => {
+    if (b.issue_type === 'epic' || b.issue_type === 'convoy') return true;
+    if (debt(b) !== null || step(b) !== null) return false;
+    return b.issue_type === 'gate' || isRouteBead(b);
+  };
+  return { debt, step, plumbing };
 }
 
 const QUESTION_SUFFIX = '::q';
@@ -113,13 +121,6 @@ export function questionNodeId(beadId: string): string {
 /** The bead a node stands for (a task's own question card → that task). */
 export function beadIdOf(nodeId: string): string {
   return nodeId.endsWith(QUESTION_SUFFIX) ? nodeId.slice(0, -QUESTION_SUFFIX.length) : nodeId;
-}
-
-/** Engine plumbing (route roots/steps, drains, cross-store gates, epics): never a node. */
-function isPlumbing(bead: GraphBead): boolean {
-  if (bead.issue_type === 'epic' || bead.issue_type === 'convoy') return true;
-  if (isQuestionBead(bead)) return false;
-  return bead.issue_type === 'gate' || isRouteBead(bead);
 }
 
 function blockerIds(bead: GraphBead): string[] {
@@ -168,17 +169,32 @@ interface Draft {
   short: string;
   outside: boolean;
   blockers: string[];
+  /** Set on a gate the city still works on: its status line. */
+  step?: CityStep;
 }
 
-function draftOf(bead: GraphBead, byId: Map<string, GraphBead>, outside: boolean, blockers: string[]): Draft {
+function draftOf(
+  bead: GraphBead,
+  byId: Map<string, GraphBead>,
+  cls: Classifier,
+  outside: boolean,
+  blockers: string[],
+): Draft {
   const parent = bead.parent ? byId.get(bead.parent) : undefined;
   const epicTitle = parent !== undefined && parent.issue_type === 'epic' ? parent.title : null;
-  const derived = cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle, id: bead.id });
-  if (isQuestionBead(bead)) {
-    const vv = VV.exec(derived.label ?? '') ?? VV.exec(bead.title);
+  const debt = cls.debt(bead);
+  if (debt !== null) {
+    // An answer gate shows the question of the card it holds.
+    const derived = cardLabel({ title: debt.title, milestone: milestoneOf(bead), epicTitle, id: bead.id });
+    const vv = VV.exec(derived.label ?? '') ?? VV.exec(debt.title) ?? VV.exec(debt.question);
     const short = vv !== null ? vv[0] : shorten(derived.title);
     return { bead, kind: 'question', label: `вопрос · ${short}`, title: derived.title, short, outside: false, blockers };
   }
+  const step = cls.step(bead);
+  if (step !== null) {
+    return { bead, kind: 'task', label: step.label, title: bead.title, short: step.label, outside, blockers, step };
+  }
+  const derived = cardLabel({ title: bead.title, milestone: milestoneOf(bead), epicTitle, id: bead.id });
   const label = derived.label ?? shorten(derived.title);
   return { bead, kind: 'task', label, title: derived.title, short: label, outside, blockers };
 }
@@ -250,9 +266,10 @@ export function buildGraph(
   const all = beads.filter(isBead);
   const byId = new Map<string, GraphBead>();
   for (const b of all) if (!byId.has(b.id)) byId.set(b.id, b);
+  const cls = classifier(byId, all);
   const live = (id: string): GraphBead | undefined => {
     const b = byId.get(id);
-    return b !== undefined && b.status !== 'closed' && !isPlumbing(b) ? b : undefined;
+    return b !== undefined && b.status !== 'closed' && !cls.plumbing(b) ? b : undefined;
   };
   const liveBlockers = (b: GraphBead) => blockerIds(b).filter((id) => live(id) !== undefined);
   // The epic is a milestone key («M04», the board's epic filter) or an epic bead id.
@@ -303,23 +320,10 @@ export function buildGraph(
   const drafts = new Map<string, Draft>();
   for (const id of members) {
     const b = byId.get(id) as GraphBead;
-    drafts.set(id, draftOf(b, byId, !inEpic(b), liveBlockers(b).filter((d) => inSet.has(d))));
+    drafts.set(id, draftOf(b, byId, cls, !inEpic(b), liveBlockers(b).filter((d) => inSet.has(d))));
   }
-  // An in-work task that carries its own owner decision (live M04 #3) gets a
-  // separate question card that blocks it, as on the mockups.
-  for (const id of [...members]) {
-    const task = drafts.get(id) as Draft;
-    if (!hasOwnQuestion(task.bead)) continue;
-    const decide = meta(task.bead, 'decision.decide');
-    const vv = VV.exec(decide) ?? VV.exec(task.bead.title) ?? VV.exec(task.label);
-    const short = vv !== null ? vv[0] : decide.length > 0 ? shorten(decide) : 'ответ';
-    const qid = questionNodeId(id);
-    const title = decide.length > 0 ? decide.charAt(0).toLocaleUpperCase('ru') + decide.slice(1) : task.title;
-    drafts.set(qid, { bead: task.bead, kind: 'question', label: `вопрос · ${short}`, title, short, outside: false, blockers: [] });
-    task.blockers = [qid, ...task.blockers];
-    members.push(qid);
-    inSet.add(qid);
-  }
+  // A card's own question is no separate card here: natively it waits behind
+  // its answer gate (`devwork.answer_for`), and that gate is the question node.
   const direct = new Map<string, string[]>();
   for (const [id, d] of drafts) direct.set(id, d.blockers);
   const edges = reducedEdges(members, direct);
@@ -351,7 +355,11 @@ export function buildGraph(
     const ts = d.blockers.filter((x) => drafts.get(x)?.kind === 'task').map(shortOf);
     let state: GraphNodeState;
     let reason: string;
-    if (b.status === 'in_progress') {
+    if (d.step !== undefined) {
+      // The city's own step (a plan being written, reviewed, about to be asked).
+      state = 'waits_task';
+      reason = d.step.reason;
+    } else if (b.status === 'in_progress') {
       state = 'in_work';
       reason = qs.length > 0 ? `ждёт тебя: ${listShort(qs)}` : 'в работе';
     } else if (b.status === 'failed') {
@@ -433,7 +441,7 @@ export function buildGraph(
   }
 
   // Headline: closed of total, and the deepest task everything later waits on.
-  const epicBeads = opts.epicId === null ? [] : [...byId.values()].filter((b) => inEpicOf(b) && !isPlumbing(b) && !isQuestionBead(b));
+  const epicBeads = opts.epicId === null ? [] : [...byId.values()].filter((b) => inEpicOf(b) && !cls.plumbing(b) && cls.debt(b) === null && cls.step(b) === null);
   const closed = epicBeads.filter((b) => b.status === 'closed').length;
   const lead = opts.epicId === null ? '' : `${epicKey ?? 'Эпик'}: ${closed} из ${epicBeads.length} закрыто. `;
   const tasks = nodes.filter((n) => n.kind === 'task');
@@ -461,7 +469,7 @@ export function buildGraph(
       : idle > 0
       ? `Без причины ${idle === 1 ? 'стоит' : 'стоят'} ${idle}: никто не взял.`
       : questions > 0
-        ? 'Без причины не стоит ничего: всё, что сейчас не в работе, ждёт твоих ответов — они слева, в колонке «От тебя».'
+        ? 'Без причины не стоит ничего: что не в работе, ждёт других задач или твоих ответов — они слева, в колонке «От тебя».'
         : 'Без причины не стоит ничего.';
 
   return { nodes, edges, columns, headline, subline };

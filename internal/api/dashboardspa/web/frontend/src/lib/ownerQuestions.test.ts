@@ -3,8 +3,12 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 import { LIVE_59WD5S, LIVE_MQFCX13 } from '../test/fixtures/liveCards';
 import {
   discordLinkOf,
+  isAgentWait,
+  isOwnerDebt,
+  isUnaskedHumanGate,
   isUnlinkedOwnerQuestion,
   OWNER_QUESTION_LABEL,
+  ownerDebtOf,
   ownerQuestionOf,
 } from './ownerQuestions';
 
@@ -63,9 +67,11 @@ describe('ownerQuestionOf', () => {
     expect(ownerQuestionOf(b)).toBeNull();
   });
 
-  it('question_id without the label is not a question', () => {
-    const b = bead('dw-z', { metadata: { 'decision.question_id': 'q-1' } });
-    expect(ownerQuestionOf(b)).toBeNull();
+  it('the label is display only: a posted question without it still reads', () => {
+    const b = bead('dw-z', {
+      metadata: { 'decision.question_id': 'q-1', 'owner.link': 'https://discord.com/channels/1/2/3' },
+    });
+    expect(ownerQuestionOf(b)?.questionId).toBe('q-1');
   });
 
   it('a closed bead is not a question', () => {
@@ -131,5 +137,84 @@ describe('ownerQuestionOf', () => {
     const metadata = { ...QUESTION.metadata };
     delete metadata['decision.decide'];
     expect(ownerQuestionOf({ ...QUESTION, metadata })?.question).toBe(QUESTION.title);
+  });
+});
+
+// DIAG-board-vs-needs-you 20.11 (B5): one rule for «the owner owes this».
+describe('ownerDebtOf: the one native rule', () => {
+  // A human gate the owner was asked on (live dw-v60o shape, without the label).
+  const GATE: SupervisorBead = {
+    ...QUESTION,
+    id: 'dw-g',
+    issue_type: 'gate',
+    labels: [],
+    metadata: { ...QUESTION.metadata, 'gc.gate_type': 'human' },
+  };
+
+  it('an open human gate with a posted question is owner debt; the label plays no part', () => {
+    expect(isOwnerDebt(GATE)).toBe(true);
+    expect(ownerDebtOf(GATE)?.beadId).toBe('dw-g');
+    expect(isOwnerDebt({ ...GATE, labels: [OWNER_QUESTION_LABEL] })).toBe(true);
+  });
+
+  it('bd’s own await_type counts like gc.gate_type (core notify-on-human-gate-creation.sh:169-173)', () => {
+    const bdGate = { ...GATE, metadata: { ...QUESTION.metadata }, await_type: 'human' } as SupervisorBead;
+    expect(isOwnerDebt(bdGate)).toBe(true);
+  });
+
+  it('a card is never the debt itself, even with the label and a question: its gate is', () => {
+    expect(isOwnerDebt(QUESTION)).toBe(false);
+  });
+
+  it('only a human gate: a typeless, plan-yes or timer gate is not owner debt', () => {
+    expect(isOwnerDebt({ ...GATE, metadata: { ...QUESTION.metadata } })).toBe(false);
+    expect(isOwnerDebt({ ...GATE, metadata: { ...GATE.metadata, 'gc.gate_type': 'plan-yes' } })).toBe(false);
+    expect(isOwnerDebt({ ...GATE, metadata: { ...GATE.metadata, 'gc.gate_type': 'timer' } })).toBe(false);
+  });
+
+  it('a closed (answered) gate is not owner debt', () => {
+    expect(isOwnerDebt({ ...GATE, status: 'closed' })).toBe(false);
+  });
+
+  it('a human gate with no question posted is not owner debt (a plan «да» nobody asked yet)', () => {
+    const planGate = bead('dw-bl2e', {
+      issue_type: 'gate',
+      title: 'да на план M06',
+      metadata: { 'devwork.gate_kind': 'plan', 'devwork.owner_gate': 'true', 'devwork.stage': 'M06', 'gc.gate_type': 'human' },
+    });
+    expect(isOwnerDebt(planGate)).toBe(false);
+    expect(isUnaskedHumanGate(planGate)).toBe(true);
+    // a question id with no Discord link is not posted either
+    expect(isOwnerDebt({ ...planGate, metadata: { ...planGate.metadata, 'devwork.plan_qid': 'q-9' } })).toBe(false);
+    // plan ask posted: devwork.plan_qid + the card's link
+    const asked = {
+      ...planGate,
+      metadata: { ...planGate.metadata, 'devwork.plan_qid': 'q-9', 'decision.chat_url': 'https://discord.com/channels/1/2/9' },
+    };
+    expect(ownerDebtOf(asked)?.questionId).toBe('q-9');
+    expect(isUnaskedHumanGate(asked)).toBe(false);
+  });
+
+  it('an answer gate takes its question from the card it answers for (devwork.answer_for)', () => {
+    const card = bead('dw-card', { ...QUESTION, id: 'dw-card', labels: [] });
+    const answerGate = bead('dw-ag', {
+      issue_type: 'gate',
+      title: 'ответ на dw-card',
+      metadata: { 'gc.gate_type': 'human', 'devwork.gate_kind': 'answer', 'devwork.answer_for': 'dw-card' },
+    });
+    const lookup = (id: string) => (id === 'dw-card' ? card : undefined);
+    const debt = ownerDebtOf(answerGate, lookup);
+    expect(debt?.beadId).toBe('dw-ag');
+    expect(debt?.questionId).toBe('q-2026-11-15-1');
+    expect(ownerDebtOf(answerGate)).toBeNull();
+    expect(ownerDebtOf({ ...answerGate, status: 'closed' }, lookup)).toBeNull();
+  });
+
+  it('an agent session wait (gc:wait, session:*) is never owner debt, whatever it carries', () => {
+    expect(isOwnerDebt({ ...GATE, labels: ['gc:wait'] })).toBe(false);
+    expect(isOwnerDebt({ ...GATE, labels: ['session:gcg-session-1'] })).toBe(false);
+    expect(isAgentWait(bead('gcg-1', { issue_type: 'gate', title: 'wait:plan-writer-2', labels: ['gc:wait'] }))).toBe(true);
+    expect(isAgentWait(QUESTION)).toBe(false);
+    expect(isUnaskedHumanGate({ ...GATE, labels: ['gc:wait'] })).toBe(false);
   });
 });
