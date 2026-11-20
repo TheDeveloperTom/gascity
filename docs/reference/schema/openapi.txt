@@ -992,6 +992,9 @@
           "assignee": {
             "type": "string"
           },
+          "await_type": {
+            "type": "string"
+          },
           "close_reason": {
             "type": "string"
           },

@@ -125,10 +125,18 @@ var ErrBDSilentFallback = errors.New("bd silent fallback to on-disk auto-import"
 // Bead is a single unit of work in Gas City. Everything is a bead: tasks,
 // mail, molecules, convoys.
 type Bead struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Status    string    `json:"status"`     // "open", "in_progress", "closed"
-	Type      string    `json:"issue_type"` // "task" default; matches bd wire format
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`     // "open", "in_progress", "closed"
+	Type   string `json:"issue_type"` // "task" default; matches bd wire format
+	// AwaitType is bd's await_type column: what a gate bead waits on (bd's
+	// vocabulary gh:run, gh:pr, timer, human, mail), set by `bd gate create
+	// --type=<t>`. Read-only here: the bd-CLI and native Dolt stores read it,
+	// no write path sets it. A gate a formula's [steps.gate] synthesized
+	// carries its type as gc.gate_type metadata instead (see the formula
+	// reference, "Gates and waits_for"); readers take await_type first, then
+	// gc.gate_type, as the core pack's notify-on-human-gate-creation order does.
+	AwaitType string    `json:"await_type,omitempty"`
 	Priority  *int      `json:"priority,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is zero for legacy beads; UpdatedBefore falls back to CreatedAt.

@@ -22,12 +22,16 @@ function bead(overrides: Partial<Bead>): Bead {
   };
 }
 
+// DIAG 20.11: an owner question is an open human gate with a posted question
+// (lib/ownerQuestions ownerDebtOf); the label rides along for the decision queue.
 function question(id: string, metadata: Record<string, string> = {}): Bead {
   return bead({
     id,
+    issue_type: 'gate',
     title: 'Merge the login change?',
     labels: [LABEL],
     metadata: {
+      'gc.gate_type': 'human',
       'decision.question_id': `q-${id}`,
       'owner.link': `https://discord.com/channels/1/2/${id}`,
       ...metadata,
@@ -122,6 +126,30 @@ describe('attention audience', () => {
     );
     expect(m.owner.total).toBe(0);
     expect(m.owner.items).toEqual([]);
+  });
+
+  // Review of fork #6, B1/B2: the owner plate reads the same rule and index as
+  // the board — a plain-card question counts, and a card behind an open answer
+  // gate is the owner's through that gate (ref = the gate, counted once).
+  it('a plain-card question is owner; a card behind an answer gate is owner via the gate', () => {
+    const card = (id: string): Bead => ({ ...question(id), issue_type: 'task' });
+    const plain = model(beadsFacts({ decisions: [card('dw-c1')] }));
+    expect(plain.owner.items.map((i) => [i.audience, i.ref])).toEqual([['owner', 'dw-c1']]);
+
+    const gated = model(
+      beadsFacts({
+        decisions: [card('dw-c2')],
+        serviceItems: [
+          bead({
+            id: 'dw-ag2',
+            issue_type: 'gate',
+            await_type: 'human',
+            metadata: { 'devwork.gate_kind': 'answer', 'devwork.answer_for': 'dw-c2' },
+          }),
+        ],
+      }),
+    );
+    expect(gated.owner.items.map((i) => [i.audience, i.ref])).toEqual([['owner', 'dw-ag2']]);
   });
 
   it('owner total equals owner questions', () => {

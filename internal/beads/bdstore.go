@@ -1035,6 +1035,7 @@ type bdIssue struct {
 	Title        string       `json:"title"`
 	Status       string       `json:"status"`
 	IssueType    string       `json:"issue_type"`
+	AwaitType    string       `json:"await_type,omitempty"`
 	Priority     *int         `json:"priority,omitempty"`
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
@@ -1263,6 +1264,7 @@ func (b *bdIssue) toBead() Bead {
 		Title:                b.Title,
 		Status:               status,
 		Type:                 b.IssueType,
+		AwaitType:            b.AwaitType,
 		Priority:             cloneIntPtr(b.Priority),
 		CreatedAt:            b.CreatedAt.Truncate(time.Second),
 		UpdatedAt:            b.UpdatedAt.Truncate(time.Second),

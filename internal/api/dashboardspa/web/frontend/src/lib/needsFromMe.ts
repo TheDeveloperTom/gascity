@@ -10,12 +10,13 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 import { stuckItems } from './boardFacts';
 import { ALL_PROJECTS, buildBoardModel, type BoardData, type RigPrefix } from './boardModel';
 import { transitiveWaiters } from './holds';
-import { OWNER_QUESTION_LABEL, ownerQuestionOf } from './ownerQuestions';
+import { ownerDebtIndex, ownerDebtOf } from './ownerQuestions';
 import { milestoneOf } from './waitReasons';
 
 // «Нужно от меня» (vk lane 3): one model for the page and for the red badge,
-// so the two can never disagree. A need is a Mayor question with a Discord
-// link (ownerQuestionOf), or a «Застряло» item the Mayor does not know about
+// so the two can never disagree. A need is an owner question by the one rule
+// (ownerDebtOf: an open human gate with a posted question, the same rule as
+// the graph's «От тебя»), or a «Застряло» item the Mayor does not know about
 // (stuckItems, mayor !== 'knows'). Everything is read from the one board.
 
 export interface MilestoneCount {
@@ -76,7 +77,6 @@ export interface NeedsModel {
 
 /** The attention registry's id suffix for an owner question (mayorDecisionAttention). */
 const MAYOR_DECISION_SUFFIX = ':mayor-decision';
-const DECISION_KEYS =['decision.question_id', 'decision.decide'] as const;
 
 const FILTERS = { project: ALL_PROJECTS, search: '', showTests: false } as const;
 
@@ -146,9 +146,12 @@ export function needsFromBoard(
   const everything = [...data.items, ...data.serviceItems];
   const byId = new Map(everything.map((bead) => [bead.id, bead]));
 
+  const index = ownerDebtIndex(everything);
+  // The one owner-debt rule (lib/ownerQuestions ownerDebtOf), the same the
+  // graph's «От тебя» column draws: an open human gate with a posted question.
   const questions = everything
     .flatMap((bead) => {
-      const q = ownerQuestionOf(bead);
+      const q = ownerDebtOf(bead, index);
       return q === null ? [] : [q];
     })
     .map((q): NeedItem => {
@@ -186,7 +189,9 @@ export function needsFromBoard(
           ? { holds: 0, breakdown: [] }
           : holdsOf(item.cardId, model.waitersOf, byId)),
         href: item.href,
-        forOwner: bead !== undefined && markedForOwner(bead),
+        // Only the one owner-debt rule makes a stall the owner's; the
+        // `needs/operator` label alone is display (DIAG 20.11, D5).
+        forOwner: bead !== undefined && ownerDebtOf(bead, index) !== null,
         mayorKnows: item.mayor === 'knows',
         // stuckItems (c): «Никто не взял, а её ждёт …»
         unclaimedBlocker: item.key.startsWith('blocker:'),
@@ -245,12 +250,6 @@ export function needsFromBoard(
   };
 }
 
-/** Explicitly waiting for the owner: `needs/operator`, or a Mayor decision on it. */
-function markedForOwner(bead: SupervisorBead): boolean {
-  if ((bead.labels ?? []).some((label) => label.trim() === OWNER_QUESTION_LABEL)) return true;
-  const meta = bead.metadata ?? {};
-  return DECISION_KEYS.some((key) => (meta[key]?.trim() ?? '').length > 0);
-}
 
 /**
  * Owner asks from mail and agents (the owner-home plate's data: the

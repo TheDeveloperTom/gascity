@@ -47,8 +47,6 @@ const ROUTE_KEYS = ['gc.kind', 'gc.root_bead_id', 'gc.cross_store_blocker', 'gc.
 const APPROVED_PLAN = new Set(['admitted', 'approved', 'accepted']);
 /** The old intake hold for stages without an approved executable package. */
 const HOLD_PLAN = /hold:plan|нет подготовленного и принятого исполнимого пакета/u;
-/** «M04 — ответ владельца на ВВ-6»: an owner-answer placeholder, not epic work (as in model.ts). */
-const ANSWER_PLACEHOLDER = /(^|[\s:—–-])ответ владельца/iu;
 
 function meta(bead: GraphBead, key: string): string {
   return bead.metadata?.[key]?.trim() ?? '';
@@ -157,8 +155,9 @@ function walk(start: string, next: Map<string, string[]>): Set<string> {
 
 export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGraphOptions): BoardGraph {
   // The board's rows also carry its service beads (runtime ops, mail,
-  // sessions) and alarm cards; they are never tickets. Gates stay (decision
-  // gates are owner questions; route gates are dropped by buildGraph), and
+  // sessions) and alarm cards; they are never tickets. Gates stay (an asked
+  // human gate is an owner question, a plan gate is the city's step; agent
+  // waits and route gates are dropped by buildGraph), and
   // epics stay for lane titles. A link to a dropped bead is not a blocker.
   const dropped = new Set<string>();
   const byId = new Map<string, GraphBead>();
@@ -184,6 +183,13 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
     const m = milestoneOf(b);
     if (m !== null) return m;
     if (parentEpic !== undefined) return milestoneOf(parentEpic) ?? parentEpic.id;
+    if (isGate(b)) {
+      // A stage's plan gate carries its stage as `devwork.stage`; the city's
+      // plan-yes wait names that gate (`devwork.plan_gate`).
+      const planGate = byId.get(meta(b, 'devwork.plan_gate'));
+      const stage = meta(b, 'devwork.stage') || (planGate === undefined ? '' : meta(planGate, 'devwork.stage'));
+      if (stage.length > 0) return stage;
+    }
     return isEpic(b) ? b.id : NO_EPIC_LANE;
   };
   for (const e of all.filter(isEpic)) {
@@ -311,7 +317,7 @@ export function buildBoardGraph(beads: ReadonlyArray<GraphBead>, opts: BoardGrap
   const progress = new Map<string, { done: number; total: number; plan: boolean }>();
   const questionBeads = new Set(model.nodes.filter((n) => n.kind === 'question' && n.id === beadIdOf(n.id)).map((n) => n.id));
   for (const b of all) {
-    if (!isWork(b) || questionBeads.has(b.id) || ANSWER_PLACEHOLDER.test(b.title)) continue;
+    if (!isWork(b) || questionBeads.has(b.id)) continue;
     const key = laneKeyOf(b);
     const p = progress.get(key) ?? { done: 0, total: 0, plan: false };
     p.total++;

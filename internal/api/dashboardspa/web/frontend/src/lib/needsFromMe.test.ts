@@ -41,11 +41,13 @@ describe('needsFromBoard', () => {
     expect(ids).not.toContain('mail:unavailable');
   });
 
-  it('shows stalls under «Стоит»; only those marked for the owner count', () => {
+  it('shows stalls under «Стоит»; a label or a link-less question id makes none the owner’s', () => {
     const m = model();
-    expect(m.stalls.map((s) => s.id)).toEqual([UNLINKED_ID, BLOCKER_ID, STALLED_ID]);
-    expect(m.stalls.map((s) => s.forOwner)).toEqual([true, false, false]);
-    expect(m.count).toBe(4);
+    // The link-less question (V3) is the Mayor's work: he knows, so it is not here.
+    expect(m.stalls.map((s) => s.id)).toEqual([BLOCKER_ID, STALLED_ID]);
+    expect(m.stalls.map((s) => s.id)).not.toContain(UNLINKED_ID);
+    expect(m.stalls.map((s) => s.forOwner)).toEqual([false, false]);
+    expect(m.count).toBe(3);
   });
 
   it('counts every task held, directly or not, split by milestone', () => {
@@ -71,20 +73,18 @@ describe('needsFromBoard', () => {
     expect(m.count).toBe(model().count);
   });
 
-  // review I-2: only a «Никто не взял» blocker folds; an owner-marked stall
-  // never starts collapsed, so the badge equals what the page shows.
-  it('an owner-marked stall behind a question stays in «Стоит» and the badge equals the visible owner items', () => {
+  // DIAG 20.11: the `needs/operator` label is display only. A labelled stall
+  // behind a question is no owner debt of its own: it folds like any other,
+  // and the badge stays the questions plus the asks.
+  it('a labelled stall behind a question is not the owner’s: it folds and adds nothing to the badge', () => {
     const board = needsBoardWithHeldStall();
     board.items = board.items.map((b) =>
       b.id === HELD_STALL_ID ? { ...b, labels: ['needs/operator'] } : b,
     );
     const m = needsFromBoard(board, [], [], NOW_MS, false, OWNER_ITEMS);
-    expect(m.stalls.map((s) => s.id)).toContain(HELD_STALL_ID);
-    expect(m.needs.flatMap((n) => n.heldStalls ?? []).map((s) => s.id)).not.toContain(
-      HELD_STALL_ID,
-    );
-    const visibleOwnerStalls = m.stalls.filter((s) => s.forOwner).length;
-    expect(m.count).toBe(m.needs.length + visibleOwnerStalls);
+    expect(m.stalls.map((s) => s.id)).not.toContain(HELD_STALL_ID);
+    expect(m.stalls.some((s) => s.forOwner)).toBe(false);
+    expect(m.count).toBe(m.needs.length);
   });
 
   it('a stalled card at work behind a question is not folded (only «Никто не взял» folds)', () => {
@@ -128,7 +128,7 @@ describe('useNeedsFromMeCount', () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
     const { result } = renderHook(() => useNeedsFromMeCount());
     expect(result.current).toBe(model().count);
-    expect(result.current).toBe(4);
+    expect(result.current).toBe(3);
     vi.restoreAllMocks();
   });
 });

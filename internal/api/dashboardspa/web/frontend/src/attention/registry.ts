@@ -22,7 +22,7 @@ import { eventTitle } from './eventTitles';
 import { beadRowSummary } from './rowCopy';
 import { agentDisplayName } from '../lib/agentNames';
 import { t, tn } from '../i18n';
-import { ownerQuestionOf } from '../lib/ownerQuestions';
+import { ownerDebtIndex, ownerDebtOf, ownerQuestionOf, type OwnerDebtIndex } from '../lib/ownerQuestions';
 import type {
   AgentResponse,
   Bead,
@@ -134,6 +134,12 @@ export interface BeadsAttentionFacts {
   operatorAliases?: readonly string[];
   /** Route beads (workflow roots and steps) split off `items` (withRoutes). */
   routeItems?: readonly Bead[];
+  /**
+   * Service beads of the same read (gates among them, withRoutes). The owner
+   * audience resolves a card's open answer gate (`devwork.answer_for`) from
+   * them, as the board does (lib/ownerQuestions ownerDebtIndex).
+   */
+  serviceItems?: readonly Bead[];
   /** False when the leg that supplied the routes was truncated. */
   routesComplete?: boolean;
   /** The decision queue read came back incomplete (a backend failed). */
@@ -525,8 +531,17 @@ function deriveBeadsAttention(facts: BeadsAttentionFacts | undefined): readonly 
       }),
     );
   }
+  // One owner-debt index over everything this read holds, so a card question
+  // behind an answer gate is the gate's (counted once) and a plain-card
+  // question counts, exactly as on the board and «Нужно от меня».
+  const debtIndex = ownerDebtIndex([
+    ...(facts.decisions ?? []),
+    ...(facts.items ?? []),
+    ...(facts.routeItems ?? []),
+    ...(facts.serviceItems ?? []),
+  ]);
   for (const decision of facts.decisions ?? []) {
-    items.push(mayorDecisionAttention(decision));
+    items.push(mayorDecisionAttention(decision, debtIndex));
   }
   const nowMs = facts.nowMs ?? Date.now();
   // gascity-dashboard-2j8e.3: the Beads badge counts exactly the ready-unclaimed
@@ -644,19 +659,25 @@ function isMayorDecision(bead: Bead, decisionLabel: string): boolean {
  * bead alerts and self-clears when the bead closes (the queue stops returning
  * it).
  */
-function mayorDecisionAttention(bead: Bead): AttentionItem {
+function mayorDecisionAttention(bead: Bead, debtIndex: OwnerDebtIndex): AttentionItem {
   const decide = bead.metadata?.[DECISION_DECIDE_META_KEY];
   // Dashboard v3: only a marked owner question with a Discord link (label +
   // decision.question_id + owner.link) is the owner's, and its link is that
   // Discord message (ruling C1). A legacy or link-less decision stays with the
   // city until the Mayor backfills or re-asks it (V3, V8, Task 5).
+  // DIAG 20.11: the owner's audience only by the one owner-debt rule, with the
+  // same index as the board. A card whose question waits behind an open answer
+  // gate is the owner's through that gate: the item refers to the gate, so
+  // «Нужно от меня» (which lists the gate) drops this copy as a duplicate.
   const question = ownerQuestionOf(bead);
-  const isOwnerQuestion = question !== null;
+  const gate = debtIndex.answerGateOf(bead.id);
+  const viaGate = gate !== undefined && ownerDebtOf(gate, debtIndex) !== null;
+  const isOwnerQuestion = viaGate || ownerDebtOf(bead, debtIndex) !== null;
   const chatHref = question !== null ? question.chatUrl : decisionChatHref(bead);
   return domainAttention('beads', {
     id: `beads:${bead.id}:mayor-decision`,
     ...(isOwnerQuestion ? { audience: 'owner' as const } : {}),
-    ref: bead.id,
+    ref: viaGate ? gate.id : bead.id,
     ...(chatHref === null ? {} : { externalHref: chatHref }),
     title: bead.title,
     href: beadHref(bead.id),
