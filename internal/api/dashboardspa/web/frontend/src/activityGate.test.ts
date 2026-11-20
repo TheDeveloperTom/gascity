@@ -116,6 +116,23 @@ describe('runtime detection', () => {
     expect(embedClientId()).toBe(expected ? '1571490006042939402' : null);
   });
 
+  it('the bot app origin the gateway lists in frame-ancestors (city PR #103 F7) is Discord mode', () => {
+    // frame-ancestors: discord.com, ptb, canary and https://1571490006042939402.discordsays.com
+    moveTo(
+      'https://1571490006042939402.discordsays.com/city/devwork-platform/beads?frame_id=f&instance_id=i',
+    );
+    expect(isEmbedded()).toBe(true);
+    expect(embedClientId()).toBe('1571490006042939402');
+    for (const parent of [
+      'https://discord.com',
+      'https://ptb.discord.com',
+      'https://canary.discord.com',
+    ]) {
+      moveTo(`${parent}/?frame_id=f&instance_id=i`);
+      expect(isEmbedded(), parent).toBe(false);
+    }
+  });
+
   it('latches for the page: in-app navigation that drops the query keeps Discord mode', () => {
     moveTo(`${DISCORD_ORIGIN}/?frame_id=f&instance_id=i`);
     expect(isEmbedded()).toBe(true);

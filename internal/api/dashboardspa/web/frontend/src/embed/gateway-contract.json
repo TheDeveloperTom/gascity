@@ -38,7 +38,7 @@
   },
   "session_headers": ["authorization", "x-activity-instance"],
   "statuses": { "no_session": 401, "discord_unavailable": 503, "denied": 404 },
-  "static": ["/", "/index.html", "/city/{c}/*", "/assets/*", "/icons/*.png", "/manifest.webmanifest", "/favicon-*.svg"],
+  "static": ["/", "/index.html", "/city/{c}/*", "/assets/<one segment [A-Za-z0-9._-]{1,128}>", "/icons/<name>.png", "/manifest.webmanifest", "/favicon-*.svg"],
   "denied_examples": [
     "/sw.js",
     "/v0/city/{c}/mail",
@@ -55,6 +55,8 @@
   "metadata_prefixes": ["decision."],
   "metadata_keys": [
     "await_type", "dashboard.label", "dashboard.stage",
+    "devwork.answer_for", "devwork.gate_kind", "devwork.plan_gate", "devwork.plan_qid", "devwork.plan_slug",
+    "devwork.stage", "devwork.yes_wait", "gc.gate_type",
     "devwork.hold_reason", "devwork.intake_needs_person", "devwork.intake_reason", "devwork.kind", "devwork.land_bead",
     "devwork.pause_reason", "devwork.plan_status", "devwork.pr_number", "devwork.pr_url", "devwork.step",
     "devwork.stopped_card", "devwork.task", "devwork.tdd_refusal",
