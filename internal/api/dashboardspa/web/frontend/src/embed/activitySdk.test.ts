@@ -6,7 +6,8 @@ import { api } from '../api/client';
 import { openExternal } from '../lib/openExternal';
 import { supervisorApi } from '../supervisor/client';
 import { APP_ID, enterDiscordFrame, leaveDiscordFrame } from '../test/discordFrame';
-import { bootActivity, runActivityBoot } from './activitySdk';
+import { bootActivity, READY_TIMEOUT_MS, runActivityBoot } from './activitySdk';
+import { isDenied } from './session';
 import { authHeaders, embedClientId, tailscaleCardUrl } from './mode';
 import contract from './gateway-contract.json';
 
@@ -17,6 +18,7 @@ const m = vi.hoisted(() => ({
   authorize: vi.fn(async (_a: unknown) => ({ code: 'code-1' })),
   authenticate: vi.fn(async (_a: unknown) => ({ user: { id: 'u' } })),
   openExternalLink: vi.fn(async (_a: unknown) => ({ opened: true })),
+  ready: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('@discord/embedded-app-sdk', () => ({
@@ -38,7 +40,7 @@ vi.mock('@discord/embedded-app-sdk', () => ({
     }
     ready() {
       m.order.push('ready');
-      return Promise.resolve();
+      return m.ready();
     }
   },
 }));
@@ -123,6 +125,7 @@ beforeEach(() => {
   m.authorize.mockClear();
   m.authenticate.mockClear();
   m.openExternalLink.mockClear();
+  m.ready.mockClear();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -320,5 +323,42 @@ describe('re-sign-in (gateway 401 session_invalid)', () => {
     vi.stubGlobal('fetch', gw.fetchMock);
     await expect(api.config()).rejects.toMatchObject({ status: 401 });
     expect(authHeaders()).toEqual({});
+    // review M1: no access is final; nothing leaves the frame any more
+    expect(isDenied()).toBe(true);
+    const before = gw.calls.length;
+    await expect(api.config()).rejects.toMatchObject({ status: 403 });
+    expect(gw.calls.length).toBe(before);
+  });
+});
+
+describe('SDK failures are visible (review L2)', () => {
+  it('authenticate() failing is a sign-in error, not a silent half-signed-in board', async () => {
+    m.authenticate.mockRejectedValueOnce(new Error('INVALID_COMMAND'));
+    const root = document.createElement('div');
+    expect(await runActivityBoot(APP_ID, root, gateway({}).fetchMock)).toBe(false);
+    expect(root.textContent).toBe('Не удалось войти через Discord');
+    expect(authHeaders()).toEqual({});
+  });
+
+  it('authenticate() answering null is a sign-in error too', async () => {
+    m.authenticate.mockResolvedValueOnce(null as never);
+    const root = document.createElement('div');
+    expect(await runActivityBoot(APP_ID, root, gateway({}).fetchMock)).toBe(false);
+    expect(authHeaders()).toEqual({});
+  });
+
+  it('ready() that never answers times out into the sign-in error', async () => {
+    vi.useFakeTimers();
+    try {
+      m.ready.mockImplementationOnce(() => new Promise<void>(() => {}));
+      const root = document.createElement('div');
+      const boot = runActivityBoot(APP_ID, root, gateway({}).fetchMock);
+      await vi.advanceTimersByTimeAsync(READY_TIMEOUT_MS);
+      expect(await boot).toBe(false);
+      expect(root.textContent).toBe('Не удалось войти через Discord');
+      expect(m.authorize).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

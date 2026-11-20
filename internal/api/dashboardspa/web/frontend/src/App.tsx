@@ -31,6 +31,7 @@ import type { FrontendViewDescriptor } from './views/types';
 import { CommandBar } from './vk/CommandBar';
 import { isEmbedded } from './embed/mode';
 import { EmbedLaunchOpener } from './embed/EmbedLaunchOpener';
+import { EmbedNoAccess } from './embed/EmbedNoAccess';
 import { t } from './i18n';
 
 const AgentsPage = lazy(() => import('./routes/Agents').then((m) => ({ default: m.AgentsPage })));
@@ -92,7 +93,7 @@ export function App() {
   // resolved alias hop.
   const defaultRedirectTo = defaultResolution.redirectTo ?? null;
 
-  return (
+  const tree = (
     <OperatorConfigProvider operator={operator}>
       <ViewingAsProvider>
         <NowProvider>
@@ -107,8 +108,9 @@ export function App() {
                     enabledViews={enabledViews}
                   />
                 </Layout>
-                {/* vk lane 5: the ⌘K palette, mounted once inside the router. */}
-                <CommandBar />
+                {/* vk lane 5: the ⌘K palette, mounted once inside the router.
+                    Not in Discord mode: it reaches routes the Activity does not serve. */}
+                {!isEmbedded() && <CommandBar />}
                 {/* Discord mode: open the card or graph the owner tapped for. */}
                 {isEmbedded() && <EmbedLaunchOpener />}
               </AttentionRoot>
@@ -118,6 +120,8 @@ export function App() {
       </ViewingAsProvider>
     </OperatorConfigProvider>
   );
+  // Discord mode: a refused re-sign-in replaces the board with «Нет доступа».
+  return isEmbedded() ? <EmbedNoAccess>{tree}</EmbedNoAccess> : tree;
 }
 
 /**
@@ -167,6 +171,21 @@ function RoutedMain({
   enabledViews: ReadonlyArray<FrontendViewDescriptor>;
 }) {
   const { pathname } = useLocation();
+  if (isEmbedded()) {
+    // Discord mode (review L1): the board with its card and graph is the
+    // only view; every other path goes back to it, keeping the query. The
+    // other views read and stream what the Activity gateway does not serve.
+    return (
+      <ErrorBoundary key={pathname}>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/beads" element={<BeadsPage />} />
+            <Route path="*" element={<EmbedHome />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
   return (
     <ErrorBoundary key={pathname}>
       <Suspense fallback={null}>
@@ -179,10 +198,7 @@ function RoutedMain({
           <Route
             path="/"
             element={
-              isEmbedded() ? (
-                // Discord mode shows the board (cards and graph) only.
-                <EmbedHome />
-              ) : defaultRedirectTo !== null ? (
+              defaultRedirectTo !== null ? (
                 <Navigate to={defaultRedirectTo} replace />
               ) : DefaultViewElement !== null ? (
                 <DefaultViewElement />
@@ -230,7 +246,7 @@ function ConfigErrorBanner({ message }: { message: string }) {
   );
 }
 
-/** Discord mode's `/`: the board, keeping the query (the Activity's launch params). */
+/** Discord mode's every other path: the board, keeping the query (the Activity's launch params). */
 function EmbedHome() {
   const { search } = useLocation();
   return <Navigate to={{ pathname: '/beads', search }} replace />;

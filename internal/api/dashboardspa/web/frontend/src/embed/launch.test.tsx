@@ -13,6 +13,7 @@ import {
   type Launch,
 } from './launch';
 import { setAuthHeaders } from './mode';
+import { setDenied } from './session';
 import contract from './gateway-contract.json';
 
 const L = (seq: number, kind: 'bead' | 'graph' = 'bead', bead = `dw-${seq}`) => ({
@@ -268,6 +269,19 @@ describe('<EmbedLaunchOpener />', () => {
     });
     expect(new URLSearchParams(probe.search).get('bead')).toBe('dw-own');
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('no access (review M1): the launch poll stops for good', async () => {
+    enterDiscordFrame();
+    renderAt('/beads');
+    await flush();
+    const before = fetchMock.mock.calls.length;
+    act(() => setDenied());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LAUNCH_POLL_MS * 5);
+    });
+    expect(fetchMock.mock.calls.length).toBe(before);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('pauses while hidden and resyncs once on return', async () => {

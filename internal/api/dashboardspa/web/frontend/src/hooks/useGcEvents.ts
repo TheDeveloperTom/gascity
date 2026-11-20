@@ -4,6 +4,7 @@ import { getActiveCity } from '../api/cityBase';
 import { watchHiddenPause } from '../lib/hiddenPause';
 import { supervisorApi } from '../supervisor/client';
 import { isEmbedded } from '../embed/mode';
+import { subscribeEmbedTick } from '../embed/poll';
 
 // Owner 16.11: the Discord Activity is gone, so the stream is the one live
 // path everywhere; failed opens reconnect with capped backoff and nothing
@@ -41,8 +42,6 @@ export interface GcEventRefreshOptions {
 }
 
 const CONNECTING_GRACE_MS = 2_000;
-/** Discord mode only: the live-update poll period (no streams through the Activity proxy). */
-export const EMBED_POLL_MS = 15_000;
 const DEFAULT_COALESCE_MS = 2_500;
 
 /**
@@ -104,12 +103,10 @@ export function useGcEventRefresh(
     if (isEmbedded()) {
       // Discord mode (DESIGN-discord-activity-return §4.3): the Activity
       // gateway serves no event streams to the page, so the consumer's own
-      // refresh runs every EMBED_POLL_MS while the page is visible.
+      // refresh runs on the page's one shared ticker (embed/poll.ts, 15 s,
+      // visible only).
       setState('open');
-      const timer = window.setInterval(() => {
-        if (document.visibilityState !== 'hidden') onMatchRef.current();
-      }, EMBED_POLL_MS);
-      return () => window.clearInterval(timer);
+      return subscribeEmbedTick(() => onMatchRef.current());
     }
 
     let cancelled = false;

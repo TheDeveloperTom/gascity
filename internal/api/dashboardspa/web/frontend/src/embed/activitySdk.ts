@@ -21,7 +21,18 @@ import { DiscordSDK } from '@discord/embedded-app-sdk';
 import { withApiBase } from '../lib/apiBase';
 import { setExternalOpener } from '../lib/openExternal';
 import { setAuthHeaders, setTailscaleBoardUrl } from './mode';
-import { setReauth } from './session';
+import { setDenied, setReauth } from './session';
+
+/** Review L2: the SDK handshake (`ready()`) never answering is a sign-in error, not a blank page. */
+export const READY_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('activity: SDK not ready')), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
 
 /** The gateway refused this Discord user (403: not the owner). */
 export class ActivityNoAccessError extends Error {
@@ -76,12 +87,16 @@ async function signIn(sdk: DiscordSDK, clientId: string, fetchImpl: typeof fetch
   if (!res.ok) throw new Error(`activity: token exchange ${res.status}`);
   const reply = parseTokenReply(await res.json());
 
+  // The SDK docs treat a failed or empty authenticate as a failed sign-in
+  // (review L2): the board does not start half signed in. The error itself
+  // is not kept or logged: it may echo the request.
+  let auth: unknown = null;
   try {
-    await sdk.commands.authenticate({ access_token: reply.access_token });
+    auth = await sdk.commands.authenticate({ access_token: reply.access_token });
   } catch {
-    // Older clients answer INVALID_COMMAND; the board needs only the gateway
-    // session. Not logged: the error may echo the request.
+    auth = null;
   }
+  if (auth === null || auth === undefined) throw new Error('activity: authenticate failed');
 
   setAuthHeaders({
     Authorization: `Bearer ${reply.session}`,
@@ -101,7 +116,7 @@ export async function bootActivity(
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
   const sdk = new DiscordSDK(clientId);
-  await sdk.ready();
+  await withTimeout(sdk.ready(), READY_TIMEOUT_MS);
   const userId = await signIn(sdk, clientId, fetchImpl);
 
   // Links leave through Discord's own «open external link» prompt: a plain
@@ -111,7 +126,12 @@ export async function bootActivity(
     try {
       await signIn(sdk, clientId, fetchImpl);
     } catch (err) {
-      if (err instanceof ActivityNoAccessError) setAuthHeaders({});
+      if (err instanceof ActivityNoAccessError) {
+        // no longer the owner: final. Nothing is sent any more, and the board
+        // is replaced by «Нет доступа» (EmbedNoAccess).
+        setAuthHeaders({});
+        setDenied();
+      }
       throw err;
     }
   });

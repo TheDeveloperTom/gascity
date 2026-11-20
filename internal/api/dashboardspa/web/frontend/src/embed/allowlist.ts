@@ -27,17 +27,6 @@ const READS: readonly RegExp[] = [
 
 const POSTS: readonly RegExp[] = [/^\/api\/activity\/token$/]; // G
 
-/** The A3/A4 query keys the gateway forwards; any other key is dropped there. */
-export const BEAD_LIST_QUERY_KEYS: ReadonlySet<string> = new Set([
-  'limit',
-  'status',
-  'label',
-  'rig',
-  'assignee',
-  'all',
-  'uncapped',
-]);
-
 function samePath(raw: string): string | null {
   const origin = globalThis.location?.origin ?? 'http://embed.invalid';
   let u: URL;

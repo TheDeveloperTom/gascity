@@ -22,6 +22,8 @@ import { enterDiscordFrame, leaveDiscordFrame } from '../test/discordFrame';
 import { embedRequestAllowed } from './allowlist';
 import contract from './gateway-contract.json';
 import { setAuthHeaders } from './mode';
+import { setDenied } from './session';
+import { closeCommandBar, openCommandBar } from '../lib/commandBar';
 import { TAILSCALE_NOTE } from './TailscaleNote';
 
 // The routes are lazy chunks: the first mount in a worker imports them cold.
@@ -264,6 +266,31 @@ describe('the board inside Discord', () => {
     expect(screen.getAllByText('Read-only').length).toBeGreaterThan(0);
   });
 
+  it.each(['/agents', '/agents/mayor', '/runs', '/runs/r1', '/mail', '/health', '/nowhere'])(
+    'route guard (review L1): %s stays on the board inside Discord',
+    async (path) => {
+      renderApp(`${path}?frame_id=frame-1&instance_id=inst-1`);
+      await screen.findByRole('region', { name: 'Board' }, { timeout: 15000 });
+      expect(sources).toEqual([]);
+    },
+  );
+
+  it('⌘K is not available inside Discord', async () => {
+    renderApp('/beads');
+    await screen.findByRole('region', { name: 'Board' }, { timeout: 15000 });
+    act(() => openCommandBar());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    act(() => closeCommandBar());
+  });
+
+  it('no access (403 on re-sign-in): the board is replaced by «Нет доступа»', async () => {
+    renderApp('/beads');
+    await screen.findByRole('region', { name: 'Board' }, { timeout: 15000 });
+    act(() => setDenied());
+    expect(screen.getByText('Нет доступа')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Board' })).toBeNull();
+  });
+
   it('`/` opens the board, keeping the launch params', async () => {
     renderApp('/?frame_id=frame-1&instance_id=inst-1');
     await screen.findByRole('region', { name: 'Board' }, { timeout: 15000 });
@@ -282,6 +309,14 @@ describe('the plain web app is unchanged (owner 20.11: nothing that works today 
     expect(sources).toContain(`/v0/city/${C}/events/stream`);
     // the chat footer, not the Discord line
     expect(screen.queryByTestId('embed-tailscale-note')).toBeNull();
+  });
+
+  it('the plain web app keeps every route (no guard outside Discord)', async () => {
+    renderApp('/mail');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
+    expect(screen.queryByRole('region', { name: 'Board' })).toBeNull();
   });
 
   it('the nav keeps Mail, Agents and Runs', async () => {

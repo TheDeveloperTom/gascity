@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { withApiBase } from '../lib/apiBase';
 import { createLaunchPoller, LAUNCH_POLL_MS, launchTarget } from './launch';
 import { isEmbedded } from './mode';
-import { gatedFetch } from './session';
+import { gatedFetch, subscribeDenied } from './session';
 
 // Discord mode: opens the card or graph the owner tapped «📱 Открыть в
 // Discord» for (launch.ts). Mounted inside the city router, so navigation is
@@ -50,10 +50,16 @@ export function EmbedLaunchOpener() {
       void poller.tick();
     };
     document.addEventListener('visibilitychange', onVisibility);
-    return () => {
+    const stop = () => {
       cancelled = true;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // no access (review M1): the launch poll stops for good
+    const unsubscribe = subscribeDenied(stop);
+    return () => {
+      unsubscribe();
+      stop();
     };
   }, []);
   return null;
