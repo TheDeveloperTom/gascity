@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { reportClientError } from '../lib/clientErrorReporting';
 import { getActiveCity } from '../api/cityBase';
+import { watchHiddenPause } from '../lib/hiddenPause';
 import { supervisorApi } from '../supervisor/client';
 
 // Owner 16.11: the Discord Activity is gone, so the stream is the one live
@@ -205,6 +206,10 @@ export function useGcEventRefresh(
           setState('open');
         },
         data: handleData,
+        // a stream reopened after its tab was hidden missed events: read once
+        resync: () => {
+          if (!cancelled) scheduleMatch();
+        },
         error: () => {
           if (cancelled) return;
           clearConnectGraceTimer();
@@ -242,6 +247,7 @@ interface StreamSubscriber {
   open: () => void;
   data: (msg: MessageEvent<string>) => void;
   error: () => void;
+  resync: () => void;
 }
 
 interface SharedStream {
@@ -249,6 +255,10 @@ interface SharedStream {
   source: EventSource | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
   retryDelayMs: number;
+  /** HOST cause 5: closed while the tab is hidden; the first open after it resyncs. */
+  paused: boolean;
+  resyncOnOpen: boolean;
+  stopWatch: () => void;
 }
 
 const sharedStreams = new Map<string, SharedStream>();
@@ -265,11 +275,31 @@ function subscribeSharedStream(
       source: null,
       retryTimer: null,
       retryDelayMs: 1_000,
+      paused: false,
+      resyncOnOpen: false,
+      stopWatch: () => {},
     };
     sharedStreams.set(url, created);
     stream = created;
     stream.subscribers.add(subscriber);
     openSharedStream(EventSourceCtor, url, created);
+    created.stopWatch = watchHiddenPause({
+      pause: () => {
+        created.paused = true;
+        if (created.retryTimer !== null) clearTimeout(created.retryTimer);
+        created.retryTimer = null;
+        const source = created.source;
+        created.source = null;
+        source?.close();
+        for (const sub of [...created.subscribers]) sub.error();
+      },
+      resume: () => {
+        created.paused = false;
+        created.resyncOnOpen = true;
+        created.retryDelayMs = 1_000;
+        if (created.subscribers.size > 0 && created.source === null) openSharedStream(EventSourceCtor, url, created);
+      },
+    });
   } else {
     stream.subscribers.add(subscriber);
     const source = stream.source;
@@ -281,6 +311,7 @@ function subscribeSharedStream(
   return () => {
     joined.subscribers.delete(subscriber);
     if (joined.subscribers.size > 0) return;
+    joined.stopWatch();
     if (joined.retryTimer !== null) clearTimeout(joined.retryTimer);
     joined.retryTimer = null;
     joined.source?.close();
@@ -303,6 +334,10 @@ function openSharedStream(
     if (stream.source !== source) return;
     stream.retryDelayMs = 1_000;
     for (const sub of [...stream.subscribers]) sub.open();
+    if (stream.resyncOnOpen) {
+      stream.resyncOnOpen = false;
+      for (const sub of [...stream.subscribers]) sub.resync();
+    }
   };
   const dispatch = (msg: MessageEvent<string>) => {
     if (stream.source !== source) return;
@@ -315,12 +350,12 @@ function openSharedStream(
     source.close();
     stream.source = null;
     for (const sub of [...stream.subscribers]) sub.error();
-    if (stream.subscribers.size === 0) return;
+    if (stream.subscribers.size === 0 || stream.paused) return;
     // Exponential backoff capped at 30s.
     stream.retryTimer = setTimeout(() => {
       stream.retryTimer = null;
       stream.retryDelayMs = Math.min(stream.retryDelayMs * 2, 30_000);
-      if (stream.subscribers.size > 0) openSharedStream(EventSourceCtor, url, stream);
+      if (stream.subscribers.size > 0 && !stream.paused) openSharedStream(EventSourceCtor, url, stream);
     }, stream.retryDelayMs);
   };
 }

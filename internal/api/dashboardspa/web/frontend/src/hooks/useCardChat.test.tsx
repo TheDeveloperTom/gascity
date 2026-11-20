@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { HIDDEN_PAUSE_MS } from '../lib/hiddenPause';
 import { BoardChatError, type Binding, type PendingItem, type ThreadEntry } from '../supervisor/boardChat';
 import type { GcEventConnState, GcEventEnvelope, GcEventRefreshOptions } from './useGcEvents';
 
@@ -41,6 +42,8 @@ const stream = vi.hoisted(() => ({ sessions: [] as (string | null)[], activity: 
 vi.mock('./useStructuredSessionStream', () => ({
   useStructuredSessionStream: (sessionId: string | null) => {
     stream.sessions.push(sessionId);
+    // as the real hook: no session, no stream, no activity
+    if (sessionId === null) return { status: 'idle', stream: { status: 'idle' } };
     return {
       status: 'ready',
       result: { provider: 'claude', template: 'desk', history: null, items: stream.items, activity: stream.activity },
@@ -197,9 +200,73 @@ describe('useCardChat', () => {
   it('this card’s own turn is not «another question»', async () => {
     stream.activity = 'in-turn';
     stream.items = [boardPrompt('u1', 'dw-2'), toolStep('a1'), boardPrompt('u2', 'dw-1'), toolStep('a2')];
-    const { result } = await mount([entry({ id: 'e1', seq: 1 }), desk({ id: 'e2', seq: 2, text: 'ответ' })]);
+    const { result } = await mount([
+      entry({ id: 'e1', seq: 1 }),
+      desk({ id: 'e2', seq: 2, text: 'ответ' }),
+      entry({ id: 'e3', seq: 3, text: 'поправка' }),
+    ]);
     expect(result.current.agentActivity).toBe('in-turn');
     expect(result.current.agentOnOtherCard).toBe(false);
+    expect(result.current.rows.at(-1)!.state).toBe('reading');
+  });
+
+  // BOARD-CHAT D3 live check 19.11 (HOST cause 5): each open card held the
+  // desk's session stream, a third long-lived connection per tab; with two
+  // tabs the six HTTP/1.1 connections per host were gone and POST /v1/send
+  // never started. The stream is only needed while a reply is awaited (or
+  // the Mayor holds the chat), and never in a tab hidden past the grace time.
+  describe('the agent stream only while it is needed', () => {
+    it('no session stream while nothing awaits a reply', async () => {
+      await mount([entry({ id: 'e1', seq: 1 }), desk({ id: 'e2', seq: 2, text: 'ответ' })]);
+      expect(stream.sessions.at(-1)).toBeNull();
+      await mount();
+      expect(stream.sessions.at(-1)).toBeNull();
+    });
+
+    it('a sent turn opens the desk stream; the answer closes it', async () => {
+      const { result } = await mount();
+      act(() => result.current.send('что это?'));
+      await flush();
+      expect(stream.sessions.at(-1)).toBe('desk');
+      api.readThread.mockResolvedValueOnce([
+        entry({ id: 'e1', seq: 1, text: 'что это?', providerMessageId: ID(1) }),
+        desk({ id: 'e2', seq: 2, text: 'Это вход.' }),
+      ]);
+      act(() => fire({ type: 'extmsg.outbound', payload: { provider: 'board', conversation_id: 'dw-1' } }));
+      await flush();
+      expect(stream.sessions.at(-1)).toBeNull();
+    });
+
+    it('a failed turn does not hold the stream', async () => {
+      api.sendTurn.mockRejectedValueOnce(new BoardChatError('failed'));
+      const { result } = await mount();
+      act(() => result.current.send('что это?'));
+      await flush();
+      expect(result.current.rows.at(-1)!.state).toBe('failed');
+      expect(stream.sessions.at(-1)).toBeNull();
+    });
+
+    it('a tab hidden past the grace time closes it; shown again it reopens', async () => {
+      const setHidden = (hidden: boolean) => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+        act(() => {
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+      };
+      onTestFinished(() => setHidden(false));
+      const { rerender } = await mount([entry({ id: 'e1', seq: 1 })]);
+      expect(stream.sessions.at(-1)).toBe('desk');
+      vi.useFakeTimers();
+      setHidden(true);
+      act(() => {
+        vi.advanceTimersByTime(HIDDEN_PAUSE_MS);
+      });
+      rerender();
+      expect(stream.sessions.at(-1)).toBeNull();
+      setHidden(false);
+      rerender();
+      expect(stream.sessions.at(-1)).toBe('desk');
+    });
   });
 
   it('an unknown current turn claims nothing', async () => {

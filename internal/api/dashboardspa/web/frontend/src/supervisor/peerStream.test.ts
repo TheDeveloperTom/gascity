@@ -1,8 +1,9 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { PEER_RETRY_MAX_MS, PEER_RETRY_MIN_MS, resetPeerBoardsForTests, usePeerBoards } from '../hooks/usePeerBoards';
 import { boardSourcesOf, ownerChoicesEnabled } from '../lib/boardOwner';
 import { peerBody } from '../test/fixtures/peerBoards';
+import { HIDDEN_PAUSE_MS } from '../lib/hiddenPause';
 import { PEER_STREAM_DEBOUNCE_MS, peerStreamUrl, subscribePeerStream } from './peerStream';
 
 // BOARD-LIVE L7 (contract C5): the dashboard follows `GET /v1/stream` on our
@@ -131,6 +132,32 @@ describe('subscribePeerStream', () => {
     expect(FakeEventSource.instances).toHaveLength(before);
     vi.advanceTimersByTime(1);
     expect(FakeEventSource.instances).toHaveLength(before + 1);
+    stop();
+  });
+
+  // BOARD-CHAT D3 live check 19.11 (HOST cause 5): a hidden tab gives its
+  // connection back, so a second tab's chat POST can start.
+  it('a tab hidden past the grace time closes the stream; shown again it reopens and reads once', () => {
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    const onChanged = vi.fn();
+    const stop = subscribePeerStream('test-city', onChanged);
+    onTestFinished(() => setHidden(false));
+    latest().open();
+    setHidden(true);
+    vi.advanceTimersByTime(HIDDEN_PAUSE_MS);
+    expect(latest().readyState).toBe(FakeEventSource.CLOSED);
+    vi.advanceTimersByTime(60_000);
+    expect(FakeEventSource.instances).toHaveLength(1); // no reconnect, no poll while hidden
+    expect(onChanged).not.toHaveBeenCalled();
+    setHidden(false);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    latest().open();
+    vi.advanceTimersByTime(PEER_STREAM_DEBOUNCE_MS);
+    expect(onChanged).toHaveBeenCalledTimes(1);
     stop();
   });
 

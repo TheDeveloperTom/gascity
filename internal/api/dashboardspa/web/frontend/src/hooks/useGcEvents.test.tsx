@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { GC_EVENT_PREFIX } from 'gas-city-dashboard-shared';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { reportClientError } from '../lib/clientErrorReporting';
+import { HIDDEN_PAUSE_MS } from '../lib/hiddenPause';
 import { useGcEventRefresh } from './useGcEvents';
 
 const eventSources: FakeEventSource[] = [];
@@ -376,6 +377,60 @@ describe('useGcEventRefresh', () => {
         vi.advanceTimersByTime(1);
       });
       expect(onMatch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // BOARD-CHAT D3 live check 19.11 (HOST cause 5): two tabs with an open card
+  // held all six HTTP/1.1 connections, and the chat's POST never started.
+  describe('a hidden tab gives its connection back', () => {
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => (hidden ? 'hidden' : 'visible'),
+      });
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    };
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => setHidden(false));
+
+    it('closes the shared stream while hidden and reads once when shown again', () => {
+      const onMatch = vi.fn();
+      const { result } = renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], onMatch));
+      act(() => eventSources[0]?.open());
+
+      setHidden(true);
+      act(() => {
+        vi.advanceTimersByTime(HIDDEN_PAUSE_MS);
+      });
+      expect(eventSources[0]?.readyState).toBe(FakeEventSource.CLOSED);
+      expect(result.current).toBe('closed');
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(eventSources).toHaveLength(1); // no reconnect while hidden
+
+      setHidden(false);
+      expect(eventSources).toHaveLength(2);
+      act(() => eventSources[1]?.open());
+      expect(result.current).toBe('open');
+      // events sent while it was closed are gone: read once
+      expect(onMatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('a quick tab switch keeps the stream and reads nothing', () => {
+      const onMatch = vi.fn();
+      renderHook(() => useGcEventRefresh([GC_EVENT_PREFIX.bead], onMatch));
+      act(() => eventSources[0]?.open());
+      setHidden(true);
+      act(() => {
+        vi.advanceTimersByTime(HIDDEN_PAUSE_MS - 1);
+      });
+      setHidden(false);
+      expect(eventSources).toHaveLength(1);
+      expect(eventSources[0]?.readyState).toBe(FakeEventSource.OPEN);
+      expect(onMatch).not.toHaveBeenCalled();
     });
   });
 });
