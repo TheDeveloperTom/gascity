@@ -109,6 +109,105 @@ def pnpm_integrity(lock: str, name: str, version: str) -> str:
     return match.group(1)
 
 
+class LockParseError(AssertionError):
+    pass
+
+
+_FLOW_PAIRS = {"{": "}", "[": "]"}
+
+
+def _split_key(line: str, lineno: int) -> tuple[str, str]:
+    """`key: value` / `key:` -> (key, value); a quoted key may hold ':'."""
+    if line[0] in "'\"":
+        end = line.find(line[0], 1)
+        if end < 0 or not line[end + 1 :].startswith(":"):
+            raise LockParseError(f"line {lineno}: unterminated quoted key")
+        return line[1:end], line[end + 2 :].strip()
+    if line.endswith(":"):
+        return line[:-1], ""
+    key, sep, value = line.partition(": ")
+    if not sep:
+        raise LockParseError(f"line {lineno}: expected `key: value`")
+    return key, value.strip()
+
+
+def _scalar(value: str, lineno: int) -> str:
+    if value[:1] in _FLOW_PAIRS:
+        depth = []
+        quote = None
+        for ch in value:
+            if quote:
+                quote = None if ch == quote else quote
+            elif ch in "'\"":
+                quote = ch
+            elif ch in _FLOW_PAIRS:
+                depth.append(_FLOW_PAIRS[ch])
+            elif ch in "}]":
+                if not depth or depth.pop() != ch:
+                    raise LockParseError(f"line {lineno}: unbalanced flow value")
+        if depth or quote:
+            raise LockParseError(f"line {lineno}: unbalanced flow value")
+        return value
+    return _unquote(value)
+
+
+def parse_lock(text: str) -> dict:
+    """Parses the block-YAML subset pnpm writes (nested mappings, `- ` lists,
+    flow values kept as text). Raises LockParseError on a duplicated key or an
+    indentation that does not nest, as pnpm's own YAML loader does."""
+    root: dict = {}
+    stack: list[tuple[int, object]] = [(0, root)]
+    pending: tuple[int, dict, str] | None = None
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if raw.lstrip(" ").startswith("\t"):
+            raise LockParseError(f"line {lineno}: tab in indentation")
+        if pending is not None:
+            p_indent, p_parent, p_key = pending
+            pending = None
+            if indent > p_indent:
+                child: object = [] if stripped.startswith("- ") else {}
+                p_parent[p_key] = child
+                stack.append((indent, child))
+        while len(stack) > 1 and indent < stack[-1][0]:
+            stack.pop()
+        level, container = stack[-1]
+        if indent != level:
+            raise LockParseError(f"line {lineno}: bad indentation ({indent}, expected {level})")
+        if isinstance(container, list):
+            if not stripped.startswith("- "):
+                raise LockParseError(f"line {lineno}: bad indentation (mapping key inside a list)")
+            container.append(_scalar(stripped[2:].strip(), lineno))
+            continue
+        if stripped.startswith("- "):
+            raise LockParseError(f"line {lineno}: bad indentation (list item inside a mapping)")
+        key, value = _split_key(stripped, lineno)
+        if key in container:
+            raise LockParseError(f"line {lineno}: duplicated mapping key {key!r}")
+        if value == "":
+            container[key] = None
+            pending = (indent, container, key)
+        else:
+            container[key] = _scalar(value, lineno)
+    return root
+
+
+def check_lock_shape(doc: dict) -> None:
+    """Every packages entry carries its resolution; every snapshot is a mapping."""
+    for section in ("importers", "packages", "snapshots"):
+        if not isinstance(doc.get(section), dict):
+            raise LockParseError(f"no {section}: section")
+    for key, entry in doc["packages"].items():
+        if not isinstance(entry, dict) or "resolution" not in entry:
+            raise LockParseError(f"packages {key!r} has no resolution")
+    for key, entry in doc["snapshots"].items():
+        if not (isinstance(entry, dict) or entry == "{}"):
+            raise LockParseError(f"snapshots {key!r} is not a mapping")
+
+
 def npm_packages(package_lock: dict) -> set[tuple[str, str]]:
     """(name, version) of every installed package in package-lock.json."""
     packages = set()
@@ -130,6 +229,11 @@ class LockfilesInSyncTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.lock = _read(_web("pnpm-lock.yaml"))
         cls.package_lock = json.loads(_read(_web("package-lock.json")))
+
+    def test_lockfile_parses(self) -> None:
+        # pnpm rejects a broken lockfile (ERR_PNPM_BROKEN_LOCKFILE) and so does
+        # rules_js; the line-based checks below cannot see it, this parse does.
+        check_lock_shape(parse_lock(self.lock))
 
     def test_importers_match_package_json(self) -> None:
         importers = pnpm_importers(self.lock)
@@ -160,6 +264,47 @@ class LockfilesInSyncTest(unittest.TestCase):
         versions = {v for name, v in pnpm_packages(self.lock) if name == "typescript"}
         self.assertEqual(versions, {version}, "MODULE.bazel typescript.deps version differs from pnpm-lock.yaml")
         self.assertEqual(integrity, pnpm_integrity(self.lock, "typescript", version))
+
+
+class PnpmLockParseTest(unittest.TestCase):
+    """parse_lock is a real parse of the block YAML pnpm writes (fork PR #7 review B1:
+    a lockfile with entries spliced mid-file passed the line-based checks)."""
+
+    GOOD = (
+        "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      c:\n"
+        "        specifier: ^2.0.0\n        version: 2.0.0\n\npackages:\n\n"
+        "  '@a/b@1.0.0':\n    resolution: {integrity: sha512-x}\n    engines: {node: '>=18'}\n\n"
+        "  c@2.0.0:\n    resolution: {integrity: sha512-y}\n\n"
+        "snapshots:\n\n  '@a/b@1.0.0':\n    dependencies:\n      c: 2.0.0\n\n  c@2.0.0: {}\n"
+    )
+
+    def test_good_lock_parses(self) -> None:
+        doc = parse_lock(self.GOOD)
+        self.assertEqual(doc["packages"]["c@2.0.0"]["resolution"], "{integrity: sha512-y}")
+        self.assertEqual(doc["snapshots"]["@a/b@1.0.0"]["dependencies"], {"c": "2.0.0"})
+
+    def test_spliced_entry_is_a_duplicated_key(self) -> None:
+        spliced = self.GOOD.replace(
+            "  c@2.0.0:\n    resolution: {integrity: sha512-y}\n",
+            "  c@2.0.0:\n  d@3.0.0:\n    resolution: {integrity: sha512-z}\n\n    resolution: {integrity: sha512-y}\n",
+        )
+        with self.assertRaisesRegex(LockParseError, "duplicated mapping key"):
+            parse_lock(spliced)
+
+    def test_bad_indentation_fails(self) -> None:
+        # a line that dedents to no open level (5 is neither 4 nor 6)
+        bad = self.GOOD.replace("      c: 2.0.0", "      c: 2.0.0\n     d: 1.0.0")
+        with self.assertRaisesRegex(LockParseError, "indentation"):
+            parse_lock(bad)
+
+    def test_package_without_resolution_fails(self) -> None:
+        bad = self.GOOD.replace("  c@2.0.0:\n    resolution: {integrity: sha512-y}\n", "  c@2.0.0:\n    engines: {}\n")
+        with self.assertRaisesRegex(LockParseError, "no resolution"):
+            check_lock_shape(parse_lock(bad))
+
+    def test_unbalanced_flow_value_fails(self) -> None:
+        with self.assertRaisesRegex(LockParseError, "flow"):
+            parse_lock(self.GOOD.replace("{integrity: sha512-x}", "{integrity: sha512-x"))
 
 
 if __name__ == "__main__":
