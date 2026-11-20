@@ -1,6 +1,7 @@
 import { t } from '../../i18n';
 import { attachmentUrls, prepareCardText } from '../../lib/cardText';
 import { MARKDOWN_CLASS, renderMiniMarkdown } from '../../lib/miniMarkdown';
+import { isEmbedded } from '../../embed/mode';
 
 // Owner 17.11: one renderer for a card's description in our own drawer and in
 // a peer's: section headings, a checklist, inline code, machine lines under a
@@ -26,7 +27,9 @@ export function CardDescription({
   className = 'text-base text-vk-text-normal',
 }: CardDescriptionProps) {
   const prepared = prepareCardText(text);
-  const images = [...attachmentUrls(metadata, { city, beadId }), ...prepared.images];
+  // Discord mode: attachments are not served through the Activity gateway
+  // (the drawer's «на доске в Tailscale» line stands for them).
+  const images = isEmbedded() ? [] : [...attachmentUrls(metadata, { city, beadId }), ...prepared.images];
   return (
     <div data-testid="task-description" className={`${className} ${MARKDOWN_CLASS}`}>
       {renderMiniMarkdown(prepared.body, { headingFrom })}

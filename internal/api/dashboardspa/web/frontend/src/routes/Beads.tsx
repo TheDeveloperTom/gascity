@@ -18,6 +18,8 @@ import { topicsForCard } from '../lib/peerTopics';
 import { peerStatusLines } from '../lib/peerLive';
 import { questionsForCard } from '../lib/topicQuestions';
 import { CardChat } from '../vk/chat/CardChat';
+import { isEmbedded } from '../embed/mode';
+import { TailscaleNote } from '../embed/TailscaleNote';
 import { CardConversation } from '../vk/comments/CardConversation';
 import { TopicsPanel } from '../vk/comments/TopicsPanel';
 import { PeerTaskDrawer } from '../vk/panel/PeerTaskDrawer';
@@ -1042,7 +1044,10 @@ export function BeadsPage() {
         step={ownStep}
         boardCard
         footer={
-          ownSelectedId === null ? null : (
+          ownSelectedId === null ? null : isEmbedded() ? (
+            // Discord mode: chat and attachments stay on the Tailscale board.
+            <TailscaleNote beadId={ownSelectedId} />
+          ) : (
             <CardChat
               key={ownSelectedId}
               city={cityName ?? ''}

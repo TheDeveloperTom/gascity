@@ -5,6 +5,7 @@ import { peerSourcesOf, type PeerBoardSource } from '../lib/boardOwner';
 import { setCityMayorUrl } from '../lib/mayorLink';
 import { listPeerBoards, type PeerBoardsResult } from '../supervisor/peerBoardReads';
 import { subscribePeerStream } from '../supervisor/peerStream';
+import { isEmbedded } from '../embed/mode';
 
 // vk-final: the peers' boards as board sources. ONE shared reader for every
 // consumer (board, «Нужно от меня», the badge). BOARD-LIVE L7: it follows our
@@ -97,7 +98,8 @@ function ensureStream(): void {
   const city = getActiveCity();
   if (stream !== null && stream.city === city) return;
   stopStream();
-  if (city === null) return;
+  // Discord mode: no peer boards and no streams through the Activity proxy.
+  if (city === null || isEmbedded()) return;
   stream = { city, stop: subscribePeerStream(city, () => void read()) };
 }
 

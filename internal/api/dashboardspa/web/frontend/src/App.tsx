@@ -29,6 +29,8 @@ import { ALL_VIEWS } from './views/registry';
 import { filterEnabledViews, resolveDefaultViewWithLogging } from './views/resolve';
 import type { FrontendViewDescriptor } from './views/types';
 import { CommandBar } from './vk/CommandBar';
+import { isEmbedded } from './embed/mode';
+import { EmbedLaunchOpener } from './embed/EmbedLaunchOpener';
 import { t } from './i18n';
 
 const AgentsPage = lazy(() => import('./routes/Agents').then((m) => ({ default: m.AgentsPage })));
@@ -62,7 +64,8 @@ export function App() {
   // Read-only posture is fail-closed on a config-fetch error and writable only
   // while the first fetch is in flight — see resolveReadOnly. The server proxy
   // gate stays the real enforcement throughout.
-  const readOnly = resolveReadOnly(config, configError);
+  // Discord mode is read-only (v1): every write control renders disabled.
+  const readOnly = isEmbedded() || resolveReadOnly(config, configError);
   // Operator identity from /config (gascity-dashboard-bhvn). Resolved once and
   // shared by the AttentionRoot (which computes contributors under the
   // RunSummaryProvider) and the OperatorConfigProvider below.
@@ -106,6 +109,8 @@ export function App() {
                 </Layout>
                 {/* vk lane 5: the ⌘K palette, mounted once inside the router. */}
                 <CommandBar />
+                {/* Discord mode: open the card or graph the owner tapped for. */}
+                {isEmbedded() && <EmbedLaunchOpener />}
               </AttentionRoot>
             </RunSummaryProvider>
           </ReadOnlyProvider>
@@ -174,7 +179,10 @@ function RoutedMain({
           <Route
             path="/"
             element={
-              defaultRedirectTo !== null ? (
+              isEmbedded() ? (
+                // Discord mode shows the board (cards and graph) only.
+                <EmbedHome />
+              ) : defaultRedirectTo !== null ? (
                 <Navigate to={defaultRedirectTo} replace />
               ) : DefaultViewElement !== null ? (
                 <DefaultViewElement />
@@ -220,6 +228,12 @@ function ConfigErrorBanner({ message }: { message: string }) {
       {t('some controls may be disabled until it loads.')}
     </section>
   );
+}
+
+/** Discord mode's `/`: the board, keeping the query (the Activity's launch params). */
+function EmbedHome() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: '/beads', search }} replace />;
 }
 
 function NotFoundPage() {

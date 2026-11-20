@@ -34,6 +34,7 @@ import { useSelfIdentity, type SelfIdentity } from '../lib/selfIdentity';
 import { ExternalLink } from '../vk/ExternalLink';
 import { BeadLiveRunModal } from './beads/BeadLiveRunModal';
 import { isSessionStreamable } from './LiveSessionPeek';
+import { isEmbedded } from '../embed/mode';
 import { otherLinkCount, RelatedEntities } from './RelatedEntities';
 
 // Click-to-read task panel for a single bead (vk lane 2): a right-side VK
@@ -122,7 +123,8 @@ export function BeadDetailModal({
   const worker = bead ? workerOf(step?.assignee, bead.assignee) : '';
   const workBead = bead && step !== null && (step.assignee?.trim() ?? '').length > 0 ? step : bead;
   const session = sessions && worker.length > 0 ? resolveSessionForTarget(worker, sessions) : null;
-  const liveRunnable = isSessionStreamable(session);
+  // Discord mode: no live run (its stream is not served through the Activity).
+  const liveRunnable = !isEmbedded() && isSessionStreamable(session);
   const question = useMemo(() => (bead ? ownerQuestionOf(bead) : null), [bead]);
   const discussCtx = useMemo(
     () =>

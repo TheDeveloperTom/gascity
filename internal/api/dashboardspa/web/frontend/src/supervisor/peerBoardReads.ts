@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getActiveCity } from '../api/cityBase';
 import { withApiBase } from '../lib/apiBase';
+import { isEmbedded } from '../embed/mode';
 import { discordChannelOrNull } from '../lib/mayorLink';
 import type { SupervisorBead } from './beadReads';
 
@@ -814,6 +815,9 @@ function ownLoginFrom(raw: string | null | undefined, peers: readonly PeerBoard[
 export async function listPeerBoards(signal?: AbortSignal): Promise<PeerBoardsResult> {
   const city = getActiveCity();
   if (city === null) return EMPTY;
+  // Discord mode: peer boards are not served through the Activity gateway
+  // (DESIGN-discord-activity-return §4.3, denied family), so no peers.
+  if (isEmbedded()) return EMPTY;
   const res = await fetch(withApiBase(peerBoardsUrl(city)), {
     method: 'GET',
     headers: { Accept: 'application/json' },
