@@ -19,6 +19,7 @@ import { TopNav } from '../vk/shell/TopNav';
 import { HelpGlyph, LinkGlyph, ListGlyph, SettingsGlyph } from '../vk/shell/glyphs';
 import { openCommandBar } from '../lib/commandBar';
 import { ALL_VIEWS } from '../views/registry';
+import { isEmbedded } from '../embed/mode';
 import { filterEnabledViews } from '../views/resolve';
 import { Icon, type IconName } from './icons';
 import { StatusBadge } from './StatusBadge';
@@ -47,6 +48,9 @@ const EXPLICIT_ROUTES: ReadonlyArray<NavRoute> = [
   { to: '/beads', label: 'Beads', order: 40 },
   { to: '/mail', label: 'Mail', order: 50 },
 ];
+
+/** Discord mode's nav entries (DESIGN-discord-activity-return §4.3). */
+const EMBED_NAV: ReadonlySet<string> = new Set(['/', '/beads']);
 
 // Three signpost groups, split by order: Home | the work (Runs, Agents,
 // Beads, Mail) | the record (Activity 55, Health 60). Rules between the
@@ -141,7 +145,10 @@ export function Header() {
         ? []
         : [{ to: v.path, label: v.nav.label, end: v.path === '/', order: v.nav.order }],
     );
-    return [...EXPLICIT_ROUTES, ...registry].sort((a, b) => a.order - b.order);
+    const all = [...EXPLICIT_ROUTES, ...registry].sort((a, b) => a.order - b.order);
+    // Discord mode: the board only; Mail, Agents, Runs and the record views
+    // read what the Activity gateway does not serve.
+    return isEmbedded() ? all.filter((r) => EMBED_NAV.has(r.to)) : all;
   }, [config?.enabledModules]);
   const { pathname } = useLocation();
   // "Reading as" is a Mail-only concept.

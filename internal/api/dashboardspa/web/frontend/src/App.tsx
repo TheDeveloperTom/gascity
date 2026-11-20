@@ -29,6 +29,9 @@ import { ALL_VIEWS } from './views/registry';
 import { filterEnabledViews, resolveDefaultViewWithLogging } from './views/resolve';
 import type { FrontendViewDescriptor } from './views/types';
 import { CommandBar } from './vk/CommandBar';
+import { isEmbedded } from './embed/mode';
+import { EmbedLaunchOpener } from './embed/EmbedLaunchOpener';
+import { EmbedNoAccess } from './embed/EmbedNoAccess';
 import { t } from './i18n';
 
 const AgentsPage = lazy(() => import('./routes/Agents').then((m) => ({ default: m.AgentsPage })));
@@ -62,7 +65,8 @@ export function App() {
   // Read-only posture is fail-closed on a config-fetch error and writable only
   // while the first fetch is in flight — see resolveReadOnly. The server proxy
   // gate stays the real enforcement throughout.
-  const readOnly = resolveReadOnly(config, configError);
+  // Discord mode is read-only (v1): every write control renders disabled.
+  const readOnly = isEmbedded() || resolveReadOnly(config, configError);
   // Operator identity from /config (gascity-dashboard-bhvn). Resolved once and
   // shared by the AttentionRoot (which computes contributors under the
   // RunSummaryProvider) and the OperatorConfigProvider below.
@@ -89,7 +93,7 @@ export function App() {
   // resolved alias hop.
   const defaultRedirectTo = defaultResolution.redirectTo ?? null;
 
-  return (
+  const tree = (
     <OperatorConfigProvider operator={operator}>
       <ViewingAsProvider>
         <NowProvider>
@@ -104,8 +108,11 @@ export function App() {
                     enabledViews={enabledViews}
                   />
                 </Layout>
-                {/* vk lane 5: the ⌘K palette, mounted once inside the router. */}
-                <CommandBar />
+                {/* vk lane 5: the ⌘K palette, mounted once inside the router.
+                    Not in Discord mode: it reaches routes the Activity does not serve. */}
+                {!isEmbedded() && <CommandBar />}
+                {/* Discord mode: open the card or graph the owner tapped for. */}
+                {isEmbedded() && <EmbedLaunchOpener />}
               </AttentionRoot>
             </RunSummaryProvider>
           </ReadOnlyProvider>
@@ -113,6 +120,8 @@ export function App() {
       </ViewingAsProvider>
     </OperatorConfigProvider>
   );
+  // Discord mode: a refused re-sign-in replaces the board with «Нет доступа».
+  return isEmbedded() ? <EmbedNoAccess>{tree}</EmbedNoAccess> : tree;
 }
 
 /**
@@ -162,6 +171,21 @@ function RoutedMain({
   enabledViews: ReadonlyArray<FrontendViewDescriptor>;
 }) {
   const { pathname } = useLocation();
+  if (isEmbedded()) {
+    // Discord mode (review L1): the board with its card and graph is the
+    // only view; every other path goes back to it, keeping the query. The
+    // other views read and stream what the Activity gateway does not serve.
+    return (
+      <ErrorBoundary key={pathname}>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/beads" element={<BeadsPage />} />
+            <Route path="*" element={<EmbedHome />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
   return (
     <ErrorBoundary key={pathname}>
       <Suspense fallback={null}>
@@ -220,6 +244,12 @@ function ConfigErrorBanner({ message }: { message: string }) {
       {t('some controls may be disabled until it loads.')}
     </section>
   );
+}
+
+/** Discord mode's every other path: the board, keeping the query (the Activity's launch params). */
+function EmbedHome() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: '/beads', search }} replace />;
 }
 
 function NotFoundPage() {

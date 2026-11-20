@@ -84,6 +84,8 @@ import {
   resolveSupervisorBaseUrl,
   supervisorUrl,
 } from './url';
+import { isEmbedded } from '../embed/mode';
+import { gatedFetch } from '../embed/session';
 
 export const SUPERVISOR_REQUEST_TIMEOUT_MS = 60_000;
 export const GC_MUTATION_HEADERS = {
@@ -636,7 +638,11 @@ function withSupervisorTimeout(fetchImpl: typeof fetch, timeoutMs: number): type
       }, timeoutMs);
     });
 
-    const fetchPromise = fetchImpl(new Request(input, { ...init, signal: controller.signal }));
+    // Discord mode only (embed/session.ts): allowlist, session headers, one
+    // re-sign-in retry, all inside this timeout. Plain web path unchanged.
+    const fetchPromise = isEmbedded()
+      ? gatedFetch(fetchImpl, input, { ...init, signal: controller.signal })
+      : fetchImpl(new Request(input, { ...init, signal: controller.signal }));
     try {
       return await Promise.race([fetchPromise, timeoutPromise]);
     } finally {

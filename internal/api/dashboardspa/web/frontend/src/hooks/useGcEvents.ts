@@ -3,6 +3,8 @@ import { reportClientError } from '../lib/clientErrorReporting';
 import { getActiveCity } from '../api/cityBase';
 import { watchHiddenPause } from '../lib/hiddenPause';
 import { supervisorApi } from '../supervisor/client';
+import { isEmbedded } from '../embed/mode';
+import { subscribeEmbedTick } from '../embed/poll';
 
 // Owner 16.11: the Discord Activity is gone, so the stream is the one live
 // path everywhere; failed opens reconnect with capped backoff and nothing
@@ -97,6 +99,14 @@ export function useGcEventRefresh(
     if (prefixes.length === 0) {
       setState('closed');
       return;
+    }
+    if (isEmbedded()) {
+      // Discord mode (DESIGN-discord-activity-return §4.3): the Activity
+      // gateway serves no event streams to the page, so the consumer's own
+      // refresh runs on the page's one shared ticker (embed/poll.ts, 15 s,
+      // visible only).
+      setState('open');
+      return subscribeEmbedTick(() => onMatchRef.current());
     }
 
     let cancelled = false;

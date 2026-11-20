@@ -15,6 +15,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 import './styles/index.css';
 
 import { registerServiceWorker } from './lib/pwa';
+import { embedClientId, isEmbedded } from './embed/mode';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
@@ -37,11 +38,24 @@ function mount(el: HTMLElement): void {
   );
 }
 
-mount(root);
+if (isEmbedded()) {
+  // Discord mode (owner 20.11): only when Discord itself loaded the page
+  // (embed/mode.ts). Sign in through the Embedded App SDK before the board's
+  // first request; on 403 «Нет доступа» (or a sign-in error) is rendered
+  // instead and the board never mounts. The SDK is a lazy chunk, fetched
+  // only here. No service worker: the Activity proxy origin is Discord's.
+  void import('./embed/activitySdk').then(({ runActivityBoot }) =>
+    runActivityBoot(embedClientId(), root).then((ok) => {
+      if (ok) mount(root);
+    }),
+  );
+} else {
+  mount(root);
 
-// Owner 16.11: an installable web app (PWA). The service worker caches the
-// app shell only and is registered in production builds only.
-void registerServiceWorker({
-  prod: (import.meta.env as unknown as Record<string, unknown>).PROD === true,
-  nav: globalThis.navigator,
-});
+  // Owner 16.11: an installable web app (PWA). The service worker caches the
+  // app shell only and is registered in production builds only.
+  void registerServiceWorker({
+    prod: (import.meta.env as unknown as Record<string, unknown>).PROD === true,
+    nav: globalThis.navigator,
+  });
+}

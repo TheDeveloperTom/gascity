@@ -16,6 +16,8 @@ import type {
 } from 'gas-city-dashboard-shared';
 import { cityPath } from './cityBase';
 import { withApiBase } from '../lib/apiBase';
+import { isEmbedded } from '../embed/mode';
+import { gatedFetch } from '../embed/session';
 
 // Typed fetch client for the admin backend's API. Shares types with the
 // backend via the workspace 'gas-city-dashboard-shared' import so wire-shape
@@ -52,7 +54,11 @@ async function performRequest<T>(
     credentials: 'same-origin',
   };
   if (body !== undefined) init.body = JSON.stringify(body);
-  const res = await fetch(withApiBase(url), { ...init, headers });
+  // Discord mode only (embed/session.ts): allowlisted reads with the gateway
+  // session; the plain web path is the single fetch below, unchanged.
+  const res = isEmbedded()
+    ? await gatedFetch(fetch, withApiBase(url), { ...init, headers })
+    : await fetch(withApiBase(url), { ...init, headers });
   if (!res.ok) {
     const bodyText = await res.text();
     const payload = parseApiErrorBody(bodyText);

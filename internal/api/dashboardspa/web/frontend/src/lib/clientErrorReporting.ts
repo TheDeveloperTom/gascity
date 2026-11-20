@@ -1,6 +1,7 @@
 import type { ClientErrorReport } from 'gas-city-dashboard-shared';
 import { errorMessage } from 'gas-city-dashboard-shared';
 import { withApiBase } from './apiBase';
+import { isEmbedded } from '../embed/mode';
 
 export type ClientErrorReportResult = { status: 'reported' } | { status: 'failed'; error: string };
 
@@ -16,6 +17,10 @@ export async function reportClientError(
     'Content-Type': 'application/json',
     'X-GC-Request': 'dashboard',
   };
+
+  // Discord mode: nothing is posted from inside the Activity (read-only v1);
+  // the gateway's sink would only drain it.
+  if (isEmbedded()) return { status: 'failed', error: 'not sent inside Discord' };
 
   try {
     const res = await fetch(withApiBase('/api/client-errors'), {
