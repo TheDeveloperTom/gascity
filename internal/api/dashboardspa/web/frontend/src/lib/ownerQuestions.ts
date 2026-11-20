@@ -9,8 +9,10 @@ import type { SupervisorBead } from '../supervisor/beadReads';
 // engine's own:
 //
 //   - an OPEN gate bead whose type is `human`. bd's own gates carry the type
-//     in `await_type`, a gate a formula synthesized (and the city's gates)
-//     carry it as `gc.gate_type` metadata (D:17622-17630, D:19055-19062);
+//     in bd's `await_type` column (the API bead carries it since this change:
+//     internal/beads/beads.go Bead.AwaitType), a gate a formula synthesized
+//     (and the city's plan gates) carry it as `gc.gate_type` metadata
+//     (D:17622-17630, D:19055-19062);
 //     the core pack's human-gate orders read it the same way
 //     (packs/core/assets/scripts/notify-on-human-gate-creation.sh:169-173).
 //     A gate blocks until it is closed (D:18512-18518); the owner's verified
@@ -105,10 +107,15 @@ export function isAgentWait(bead: SupervisorBead): boolean {
   });
 }
 
-/** The gate's engine type: bd's `await_type`, else `gc.gate_type` metadata (as the core pack reads it). */
+/**
+ * The gate's engine type: bd's `await_type` column (a gate `bd gate create
+ * --type=…` made, e.g. every `owner ask --gate action` gate), else
+ * `gc.gate_type` metadata (a formula-synthesized or city-stamped gate), the
+ * order the core pack's human-gate order reads them in.
+ */
 export function gateTypeOf(bead: SupervisorBead): string {
-  const own = (bead as { await_type?: unknown }).await_type;
-  if (typeof own === 'string' && own.trim().length > 0) return own.trim();
+  const own = bead.await_type?.trim() ?? '';
+  if (own.length > 0) return own;
   return meta(bead, GATE_TYPE_KEY);
 }
 

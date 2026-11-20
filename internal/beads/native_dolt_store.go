@@ -3413,6 +3413,7 @@ func beadFromNativeIssue(issue *beadslib.Issue) (Bead, error) {
 		Title:                issue.Title,
 		Status:               status,
 		Type:                 string(issue.IssueType),
+		AwaitType:            issue.AwaitType,
 		Priority:             nativePriorityFromIssue(issue),
 		CreatedAt:            issue.CreatedAt,
 		Assignee:             issue.Assignee,

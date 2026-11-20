@@ -158,8 +158,10 @@ describe('ownerDebtOf: the one native rule', () => {
   });
 
   it('bd’s own await_type counts like gc.gate_type (core notify-on-human-gate-creation.sh:169-173)', () => {
-    const bdGate = { ...GATE, metadata: { ...QUESTION.metadata }, await_type: 'human' } as SupervisorBead;
+    const bdGate: SupervisorBead = { ...GATE, metadata: { ...QUESTION.metadata }, await_type: 'human' };
     expect(isOwnerDebt(bdGate)).toBe(true);
+    // await_type wins over gc.gate_type
+    expect(isOwnerDebt({ ...GATE, await_type: 'timer' })).toBe(false);
   });
 
   it('a card is never the debt itself, even with the label and a question: its gate is', () => {

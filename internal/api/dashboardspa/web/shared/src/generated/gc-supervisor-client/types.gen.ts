@@ -337,6 +337,7 @@ export type BackendCredentialResolvedPayload = {
 
 export type Bead = {
     assignee?: string;
+    await_type?: string;
     close_reason?: string;
     created_at: string;
     defer_until?: string;
