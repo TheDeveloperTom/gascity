@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -25,6 +26,22 @@ func testWorkLegs(cityPath string, cfg *config.City, store beads.Store, rigs map
 		work = registered
 	}
 	return workLegsFromCensus(cityPath, cfg, cityWorkLeg{store: work}, rigs)
+}
+
+// setSeatReadSlotsForTest gives cityPath a fresh read-slot channel of n
+// slots, restoring the previous one when the test ends. Legs minted after it
+// share the new channel; legs minted before keep the old.
+func setSeatReadSlotsForTest(t *testing.T, cityPath string, n int) {
+	t.Helper()
+	key := normalizePathForCompare(cityPath)
+	old, had := seatReadSlotRegistry.Swap(key, newSeatReadSlots(int64(n)))
+	t.Cleanup(func() {
+		if had {
+			seatReadSlotRegistry.Store(key, old)
+			return
+		}
+		seatReadSlotRegistry.Delete(key)
+	})
 }
 
 // workLegsPlan is the plan and error of the WorkLegs minted over work.

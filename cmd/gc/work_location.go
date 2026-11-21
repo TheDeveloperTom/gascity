@@ -24,11 +24,13 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	sessionpkg "github.com/gastownhall/gascity/internal/session"
 	"github.com/gastownhall/gascity/internal/storeref"
+	"golang.org/x/sync/semaphore"
 )
 
 // cityWorkLeg is a city's work store, the one store a WorkLegs takes as its
@@ -58,6 +60,44 @@ type WorkLegs struct {
 	suspended []string
 	// cityName is the name a "city:<name>" store ref of this city carries.
 	cityName string
+	// slots is the city's seat-read slots (seatReadSlotsFor): a SeatWork read
+	// takes every slot it runs Lists on at once, and holds each until its
+	// Lists return. Nil is no bound.
+	slots *seatReadSlots
+}
+
+// seatReadListSlots is how many seat-read Lists one city runs at once, across
+// every leg and every read, abandoned ones included (each List is two bd
+// processes on a bd leg: both tiers).
+const seatReadListSlots = 16
+
+// seatReadSlots is one city's seat-read bound: size slots, taken all at once
+// per read (FIFO, ctx-aware, never partly held: semaphore.Weighted).
+type seatReadSlots struct {
+	sem  *semaphore.Weighted
+	size int64
+}
+
+func newSeatReadSlots(size int64) *seatReadSlots {
+	return &seatReadSlots{sem: semaphore.NewWeighted(size), size: size}
+}
+
+// seatReadSlotRegistry is this process's seat-read slots, by normalized city
+// path.
+var seatReadSlotRegistry sync.Map // string → *seatReadSlots
+
+// seatReadSlotsFor is cityPath's seat-read slots, made on first use; nil (no
+// bound) for an empty cityPath.
+func seatReadSlotsFor(cityPath string) *seatReadSlots {
+	if strings.TrimSpace(cityPath) == "" {
+		return nil
+	}
+	key := normalizePathForCompare(cityPath)
+	if v, ok := seatReadSlotRegistry.Load(key); ok {
+		return v.(*seatReadSlots)
+	}
+	v, _ := seatReadSlotRegistry.LoadOrStore(key, newSeatReadSlots(seatReadListSlots))
+	return v.(*seatReadSlots)
 }
 
 // errNoWorkStore: a WorkLegs minted without a city work store, which answers
@@ -71,7 +111,7 @@ var errNoWorkStore = errors.New("no city work store to read work from")
 // reads every leg, whatever its agent's scope: a gate that read fewer legs
 // than the cascade released from decided "no work" on stores it never saw.
 func workLegsFromCensus(cityPath string, cfg *config.City, work cityWorkLeg, rigs map[string]beads.Store) WorkLegs {
-	l := WorkLegs{cfg: cfg, work: work.store}
+	l := WorkLegs{cfg: cfg, work: work.store, slots: seatReadSlotsFor(cityPath)}
 	if work.store == nil {
 		return l
 	}
@@ -152,6 +192,9 @@ func (l WorkLegs) unusable() error {
 	}
 	return l.err
 }
+
+// readSlots is the city's seat-read slots l's reads take, or nil (no bound).
+func (l WorkLegs) readSlots() *seatReadSlots { return l.slots }
 
 // newSeatWork is the controller's read for one tick (or one dispatcher pass),
 // raising session.stranded_claims through the controller's one alerter and

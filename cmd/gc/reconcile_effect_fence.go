@@ -41,7 +41,7 @@ func (t *tx) readFence(ctx context.Context) string {
 			return causeRouteUnknown
 		}
 	}
-	t.view.Fence = readLegs(ctx, leaf, t.name, t.needs, t.view.Now, t.view.World.Now, func() *txWork { return t.p.readWork(t.expect, t.view.It) })
+	t.view.Fence = readLegs(ctx, leaf, t.name, t.needs, t.view.Now, t.view.World.Now, func(ctx context.Context) *txWork { return t.p.readWork(ctx, t.expect, t.view.It) })
 	return ""
 }
 
@@ -50,8 +50,9 @@ func (t *tx) readFence(ctx context.Context) string {
 // quiet window, passNow the idle proof's pass. L5 comes after L3 and L4:
 // cheapest first, and nearest the CAS, so a claim landing while they are
 // read is seen (v5.10a B). An idle sleep's shadow sample (n.IdleShadow)
-// takes its first reading before every leg.
-func readLegs(ctx context.Context, leaf runtime.Provider, name string, n needs, now, passNow time.Time, work func() *txWork) txFence {
+// takes its first reading before every leg. work takes L5's bounded ctx: a
+// read past it starts no list (seatWorkForCtx).
+func readLegs(ctx context.Context, leaf runtime.Provider, name string, n needs, now, passNow time.Time, work func(context.Context) *txWork) txFence {
 	f := txFence{Read: n.Legs & (legAttach | legPending | legWork)}
 	if n.IdleShadow && leaf != nil {
 		f.IdleShadow = runtime.BeginShadowIdleProof(leaf, name)
@@ -68,7 +69,7 @@ func readLegs(ctx context.Context, leaf runtime.Provider, name string, n needs, 
 		}
 	}
 	if n.Legs&legWork != 0 {
-		w, ok := boundedProbe(ctx, work)
+		w, ok := boundedProbeCtx(ctx, work)
 		if !ok {
 			w = &txWork{Err: errProbeExpired}
 		}
@@ -109,12 +110,12 @@ func boundedContent(ctx context.Context, snap runtime.IdleSnapshotProvider, name
 	return got
 }
 
-func (p *effectPass) readWork(row session.Info, it intent) *txWork {
+func (p *effectPass) readWork(ctx context.Context, row session.Info, it intent) *txWork {
 	if p.reads.legs.unusable() != nil || p.World.Env == nil {
 		return &txWork{Err: errNoReadStore}
 	}
 	if signalReadsWork(it) {
-		return p.readSignalWork(row, it)
+		return p.readSignalWork(ctx, row, it)
 	}
 	// One seat's read, live, over the pass's city work legs (NEW2-1: never
 	// the sessions store standing in for the work store). A close ends a
@@ -134,7 +135,7 @@ func (p *effectPass) readWork(row session.Info, it intent) *txWork {
 	if it.Kind == intentRollback { // a live incarnation's in-flight work (#2081): open work no stale incarnation can claim
 		statuses = []string{"in_progress"}
 	}
-	has, err := sessionHasAssignedWorkInStoresForStatuses(seatWorkFor(p.reads.legs, scope), scope, statuses)
+	has, err := sessionHasAssignedWorkInStoresForStatuses(seatWorkForCtx(ctx, p.reads.legs, scope), scope, statuses)
 	return &txWork{Free: !has && err == nil, Err: err}
 }
 
@@ -144,9 +145,9 @@ func (p *effectPass) readWork(row session.Info, it intent) *txWork {
 // scope; with none, an orphaned drain of a seat the live-claim veto covers
 // (liveClaimVetoApplies) reads the claim it stamped and whether it still
 // holds it (sessionOwnsLiveClaim). An error counts as work.
-func (p *effectPass) readSignalWork(row session.Info, it intent) *txWork {
+func (p *effectPass) readSignalWork(ctx context.Context, row session.Info, it intent) *txWork {
 	cfg := p.World.Env.Cfg
-	sw := seatWorkFor(p.reads.legs, releaseScope(row, cfg))
+	sw := seatWorkForCtx(ctx, p.reads.legs, releaseScope(row, cfg))
 	has, err := sessionHasAwakeAssignedWorkForReachableStore(sw, row)
 	if err == nil && !has && it.Reason == decideDrainSignal+drainOrphaned && liveClaimVetoApplies(p.World.CityPath, cfg, row, p.World.Suspension) {
 		has, _, err = sessionOwnsLiveClaim(p.World.CityPath, cfg, p.reads.city, sw, row)

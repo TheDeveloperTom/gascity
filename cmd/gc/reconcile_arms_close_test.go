@@ -993,10 +993,10 @@ func TestReadWorkScopeByKind(t *testing.T) {
 	w.Env = &reconcileEnv{Cfg: c.cfg}
 	p := newEffectPass(&w, c.a)
 	row := c.w.Census.Rows[c.k].Info
-	if got := p.readWork(row, intent{Kind: intentClose}); !got.Free {
+	if got := p.readWork(context.Background(), row, intent{Kind: intentClose}); !got.Free {
 		t.Fatalf("close's L5 = %+v, want free: a prior alias is not the dead seat's", got)
 	}
-	if got := p.readWork(row, intent{Kind: intentDrainBegin}); got.Free {
+	if got := p.readWork(context.Background(), row, intent{Kind: intentDrainBegin}); got.Free {
 		t.Fatalf("a drain's L5 = %+v, want work: the live seat may hold a prior alias's claim", got)
 	}
 }

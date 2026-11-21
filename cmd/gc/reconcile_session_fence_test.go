@@ -51,7 +51,7 @@ func fenceRun(t *testing.T, sp runtime.Provider, req fenceRequest, o fenceOpts) 
 	rt, _ := readRuntime(ctx, sp, nil, name, clock(), clock)
 	var f txFence
 	if rt != nil && rt.leaf != nil {
-		f = readLegs(ctx, rt.leaf, name, needs{Legs: legs & (legAttach | legPending | legWork), Escalates: o.escalates}, o.now, o.now, o.work)
+		f = readLegs(ctx, rt.leaf, name, needs{Legs: legs & (legAttach | legPending | legWork), Escalates: o.escalates}, o.now, o.now, func(context.Context) *txWork { return o.work() })
 	}
 	v := fenceDestructive(rt, f, req)
 	if !o.stop {
