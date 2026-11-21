@@ -103,13 +103,13 @@ func newSeatWork(legs WorkLegs) *SeatWork {
 // seatWorkFor is one seat's read: scope's identities only, listed live on
 // every leg.
 func seatWorkFor(legs WorkLegs, scope workScope) *SeatWork {
-	return seatWorkForCtx(nil, legs, scope)
+	return seatWorkForCtx(context.Background(), legs, scope)
 }
 
 // seatWorkForCtx is seatWorkFor for a caller that gives up on the read when
-// ctx ends. Only a read-only caller passes one: a read that feeds a write
-// must never be cut short.
-func seatWorkForCtx(ctx context.Context, legs WorkLegs, scope workScope) *SeatWork { //nolint:revive // ctx is optional: nil waits
+// ctx ends. Only a read-only caller passes a ctx that can end: a read that
+// feeds a write must never be cut short.
+func seatWorkForCtx(ctx context.Context, legs WorkLegs, scope workScope) *SeatWork {
 	ids := make(map[string]bool)
 	for _, id := range scope.scopeIDs() {
 		if id = strings.TrimSpace(id); id != "" {
