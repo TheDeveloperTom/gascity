@@ -23,6 +23,7 @@ package main
 // live (seatWorkFor).
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -51,6 +52,11 @@ type SeatWork struct {
 	// refusals logs each row's close refusal once per episode across ticks
 	// (closeSeat); nil logs every refusal.
 	refusals *closeRefusalLog
+
+	// ctx, when set, is how long the read's caller waits for it: a List that
+	// has no read slot when ctx ends never starts, and leaves its status
+	// unread (fail closed). Nil is context.Background(): wait for a slot.
+	ctx context.Context
 
 	once sync.Once
 	read []seatWorkLeg
@@ -97,19 +103,59 @@ func newSeatWork(legs WorkLegs) *SeatWork {
 // seatWorkFor is one seat's read: scope's identities only, listed live on
 // every leg.
 func seatWorkFor(legs WorkLegs, scope workScope) *SeatWork {
+	return seatWorkForCtx(nil, legs, scope)
+}
+
+// seatWorkForCtx is seatWorkFor for a caller that gives up on the read when
+// ctx ends. Only a read-only caller passes one: a read that feeds a write
+// must never be cut short.
+func seatWorkForCtx(ctx context.Context, legs WorkLegs, scope workScope) *SeatWork { //nolint:revive // ctx is optional: nil waits
 	ids := make(map[string]bool)
 	for _, id := range scope.scopeIDs() {
 		if id = strings.TrimSpace(id); id != "" {
 			ids[id] = true
 		}
 	}
-	return &SeatWork{legs: legs, ids: ids}
+	return &SeatWork{legs: legs, ids: ids, ctx: ctx}
 }
 
 // fresh is one seat's read of sw's legs now, for a question a snapshot "no
 // work" must not answer.
 func (sw *SeatWork) fresh(scope workScope) *SeatWork {
-	return seatWorkFor(sw.Legs(), scope)
+	return seatWorkForCtx(sw.ctx, sw.Legs(), scope)
+}
+
+// context is how long sw's caller waits for the read.
+func (sw *SeatWork) context() context.Context {
+	if sw == nil || sw.ctx == nil {
+		return context.Background()
+	}
+	return sw.ctx
+}
+
+// errSeatReadNoSlot: a List never started, because its read's caller gave up
+// before a seat-read slot was free.
+var errSeatReadNoSlot = errors.New("seat work: no read slot before the read's context ended")
+
+// acquireSeatReadSlot returns release, or an error and no slot when ctx ended
+// first.
+func acquireSeatReadSlot(ctx context.Context, slots chan struct{}) (func(), error) {
+	if slots == nil {
+		return func() {}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
+	}
+	select {
+	case slots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
+	}
+	if err := ctx.Err(); err != nil { // both ready: select may have taken the slot
+		<-slots
+		return nil, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
+	}
+	return func() { <-slots }, nil
 }
 
 // stranded is sw's alerter; nil for a nil SeatWork.
@@ -161,16 +207,26 @@ func (sw *SeatWork) load() {
 			}
 		}
 	}
-	// Every list runs at once: on a remote store a read costs one list's
-	// latency, not one per status and leg.
+	// Every list starts at once, bounded by the city's read slots: on a
+	// remote store a read costs one list's latency, not one per status and
+	// leg. A slot stays held until its List returns, even when the read's
+	// caller has given up, so abandoned reads keep counting against the
+	// bound; a List whose ctx ends before it gets a slot never starts.
 	rows := make([][]beads.Bead, len(lists))
 	errs := make([]error, len(lists))
+	ctx, slots := sw.context(), sw.legs.readSlots()
 	var wg sync.WaitGroup
 	for i, l := range lists {
 		wg.Add(1)
 		go func(i int, l seatWorkList) {
 			defer wg.Done()
 			defer recoverLeg(&errs[i], "seat work leg", log.Writer())
+			release, err := acquireSeatReadSlot(ctx, slots)
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			defer release()
 			rows[i], errs[i] = sw.read[l.leg].store.List(l.q)
 		}(i, l)
 	}
