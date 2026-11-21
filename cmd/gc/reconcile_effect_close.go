@@ -89,13 +89,13 @@ func asClose(sec section) section {
 // cascade's rule: an orphaned orphan's close then lands over them (closeStep
 // decides which), and the cascade keeps, stamps and alerts on them (O5,
 // revised).
-func strandedOnlyProbe(_ context.Context, r effectReads, v txView) (bool, error) {
+func strandedOnlyProbe(ctx context.Context, r effectReads, v txView) (bool, error) {
 	c := v.It.Closing
 	if c.Kind != closeOrphan || v.Fence.Work == nil || v.Fence.Work.Free || v.World.Env == nil {
 		return false, nil
 	}
 	scope := releaseScope(v.Row, v.World.Env.Cfg)
-	return onlyStrandedWork(seatWorkFor(r.legs, scope), v.Row), nil
+	return onlyStrandedWork(seatWorkForCtx(ctx, r.legs, scope), v.Row), nil
 }
 
 // redecideClose is A21 decided again on the fresh row and runtime read:
@@ -227,7 +227,7 @@ func strandedProbe(ctx context.Context, r effectReads, v txView) (strandedWork, 
 		!unmarked && !c.ParkEligible || v.World.Env == nil {
 		return strandedWork{}, nil
 	}
-	work, err := collectSessionAssignedWorkInfo(seatWorkFor(r.legs, releaseScope(v.Row, v.World.Env.Cfg)), v.Row)
+	work, err := collectSessionAssignedWorkInfo(seatWorkForCtx(ctx, r.legs, releaseScope(v.Row, v.World.Env.Cfg)), v.Row)
 	var out strandedWork
 	if c.ParkEligible {
 		out.parked, out.parkErr = liveParkedWork(work, err, releaseSeatOfInfo(v.Row), v.World.Now)
@@ -382,7 +382,7 @@ func closeStep(v txView, strandedOnly bool, _ error) txStep {
 // nothing when its precheck finds work the close's branches cannot act on:
 // the close would only refuse has-work, after taking the row's lease record.
 func closeAround(ctx context.Context, a aroundCaps, run func() settlement) settlement {
-	if !closeWorthRunning(a) {
+	if !closeWorthRunning(ctx, a) {
 		return refused(causeHasWork)
 	}
 	s := run()
@@ -400,7 +400,7 @@ func closeAround(ctx context.Context, a aroundCaps, run func() settlement) settl
 // stranded; a pool slot while its marker is aged (the repair) or empty (the
 // stamp). With no legs to read L5 through it runs nothing; a failed read
 // runs, and the effect decides.
-func closeWorthRunning(a aroundCaps) bool {
+func closeWorthRunning(ctx context.Context, a aroundCaps) bool {
 	c := a.it.Closing
 	switch {
 	case c.Phantom:
@@ -410,7 +410,7 @@ func closeWorthRunning(a aroundCaps) bool {
 	}
 	cfg := a.release.cfg
 	scope := releaseScope(c.Row, cfg)
-	hits, err := seatWorkFor(a.reads.legs, scope).match(seatWorkQuery{scope: scope, statuses: seatWorkStatuses}, false)
+	hits, err := seatWorkForCtx(ctx, a.reads.legs, scope).match(seatWorkQuery{scope: scope, statuses: seatWorkStatuses}, false)
 	if err != nil || len(hits) == 0 {
 		return true
 	}

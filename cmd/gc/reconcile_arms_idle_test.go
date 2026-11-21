@@ -625,7 +625,7 @@ func TestIdleStopReadsTheLateClaim(t *testing.T) {
 			}
 			f.env.WorkStore = func() beads.Store { return store }
 			w := f.gather(t)
-			if got := newEffectPass(&w, &allocDecision{}).readWork(w.Census.Canonical()[0].Info, idle); got.Free != tc.free {
+			if got := newEffectPass(&w, &allocDecision{}).readWork(context.Background(), w.Census.Canonical()[0].Info, idle); got.Free != tc.free {
 				t.Fatalf("L5 = %+v, want free %v", got, tc.free)
 			}
 		})

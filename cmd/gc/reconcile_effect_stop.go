@@ -357,7 +357,7 @@ type finalizeWork struct {
 // stop's finalize reads none (mc-ensxp): A15's builders sleep the row
 // whatever its work and never close it, and the idle kill's events name no
 // kept bead; its claim check is the fence's L5, read before the stop.
-func finalizeWorkProbe(_ context.Context, r effectReads, v txView) (finalizeWork, error) {
+func finalizeWorkProbe(ctx context.Context, r effectReads, v txView) (finalizeWork, error) {
 	if isIdleReason(v.It.Reason) {
 		return finalizeWork{}, nil
 	}
@@ -365,7 +365,7 @@ func finalizeWorkProbe(_ context.Context, r effectReads, v txView) (finalizeWork
 		return finalizeWork{}, errNoReadStore
 	}
 	// One seat's read, live, over the pass's city work legs.
-	sw := seatWorkFor(r.legs, releaseScope(v.Row, v.World.Env.Cfg))
+	sw := seatWorkForCtx(ctx, r.legs, releaseScope(v.Row, v.World.Env.Cfg))
 	has, err := sessionHasOpenAssignedWorkForReachableStoreForCloseGate(sw, v.Row)
 	w := finalizeWork{free: !has && err == nil}
 	if has {

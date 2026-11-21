@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
+	sessionpkg "github.com/gastownhall/gascity/internal/session"
 )
 
 // gatedState is what every gatedListStore of one test shares: how many Lists
@@ -29,6 +30,10 @@ func newGatedState() gatedState {
 		panicOnce: new(atomic.Bool),
 	}
 }
+
+// ConditionalWritesResolveTarget keeps the inner store's fenced writes, which
+// a release takes (releaseWorkAssignmentIfRevisionMatches).
+func (g gatedListStore) ConditionalWritesResolveTarget() beads.Store { return g.Store }
 
 func (g gatedListStore) Update(id string, opts beads.UpdateOpts) error {
 	g.writes.Add(1)
@@ -268,4 +273,149 @@ func TestWorkLegsShareCitySlotsAcrossPasses(t *testing.T) {
 	if got := mint("").readSlots(); got != nil {
 		t.Errorf("empty city path: slots %p, want nil (no bound)", got)
 	}
+}
+
+// fullSlotsFixture is a fixture whose two slots an abandoned read holds.
+func fullSlotsFixture(t *testing.T) *seatReadBoundFixture {
+	t.Helper()
+	f := newSeatReadBoundFixture(t, 2, true)
+	f.releaseAtCleanup(t)
+	go func() { _, _ = seatWorkFor(f.legs, f.scope).has(f.q) }() // abandoned
+	waitForCur(t, f.state, 2)
+	return f
+}
+
+// effectPassOver is the pass a planner mints over f's legs.
+func (f *seatReadBoundFixture) effectPassOver() *effectPass {
+	return newEffectPass(&World{WorkLegs: f.legs, Env: &reconcileEnv{Cfg: f.legs.cfg}}, nil)
+}
+
+// drainAbandoned opens the gate and waits until every List that will start
+// has run: the abandoned read's own 8, plus any a give-up read started late.
+func (f *seatReadBoundFixture) drainAbandoned(t *testing.T) {
+	t.Helper()
+	close(f.state.release)
+	waitForCur(t, f.state, 0)
+	time.Sleep(100 * time.Millisecond)
+	waitForCur(t, f.state, 0)
+}
+
+func TestFenceL5ExpiryStartsNoNewSeatList(t *testing.T) {
+	f := fullSlotsFixture(t)
+	p := f.effectPassOver()
+	row := sessionInfoForBoundTest()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	now := time.Now()
+	fence := readLegs(ctx, nil, "s", needs{Legs: legWork}, now, now, func(ctx context.Context) *txWork {
+		return p.readWork(ctx, row, intent{Kind: intentClose})
+	})
+	if fence.Work == nil || fence.Work.Free || fence.Work.Err == nil {
+		t.Fatalf("L5 = %+v, want not free with an error (fail closed)", fence.Work)
+	}
+	time.Sleep(50 * time.Millisecond) // the abandoned L5 read's Lists give up
+	f.drainAbandoned(t)
+	if got := f.state.calls.Load(); got != 8 {
+		t.Errorf("Lists started = %d, want 8 (the abandoned read's only: the expired L5 started none)", got)
+	}
+}
+
+func TestCloseWorthRunningGivesUpOnSlotWait(t *testing.T) {
+	f := fullSlotsFixture(t)
+	row := sessionInfoForBoundTest()
+	a := aroundCaps{
+		it:      intent{Kind: intentClose, Closing: closeSpec{Kind: closeOrphan, Orphaned: true, Row: row}},
+		reads:   f.effectPassOver().reads,
+		release: &closeReleases{cfg: f.legs.cfg},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan bool, 1)
+	go func() { done <- closeWorthRunning(ctx, a) }()
+	select {
+	case run := <-done:
+		if !run {
+			t.Fatal("closeWorthRunning = false on an unread L5, want true (a failed read runs, and the effect decides)")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("closeWorthRunning waited for a slot past its ctx")
+	}
+	f.drainAbandoned(t)
+	if got := f.state.calls.Load(); got != 8 {
+		t.Errorf("Lists started = %d, want 8 (the precheck started none)", got)
+	}
+}
+
+func TestReleaseClaimsWaitsForSlotAndWritesOnce(t *testing.T) {
+	f := newSeatReadBoundFixture(t, 2, false)
+	f.releaseAtCleanup(t)
+	claim := mustCreateDrainAckBead(t, f.work.Store, beads.Bead{Title: "orphaned", Type: "task", Metadata: map[string]string{"gc.routed_to": "worker"}}, "open", "worker-1")
+	claim, err := f.work.Store.Get(claim.ID) // the row as stored: the helper returns it before its claim update
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := mustCreateDrainAckBead(t, f.work.Store, beads.Bead{Title: "unrelated", Type: "task"}, "", "")
+	go func() { _, _ = seatWorkFor(f.legs, f.scope).has(f.q) }() // abandoned: holds both slots
+	waitForCur(t, f.state, 2)
+
+	type released struct {
+		out ReleaseOutcome
+		err error
+	}
+	done := make(chan released, 1)
+	go func() {
+		out, err := ReleaseClaims(seatWorkFor(f.legs, f.scope), f.scope, releaseSeat{id: "s-1"}, releaseOrphan, ReleaseOpts{})
+		done <- released{out, err}
+	}()
+	select {
+	case r := <-done:
+		t.Fatalf("release returned while slots were full: %+v, %v", r.out, r.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// A release writes through the inner store's fenced writer, so its writes
+	// show as the claim's revision.
+	if got, _ := f.work.Store.Get(claim.ID); got.Revision != claim.Revision || got.Assignee != "worker-1" {
+		t.Fatalf("claim while waiting for a slot: rev %d assignee %q, want rev %d still worker-1's", got.Revision, got.Assignee, claim.Revision)
+	}
+	direct := make(chan error, 1)
+	go func() { direct <- f.work.Update(other.ID, beads.UpdateOpts{Labels: []string{"touched"}}) }()
+	select {
+	case err := <-direct:
+		if err != nil {
+			t.Fatalf("direct update: %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("a direct write waited on the seat-read bound")
+	}
+	close(f.state.release)
+	r := <-done
+	if r.err != nil || len(r.out.Released) != 1 || r.out.Released[0].bead.ID != claim.ID {
+		t.Fatalf("release = %+v, %v; want %s released", r.out, r.err, claim.ID)
+	}
+	got, _ := f.work.Store.Get(claim.ID)
+	if got.Assignee != "" || got.Revision != claim.Revision+1 {
+		t.Errorf("released claim: rev %d assignee %q, want rev %d unassigned (one write)", got.Revision, got.Assignee, claim.Revision+1)
+	}
+}
+
+func TestSeatReadCtxOnlyOnReadOnlyLegs(t *testing.T) {
+	f := newSeatReadBoundFixture(t, 16, false)
+	close(f.state.release)
+	p := f.effectPassOver()
+	n := 0
+	p.reads.legs.each(func(s beads.Store) {
+		n++
+		if _, err := s.Create(beads.Bead{Title: "x"}); err == nil {
+			t.Fatal("a ctx-carrying read's leg accepted a write")
+		}
+	})
+	if n == 0 {
+		t.Fatal("the pass holds no legs")
+	}
+}
+
+// sessionInfoForBoundTest is a dead seat's row whose identities are the
+// fixture's scope.
+func sessionInfoForBoundTest() sessionpkg.Info {
+	return sessionpkg.Info{ID: "s-1", Alias: "worker-1"}
 }
