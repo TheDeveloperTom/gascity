@@ -426,8 +426,11 @@ func closeWorthRunning(ctx context.Context, a aroundCaps) bool {
 		started := slices.ContainsFunc(hits, func(h seatWorkHit) bool { return h.bead.Status == "in_progress" || seat.started[h.bead.ID] })
 		return !started && slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, seat.fallback) })
 	case c.Kind == closeOrphan && c.Orphaned:
-		return slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, "") }) ||
-			onlyStrandedWork(seatWorkFor(a.reads.legs, scope), c.Row)
+		if slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, "") }) {
+			return true
+		}
+		stranded := onlyStrandedWork(seatWorkForCtx(ctx, a.reads.legs, scope), c.Row)
+		return stranded || ctx.Err() != nil // a re-read cut short runs, as a failed read does
 	case c.Kind == closePoolSlot:
 		return c.Repair || strings.TrimSpace(c.Row.StrandedEventEmittedAt) == ""
 	}

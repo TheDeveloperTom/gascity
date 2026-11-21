@@ -34,7 +34,7 @@ func testWorkLegs(cityPath string, cfg *config.City, store beads.Store, rigs map
 func setSeatReadSlotsForTest(t *testing.T, cityPath string, n int) {
 	t.Helper()
 	key := normalizePathForCompare(cityPath)
-	old, had := seatReadSlotRegistry.Swap(key, make(chan struct{}, n))
+	old, had := seatReadSlotRegistry.Swap(key, newSeatReadSlots(int64(n)))
 	t.Cleanup(func() {
 		if had {
 			seatReadSlotRegistry.Store(key, old)

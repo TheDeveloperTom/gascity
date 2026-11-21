@@ -29,6 +29,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/mail/beadmail"
@@ -137,25 +138,25 @@ func (sw *SeatWork) context() context.Context {
 // before a seat-read slot was free.
 var errSeatReadNoSlot = errors.New("seat work: no read slot before the read's context ended")
 
-// acquireSeatReadSlot returns release, or an error and no slot when ctx ended
-// first.
-func acquireSeatReadSlot(ctx context.Context, slots chan struct{}) (func(), error) {
+// acquireSeatReadSlots takes the slots a read of lists Lists runs on, all at
+// once: min(lists, the city's size), or lists with no bound. When ctx ends
+// first it holds none and errs.
+func acquireSeatReadSlots(ctx context.Context, slots *seatReadSlots, lists int) (int, error) {
 	if slots == nil {
-		return func() {}, nil
+		return lists, nil
 	}
+	n := min(int64(lists), slots.size)
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
+		return 0, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
 	}
-	select {
-	case slots <- struct{}{}:
-	case <-ctx.Done():
-		return nil, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
+	if err := slots.sem.Acquire(ctx, n); err != nil {
+		return 0, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
 	}
-	if err := ctx.Err(); err != nil { // both ready: select may have taken the slot
-		<-slots
-		return nil, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
+	if err := ctx.Err(); err != nil { // Acquire may succeed on a ctx already done
+		slots.sem.Release(n)
+		return 0, fmt.Errorf("%w: %w", errSeatReadNoSlot, context.Cause(ctx))
 	}
-	return func() { <-slots }, nil
+	return int(n), nil
 }
 
 // stranded is sw's alerter; nil for a nil SeatWork.
@@ -207,28 +208,39 @@ func (sw *SeatWork) load() {
 			}
 		}
 	}
-	// Every list starts at once, bounded by the city's read slots: on a
+	// The lists run concurrently, bounded by the city's read slots: on a
 	// remote store a read costs one list's latency, not one per status and
-	// leg. A slot stays held until its List returns, even when the read's
-	// caller has given up, so abandoned reads keep counting against the
-	// bound; a List whose ctx ends before it gets a slot never starts.
+	// leg. A read takes every slot it runs on at once, or none when its ctx
+	// ends first: a read that gives up never started part of its lists. Each
+	// slot is one worker, held until it has no list left and its last List
+	// returned, even when the read's caller has given up, so abandoned reads
+	// keep counting against the bound.
 	rows := make([][]beads.Bead, len(lists))
 	errs := make([]error, len(lists))
-	ctx, slots := sw.context(), sw.legs.readSlots()
+	slots := sw.legs.readSlots()
+	workers, err := acquireSeatReadSlots(sw.context(), slots, len(lists))
+	if err != nil {
+		for i := range errs {
+			errs[i] = err
+		}
+		workers = 0
+	}
+	var next atomic.Int64
 	var wg sync.WaitGroup
-	for i, l := range lists {
+	for range workers {
 		wg.Add(1)
-		go func(i int, l seatWorkList) {
+		go func() {
 			defer wg.Done()
-			defer recoverLeg(&errs[i], "seat work leg", log.Writer())
-			release, err := acquireSeatReadSlot(ctx, slots)
-			if err != nil {
-				errs[i] = err
-				return
+			if slots != nil {
+				defer slots.sem.Release(1)
 			}
-			defer release()
-			rows[i], errs[i] = sw.read[l.leg].store.List(l.q)
-		}(i, l)
+			for i := int(next.Add(1) - 1); i < len(lists); i = int(next.Add(1) - 1) {
+				func() {
+					defer recoverLeg(&errs[i], "seat work leg", log.Writer())
+					rows[i], errs[i] = sw.read[lists[i].leg].store.List(lists[i].q)
+				}()
+			}
+		}()
 	}
 	wg.Wait()
 	for i, l := range lists {

@@ -15,9 +15,9 @@ import (
 // started, how many run now and at most, and the gate they block on.
 type gatedState struct {
 	calls, cur, max *atomic.Int64
-	writes          *atomic.Int64 // Update, SetMetadata and SetMetadataBatch calls
 	release         chan struct{}
 	panicOnce       *atomic.Bool
+	onList          *atomic.Pointer[func()] // when set, runs after each List returns
 }
 
 func newGatedState() gatedState {
@@ -25,30 +25,15 @@ func newGatedState() gatedState {
 		calls:     new(atomic.Int64),
 		cur:       new(atomic.Int64),
 		max:       new(atomic.Int64),
-		writes:    new(atomic.Int64),
 		release:   make(chan struct{}),
 		panicOnce: new(atomic.Bool),
+		onList:    new(atomic.Pointer[func()]),
 	}
 }
 
 // ConditionalWritesResolveTarget keeps the inner store's fenced writes, which
 // a release takes (releaseWorkAssignmentIfRevisionMatches).
 func (g gatedListStore) ConditionalWritesResolveTarget() beads.Store { return g.Store }
-
-func (g gatedListStore) Update(id string, opts beads.UpdateOpts) error {
-	g.writes.Add(1)
-	return g.Store.Update(id, opts)
-}
-
-func (g gatedListStore) SetMetadata(id, key, value string) error {
-	g.writes.Add(1)
-	return g.Store.SetMetadata(id, key, value)
-}
-
-func (g gatedListStore) SetMetadataBatch(id string, kvs map[string]string) error {
-	g.writes.Add(1)
-	return g.Store.SetMetadataBatch(id, kvs)
-}
 
 // gatedListStore is a leg whose List counts itself and blocks on release.
 type gatedListStore struct {
@@ -70,6 +55,9 @@ func (g gatedListStore) List(q beads.ListQuery) ([]beads.Bead, error) {
 		panic("gated list panics once")
 	}
 	<-g.release
+	if hook := g.onList.Load(); hook != nil {
+		defer (*hook)()
+	}
 	return g.Store.List(q)
 }
 
@@ -343,6 +331,66 @@ func TestCloseWorthRunningGivesUpOnSlotWait(t *testing.T) {
 	f.drainAbandoned(t)
 	if got := f.state.calls.Load(); got != 8 {
 		t.Errorf("Lists started = %d, want 8 (the precheck started none)", got)
+	}
+}
+
+// The precheck's stranded re-read (onlyStrandedWork) takes the effect's ctx
+// too: once it has ended, the re-read starts no List and the close runs (the
+// effect decides), never a refusal on a read nobody waits for.
+func TestCloseWorthRunningStrandedReReadGivesUp(t *testing.T) {
+	f := newSeatReadBoundFixture(t, 16, false)
+	close(f.state.release)
+	row := sessionInfoForBoundTest()
+	mustCreateDrainAckBead(t, f.work.Store, beads.Bead{Title: "stranded", Type: "task", Metadata: map[string]string{"gc.routed_to": "nowhere/lane"}}, "open", row.ID)
+	scope := releaseScope(row, f.legs.cfg)
+	if has, err := seatWorkFor(f.legs, scope).has(seatWorkQuery{scope: scope, statuses: seatWorkStatuses}); !has || err != nil {
+		t.Fatalf("setup: seat read = %v, %v; want the stranded claim", has, err)
+	}
+	perRead := f.state.calls.Swap(0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	hook := func() { cancel() } // the deadline passes while the first read runs
+	f.state.onList.Store(&hook)
+	a := aroundCaps{
+		it:      intent{Kind: intentClose, Closing: closeSpec{Kind: closeOrphan, Orphaned: true, Row: row}},
+		reads:   f.effectPassOver().reads,
+		release: &closeReleases{cfg: f.legs.cfg},
+	}
+	if !closeWorthRunning(ctx, a) {
+		t.Fatal("closeWorthRunning = false after its ctx ended, want true (the effect decides)")
+	}
+	if got := f.state.calls.Load(); got != perRead {
+		t.Errorf("Lists started = %d, want %d (the first read's only: the re-read after the deadline started none)", got, perRead)
+	}
+}
+
+// A read takes every slot it needs at once or none: with slots only partly
+// free when its ctx ends, it starts no List.
+func TestSeatReadTakesAllSlotsOrNone(t *testing.T) {
+	f := newSeatReadBoundFixture(t, 10, true)
+	f.releaseAtCleanup(t)
+	go func() { _, _ = seatWorkFor(f.legs, f.scope).has(f.q) }() // abandoned: holds 8, 2 stay free
+	waitForCur(t, f.state, 8)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := seatWorkForCtx(ctx, f.legs, f.scope).has(f.q)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errSeatReadNoSlot) {
+			t.Errorf("err = %v, want errSeatReadNoSlot", err)
+		}
+	case <-time.After(time.Second):
+		t.Error("the ctx'd read did not give up: it started Lists on the free slots and waits on them")
+	}
+	f.drainAbandoned(t)
+	if got := f.state.calls.Load(); got != 8 {
+		t.Errorf("Lists started = %d, want 8 (the abandoned read's only: the ctx'd read started none of its 8)", got)
 	}
 }
 
