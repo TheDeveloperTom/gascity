@@ -352,7 +352,13 @@ func boundedProbe[T any](ctx context.Context, probe func() T) (T, bool) {
 
 // boundedProbeCtx is boundedProbe for a probe that takes the bounded context.
 func boundedProbeCtx[T any](ctx context.Context, probe func(context.Context) T) (T, bool) {
-	ctx, cancel := context.WithTimeout(ctx, fenceProbeTimeout)
+	return boundedProbeFor(ctx, fenceProbeTimeout, probe)
+}
+
+// boundedProbeFor is boundedProbeCtx under bound instead of fenceProbeTimeout:
+// a close's seat reads (closeSeatReadBudget, the close's own L5).
+func boundedProbeFor[T any](ctx context.Context, bound time.Duration, probe func(context.Context) T) (T, bool) {
+	ctx, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
 	out, failed := make(chan T, 1), make(chan struct{})
 	go func() {

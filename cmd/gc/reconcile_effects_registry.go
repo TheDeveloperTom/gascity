@@ -45,6 +45,10 @@ type effectReads struct {
 	rigs map[string]beads.Store
 	// cityPath keys the city's identifier locks (A7's alias lock).
 	cityPath string
+	// closeRead is one close's seat read before its lease, which runTx mints
+	// per close effect and shares between its around and its sections; nil on
+	// the pass's own reads and for every other kind.
+	closeRead *closeSeatRead
 }
 
 // heldCaps are a pass's capabilities. create is what the pass hands its

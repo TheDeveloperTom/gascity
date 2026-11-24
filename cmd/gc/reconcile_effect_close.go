@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -62,13 +63,75 @@ import (
 
 // Close refusal causes; a fresh read's are readRuntime's.
 const (
-	causeLivePane      = "live-pane"          // the fresh read shows a live pane: not stopped
-	causeStranded      = "stranded-unstamped" // work on an unmarked pool slot whose every claim its detached probe holds, or whose read the Probe's bound cut short
-	causeReleaseFailed = "release-failed"     // the stranded repair's release failed on a claim or a leg
-	causeDetachedHeld  = "detached-held"      // the stranded repair kept a claim whose detached probe did not attest its runtime dead
-	causeParked        = "parked"             // a pool slot whose live work is only pre-assigned, unstarted, blocked pins (ga-ylpbsy.16)
-	causeParkUnread    = "park-unread"        // a pool slot eligible to park whose live work read failed: no stamp, no repair
+	causeLivePane       = "live-pane"          // the fresh read shows a live pane: not stopped
+	causeStranded       = "stranded-unstamped" // work on an unmarked pool slot whose every claim its detached probe holds
+	causeReleaseFailed  = "release-failed"     // the stranded repair's release failed on a claim or a leg
+	causeDetachedHeld   = "detached-held"      // the stranded repair kept a claim whose detached probe did not attest its runtime dead
+	causeParked         = "parked"             // a pool slot whose live work is only pre-assigned, unstarted, blocked pins (ga-ylpbsy.16)
+	causeParkUnread     = "park-unread"        // a pool slot eligible to park whose live work read failed: no stamp, no repair
+	causeWorkUnread     = "work-unread"        // the seat read before the lease failed, and only a branch that needs L5 could act: refused before the lease
+	causeStrandedUnread = "stranded-unread"    // work on an unmarked pool slot whose stranded read did not answer (failed or cut short): no stamp
 )
+
+// closeSeatReadBudget bounds a close's seat read before its lease
+// (closePrecheck). It leaves the close's own L5 read, the sections'
+// runtime reads, the stranded Probe and the close's CAS room inside
+// providerEffectDeadline (TestCloseBudgetsFitEffectDeadline).
+const closeSeatReadBudget = 20 * time.Second
+
+// The pass record's buckets (passMetrics.series) for a close's seat read
+// before its lease: how long it took, or that it did not answer.
+const (
+	closeSeatReadLt5s   = "close_seat_read_lt5s"
+	closeSeatReadLt10s  = "close_seat_read_lt10s"
+	closeSeatReadLt20s  = "close_seat_read_lt20s"
+	closeSeatReadUnread = "close_seat_read_unread"
+)
+
+// errStrandedHeld is a stranded-unstamped refusal's error: the read answered,
+// and every claim it found is held by its detached probe.
+var errStrandedHeld = errors.New("every claim held: its detached probe does not attest its runtime dead")
+
+// errStrandedUnsearched is a stranded-unread refusal's error when its Probe
+// reported none: the read did not answer.
+var errStrandedUnsearched = errors.New("the stranded read did not answer")
+
+// closeSeatRead is a close's seat read before its lease (closePrecheck),
+// shared, by one pointer runTx mints per close, between its around and its
+// sections. Only a read that answered (clean) is reused, and only for the
+// identities it read: L5 in the sections before the close's own, and the
+// stranded Probe. The close's own section reads L5 live (v5.10a B).
+type closeSeatRead struct {
+	sw   *SeatWork // the loaded read, set only when it answered
+	ids  []string  // the scope's identities the read listed
+	err  error     // why it did not answer
+	took time.Duration
+	read bool // the precheck made the read
+}
+
+// clean is the read for scope, when it answered for exactly scope's
+// identities; nil otherwise, and on a nil holder.
+func (r *closeSeatRead) clean(scope workScope) *SeatWork {
+	if r == nil || !r.read || r.err != nil || r.sw == nil || scope.refuses() || !slices.Equal(r.ids, scope.scopeIDs()) {
+		return nil
+	}
+	return r.sw
+}
+
+// bucket is the read's passMetrics.series bucket; "" when no read was made.
+func (r *closeSeatRead) bucket() string {
+	switch {
+	case r == nil || !r.read:
+		return ""
+	case r.err != nil:
+		return closeSeatReadUnread
+	case r.took < 5*time.Second:
+		return closeSeatReadLt5s
+	case r.took < 10*time.Second:
+		return closeSeatReadLt10s
+	}
+	return closeSeatReadLt20s
+}
 
 // closeSections are C8.8 with its corpse kill, the work branches with their
 // release, then the premise close.
@@ -218,8 +281,12 @@ type strandedWork struct {
 // attests dead, or that carries none, is stranded: a claim whose probe
 // reports it alive or observed nothing (error or timeout) may still run, so
 // it is held out on its own, and the slot's other work is still stranded.
-// The Probe's own bound cutting the read short leaves the work unsearched, so
-// this attempt refuses.
+// The Probe's own bound cutting the read short, or the read failing, leaves
+// the work unsearched with the read's error, so this attempt refuses
+// stranded-unread. The read is the close's own before its lease when that
+// answered (closeSeatRead): its rows, already loaded, are read again by no
+// List here. A park-eligible slot's readiness reads (liveParkedWork) stay
+// live, inside the Probe's bound.
 func strandedProbe(ctx context.Context, r effectReads, v txView) (strandedWork, error) {
 	c := v.It.Closing
 	unmarked := strings.TrimSpace(v.Row.StrandedEventEmittedAt) == ""
@@ -227,13 +294,21 @@ func strandedProbe(ctx context.Context, r effectReads, v txView) (strandedWork, 
 		!unmarked && !c.ParkEligible || v.World.Env == nil {
 		return strandedWork{}, nil
 	}
-	work, err := collectSessionAssignedWorkInfo(seatWorkForCtx(ctx, r.legs, releaseScope(v.Row, v.World.Env.Cfg)), v.Row)
+	scope := releaseScope(v.Row, v.World.Env.Cfg)
+	sw := r.closeRead.clean(scope)
+	if sw == nil {
+		sw = seatWorkForCtx(ctx, r.legs, scope)
+	}
+	work, err := collectSessionAssignedWorkInfo(sw, v.Row)
 	var out strandedWork
 	if c.ParkEligible {
 		out.parked, out.parkErr = liveParkedWork(work, err, releaseSeatOfInfo(v.Row), v.World.Now)
 		if out.parked || out.parkErr != nil || !unmarked {
 			return out, nil
 		}
+	}
+	if err != nil { // no stamp rests on a read that did not answer
+		return strandedWork{}, err
 	}
 	status := make([]detachedProbeStatus, len(work))
 	var wg sync.WaitGroup
@@ -249,7 +324,7 @@ func strandedProbe(ctx context.Context, r effectReads, v txView) (strandedWork, 
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
-		return strandedWork{}, nil
+		return strandedWork{}, errProbeExpired
 	}
 	out.searched = true
 	for i, item := range work {
@@ -257,7 +332,7 @@ func strandedProbe(ctx context.Context, r effectReads, v txView) (strandedWork, 
 			out.ids = append(out.ids, item.bead.ID)
 		}
 	}
-	out.held = err == nil && len(work) > 0 && len(out.ids) == 0
+	out.held = len(work) > 0 && len(out.ids) == 0
 	return out, nil
 }
 
@@ -272,7 +347,7 @@ func (r closeRelease) wanted() bool { return r.seat.id != "" }
 
 // closeWorkStep is the work branch's Decide: a release for the Call, the
 // stranded marker's stamp, or neither.
-func closeWorkStep(v txView, stranded strandedWork, _ error) txStep {
+func closeWorkStep(v txView, stranded strandedWork, probeErr error) txStep {
 	fresh, cause := redecideClose(v)
 	if cause != "" {
 		return txStep{Refuse: cause}
@@ -309,8 +384,13 @@ func closeWorkStep(v txView, stranded strandedWork, _ error) txStep {
 	case c.Kind == closePoolSlot && c.Repair:
 		return release(releaseStrandedRepair)
 	case c.Kind == closePoolSlot && strings.TrimSpace(v.Row.StrandedEventEmittedAt) == "":
-		if !stranded.searched || stranded.held {
-			return txStep{Refuse: causeStranded}
+		// Two refusals the trace tells apart by cause: a read that did not
+		// answer, and work whose every claim may still run.
+		switch {
+		case probeErr != nil || !stranded.searched:
+			return txStep{Refuse: causeStrandedUnread, Err: cmp.Or(probeErr, errStrandedUnsearched)}
+		case stranded.held:
+			return txStep{Refuse: causeStranded, Err: errStrandedHeld}
 		}
 		at := v.World.Now.UTC()
 		ids := stranded.ids
@@ -379,40 +459,87 @@ func closeStep(v txView, strandedOnly bool, _ error) txStep {
 }
 
 // closeAround runs the close, then its cascade once it landed. It runs
-// nothing when its precheck finds work the close's branches cannot act on:
-// the close would only refuse has-work, after taking the row's lease record.
+// nothing when its precheck finds work the close's branches cannot act on
+// (has-work), or cannot read the seat for a close only L5 could let through
+// (work-unread): either would only refuse, after taking the row's lease
+// record. Its settlement carries the precheck read's bucket.
 func closeAround(ctx context.Context, a aroundCaps, run func() settlement) settlement {
-	if !closeWorthRunning(ctx, a) {
-		return refused(causeHasWork)
+	var s settlement
+	if worth, cause, err := closePrecheck(ctx, a); worth {
+		s = run()
+		if s.Closed && a.release != nil {
+			a.release.cascade(ctx, a.it)
+		}
+	} else {
+		s = refused(cause)
+		s.Err = err
 	}
-	s := run()
-	if s.Closed && a.release != nil {
-		a.release.cascade(ctx, a.it)
-	}
+	s.Facts.SeatRead = a.reads.closeRead.bucket()
 	return s
 }
 
-// closeWorthRunning is the close's work precheck, outside every lock, over
-// the read-only legs and the pass's row: false only when L5 finds work that
-// no branch of the close acts on, so the effect would refuse has-work. A
-// phantom skips L5; a killed seat runs while its release would give a claim
-// back; an orphaned orphan while a claim is releasable or every claim is
-// stranded; a pool slot while its marker is aged (the repair) or empty (the
-// stamp). With no legs to read L5 through it runs nothing; a failed read
-// runs, and the effect decides.
+// closeWorthRunning is closePrecheck's verdict alone.
 func closeWorthRunning(ctx context.Context, a aroundCaps) bool {
+	worth, _, _ := closePrecheck(ctx, a)
+	return worth
+}
+
+// closePrecheck is the close's work precheck, outside every lock, over the
+// read-only legs and the pass's row: whether the effect is worth running,
+// and when not the cause (and error) it refuses with. It reads the seat once,
+// within closeSeatReadBudget, into the close's closeSeatRead, which the
+// sections before the close's own and the stranded Probe reuse when it
+// answered. A phantom skips L5; a killed seat runs while its release would
+// give a claim back; an orphaned orphan while a claim is releasable or every
+// claim is stranded; a pool slot while its marker is aged (the repair) or
+// empty (the stamp). With no legs to read L5 through it runs nothing.
+//
+// A failed or expired read runs only the branches that act without L5 (a
+// killed seat's release, a repair, an orphaned orphan's release), each then
+// reading L5 live; every other close refuses work-unread before its lease.
+// Fork divergence (devwork L-engine-seatclose): upstream 56c1e6e64 ran every
+// close on a failed read, and those closes could only refuse after writing
+// the lease record, at 24 bd processes per seat read on a remote store.
+func closePrecheck(ctx context.Context, a aroundCaps) (bool, string, error) {
 	c := a.it.Closing
 	switch {
 	case c.Phantom:
-		return true
+		return true, "", nil
 	case a.release == nil || a.reads.legs.unusable() != nil:
-		return false // L5 cannot read: the effect could only refuse
+		return false, causeHasWork, nil // L5 cannot read: the effect could only refuse
 	}
 	cfg := a.release.cfg
 	scope := releaseScope(c.Row, cfg)
-	hits, err := seatWorkForCtx(ctx, a.reads.legs, scope).match(seatWorkQuery{scope: scope, statuses: seatWorkStatuses}, false)
-	if err != nil || len(hits) == 0 {
-		return true
+	type seatRead struct {
+		sw   *SeatWork
+		hits []seatWorkHit
+		err  error
+	}
+	start := time.Now()
+	got, ok := boundedProbeFor(ctx, closeSeatReadBudget, func(ctx context.Context) seatRead {
+		sw := seatWorkForCtx(ctx, a.reads.legs, scope)
+		hits, err := sw.match(seatWorkQuery{scope: scope, statuses: seatWorkStatuses}, false)
+		return seatRead{sw: sw, hits: hits, err: err}
+	})
+	if !ok {
+		got = seatRead{err: errProbeExpired}
+	}
+	took := time.Since(start)
+	if r := a.reads.closeRead; r != nil {
+		r.read, r.took, r.err, r.ids = true, took, got.err, scope.scopeIDs()
+		if got.err == nil {
+			r.sw = got.sw
+		}
+	}
+	if got.err != nil {
+		if c.Killed || c.Repair || c.Kind == closeOrphan && c.Orphaned {
+			return true, "", nil
+		}
+		return false, causeWorkUnread, fmt.Errorf("reading the seat's work before the lease (%v): %w", took.Round(time.Millisecond), got.err)
+	}
+	hits := got.hits
+	if len(hits) == 0 {
+		return true, "", nil
 	}
 	seat := releaseSeatOfInfo(c.Row)
 	// direct is the release's own lane rule: the killed seat's release
@@ -421,20 +548,22 @@ func closeWorthRunning(ctx context.Context, a aroundCaps) bool {
 		_, ok := releaseRoute(cfg, b, fallback, laneDirect)
 		return ok
 	}
+	worth := false
 	switch {
 	case c.Killed:
 		started := slices.ContainsFunc(hits, func(h seatWorkHit) bool { return h.bead.Status == "in_progress" || seat.started[h.bead.ID] })
-		return !started && slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, seat.fallback) })
+		worth = !started && slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, seat.fallback) })
 	case c.Kind == closeOrphan && c.Orphaned:
-		if slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, "") }) {
-			return true
-		}
-		stranded := onlyStrandedWork(seatWorkForCtx(ctx, a.reads.legs, scope), c.Row)
-		return stranded || ctx.Err() != nil // a re-read cut short runs, as a failed read does
+		worth = slices.ContainsFunc(hits, func(h seatWorkHit) bool { return direct(h.bead, "") }) ||
+			onlyStrandedWork(seatWorkForCtx(ctx, a.reads.legs, scope), c.Row) ||
+			ctx.Err() != nil // a re-read cut short runs: the orphan's release acts without L5
 	case c.Kind == closePoolSlot:
-		return c.Repair || strings.TrimSpace(c.Row.StrandedEventEmittedAt) == ""
+		worth = c.Repair || strings.TrimSpace(c.Row.StrandedEventEmittedAt) == ""
 	}
-	return false
+	if !worth {
+		return false, causeHasWork, nil
+	}
+	return true, "", nil
 }
 
 // closeReleases are what a close's releases write through: the pass's raw

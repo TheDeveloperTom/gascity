@@ -288,6 +288,9 @@ type needs struct {
 	// non-interactive idle begin, the idle-timeout stop), recorded under the
 	// program-status shadow switch beside the record (proved_idle).
 	IdleShadow bool
+	// workBound bounds L5 in place of fenceProbeTimeout when set: the close
+	// section's (readFence, closeL5Bound). Set per read, never in a spec.
+	workBound time.Duration
 }
 
 func (s effectSpec) needsOf(w *World, it intent) needs {
@@ -568,6 +571,9 @@ type effectFacts struct {
 	// which the planner remembers so neither A12 nor the start's recycle
 	// classifies a pair twice (v5 S5, X10).
 	Classified *classifiedRuntime
+	// SeatRead is the bucket of a close's seat read before its lease
+	// (closeSeatReadLt5s, ...), which the pass record counts.
+	SeatRead string
 }
 
 // classifiedRuntime is a row's dead runtime, by its runtime token, and the
@@ -593,7 +599,7 @@ type notedRuntime struct {
 }
 
 func (f effectFacts) empty() bool {
-	return len(f.Events) == 0 && f.Transition == nil && f.Work == nil && f.Noted == nil && f.Quarantined == "" && f.AliasOwed == nil && f.Stopped == nil && f.Classified == nil && f.IdleKilled == ""
+	return len(f.Events) == 0 && f.Transition == nil && f.Work == nil && f.Noted == nil && f.Quarantined == "" && f.AliasOwed == nil && f.Stopped == nil && f.Classified == nil && f.IdleKilled == "" // SeatRead alone is no fact a late settlement applies
 }
 
 func (f *effectFacts) merge(g effectFacts) {
@@ -606,6 +612,7 @@ func (f *effectFacts) merge(g effectFacts) {
 	f.Stopped = cmp.Or(g.Stopped, f.Stopped)
 	f.Classified = cmp.Or(g.Classified, f.Classified)
 	f.IdleKilled = cmp.Or(g.IdleKilled, f.IdleKilled)
+	f.SeatRead = cmp.Or(g.SeatRead, f.SeatRead)
 }
 
 // Transaction causes. A refusal backs the row off (P4).
@@ -640,6 +647,11 @@ func runTx(ctx context.Context, p *effectPass, it intent, spec effectSpec, latch
 		return runSpec(ctx, p, it, spec, c)
 	}
 	ran := false
+	if it.Kind == intentClose {
+		// One seat read per close, its own: never on p.reads, which capsFor
+		// copies into every effect of the pass.
+		c.reads.closeRead = &closeSeatRead{}
+	}
 	a := aroundCaps{it: it, reads: c.reads, release: c.release}
 	if spec.caps&capRetire != 0 {
 		r := p.held.retire
@@ -1008,7 +1020,7 @@ func (t *tx) read(ctx context.Context, sec section) (settlement, bool) {
 		}
 	}
 	if t.needs.Legs != 0 || t.needs.Idle {
-		if cause := t.readFence(ctx); cause != "" {
+		if cause := t.readFence(ctx, sec.Premise); cause != "" {
 			return refused(cause), false
 		}
 	}
