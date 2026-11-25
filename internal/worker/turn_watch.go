@@ -327,6 +327,12 @@ func (w *transcriptWatch) resolve(ctx context.Context) error {
 		return err
 	}
 	if w.follower != nil && path == w.plan.path {
+		// kqueue drops a file's watch when the file is renamed or removed;
+		// a transcript replaced at the same path is watched again here.
+		if w.notify != nil && len(w.notify.watcher.WatchList()) == 0 {
+			w.stopNotify()
+			w.notify = newTranscriptNotifier(path, w.wake)
+		}
 		return nil
 	}
 	if err := w.follow(path); err != nil {
@@ -372,8 +378,13 @@ func (w *transcriptWatch) wait(hist runtime.TurnHistory, err error) time.Duratio
 }
 
 // transcriptNotifier wakes a watcher when its transcript is written, created,
-// renamed or removed. It watches the transcript's directory, so a file
-// replaced by rotation keeps waking it.
+// renamed or removed. On inotify it watches the transcript's directory, as
+// fsnotify advises, so a file replaced at the same path keeps waking it. On
+// kqueue it watches the transcript itself (transcriptWatchTarget): there a
+// directory watch opens one descriptor per entry, and every watcher of a
+// provider's shared transcript directory would hold thousands. kqueue drops
+// the file's watch when it is renamed or removed; the backstop poll's
+// resolve re-arms it, so a replaced transcript wakes again after one poll.
 type transcriptNotifier struct {
 	watcher *fsnotify.Watcher
 }
@@ -388,7 +399,7 @@ func newTranscriptNotifier(path string, wake chan<- struct{}) *transcriptNotifie
 		slog.Warn("worker: transcript turn watch falls back to polling", slog.String("path", path), slog.Any("err", err))
 		return nil
 	}
-	if err := w.Add(filepath.Dir(path)); err != nil {
+	if err := w.Add(transcriptWatchTarget(path)); err != nil {
 		w.Close() //nolint:errcheck // nothing was watched
 		slog.Warn("worker: transcript turn watch falls back to polling", slog.String("path", path), slog.Any("err", err))
 		return nil
