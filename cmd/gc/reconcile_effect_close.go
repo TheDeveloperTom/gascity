@@ -474,7 +474,7 @@ func closeAround(ctx context.Context, a aroundCaps, run func() settlement) settl
 		s = refused(cause)
 		s.Err = err
 	}
-	s.Facts.SeatRead = a.reads.closeRead.bucket()
+	s.SeatRead = a.reads.closeRead.bucket()
 	return s
 }
 

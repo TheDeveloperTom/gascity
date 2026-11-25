@@ -68,9 +68,13 @@ type settlement struct {
 	// createBackoffKey under its ConfigRev, set only when it landed or was
 	// refused at a stage.
 	BackoffKey, Fingerprint string
-	Facts                   effectFacts // applied once drained (applyFacts)
-	Err                     error
-	At                      time.Time
+	// SeatRead is a close's seat read before its lease, by bucket
+	// (closeSeatReadLt5s, ...), which the pass record counts
+	// (observeSettlement); "" when none was made. No fact to apply.
+	SeatRead string
+	Facts    effectFacts // applied once drained (applyFacts)
+	Err      error
+	At       time.Time
 	// Late marks what an effect returned after the executor settled it: the
 	// drain applies only its facts.
 	Late bool

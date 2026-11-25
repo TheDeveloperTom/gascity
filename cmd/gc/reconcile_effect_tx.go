@@ -571,9 +571,6 @@ type effectFacts struct {
 	// which the planner remembers so neither A12 nor the start's recycle
 	// classifies a pair twice (v5 S5, X10).
 	Classified *classifiedRuntime
-	// SeatRead is the bucket of a close's seat read before its lease
-	// (closeSeatReadLt5s, ...), which the pass record counts.
-	SeatRead string
 }
 
 // classifiedRuntime is a row's dead runtime, by its runtime token, and the
@@ -599,7 +596,7 @@ type notedRuntime struct {
 }
 
 func (f effectFacts) empty() bool {
-	return len(f.Events) == 0 && f.Transition == nil && f.Work == nil && f.Noted == nil && f.Quarantined == "" && f.AliasOwed == nil && f.Stopped == nil && f.Classified == nil && f.IdleKilled == "" // SeatRead alone is no fact a late settlement applies
+	return len(f.Events) == 0 && f.Transition == nil && f.Work == nil && f.Noted == nil && f.Quarantined == "" && f.AliasOwed == nil && f.Stopped == nil && f.Classified == nil && f.IdleKilled == ""
 }
 
 func (f *effectFacts) merge(g effectFacts) {
@@ -612,7 +609,6 @@ func (f *effectFacts) merge(g effectFacts) {
 	f.Stopped = cmp.Or(g.Stopped, f.Stopped)
 	f.Classified = cmp.Or(g.Classified, f.Classified)
 	f.IdleKilled = cmp.Or(g.IdleKilled, f.IdleKilled)
-	f.SeatRead = cmp.Or(g.SeatRead, f.SeatRead)
 }
 
 // Transaction causes. A refusal backs the row off (P4).

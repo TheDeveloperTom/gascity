@@ -275,8 +275,8 @@ func TestCloseSeatReadDurationCounted(t *testing.T) {
 	c := idlePoolSlot(t)
 	countSeatReads(c)
 	got := c.run(t, gone().tmux())
-	if got.Facts.SeatRead != closeSeatReadLt5s {
-		t.Fatalf("settlement facts %+v, want seat read bucket %q", got.Facts, closeSeatReadLt5s)
+	if got.SeatRead != closeSeatReadLt5s {
+		t.Fatalf("settlement %+v, want seat read bucket %q", got, closeSeatReadLt5s)
 	}
 	got.Kind = intentClose
 	p := newPlanner(newFakePlannerClock(plannerT0), func() time.Duration { return time.Minute }, nil, nil, nil, io.Discard)
