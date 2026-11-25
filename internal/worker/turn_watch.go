@@ -289,6 +289,11 @@ type transcriptWatch struct {
 	notify      *transcriptNotifier      // nil without fsnotify
 	lastProbe   time.Time
 	lastResolve time.Time
+
+	// notifyLost is set while a re-arm of the notifier failed, so the next
+	// backstop poll tries again. A notifier that failed in follow is not
+	// retried: fsnotify unavailable stays on the poll, as before.
+	notifyLost bool
 }
 
 // read reads the transcript's turns. It reloads the session first, whatever
@@ -328,10 +333,13 @@ func (w *transcriptWatch) resolve(ctx context.Context) error {
 	}
 	if w.follower != nil && path == w.plan.path {
 		// kqueue drops a file's watch when the file is renamed or removed;
-		// a transcript replaced at the same path is watched again here.
-		if w.notify != nil && len(w.notify.watcher.WatchList()) == 0 {
+		// a transcript replaced at the same path is watched again here, and
+		// a re-arm that failed is tried again on the next poll. WatchList
+		// lists only the watches added through Add, not fsnotify's own.
+		if (w.notify != nil && len(w.notify.watcher.WatchList()) == 0) || w.notifyLost {
 			w.stopNotify()
 			w.notify = newTranscriptNotifier(path, w.wake)
+			w.notifyLost = w.notify == nil
 		}
 		return nil
 	}
@@ -349,6 +357,7 @@ func (w *transcriptWatch) follow(path string) error {
 	}
 	w.stopNotify()
 	w.plan.path, w.follower = path, f
+	w.notifyLost = false
 	if !w.timing.noNotify {
 		w.notify = newTranscriptNotifier(path, w.wake)
 	}
@@ -378,7 +387,7 @@ func (w *transcriptWatch) wait(hist runtime.TurnHistory, err error) time.Duratio
 }
 
 // transcriptNotifier wakes a watcher when its transcript is written, created,
-// renamed or removed. On inotify it watches the transcript's directory, as
+// renamed or removed. Off kqueue it watches the transcript's directory, as
 // fsnotify advises, so a file replaced at the same path keeps waking it. On
 // kqueue it watches the transcript itself (transcriptWatchTarget): there a
 // directory watch opens one descriptor per entry, and every watcher of a

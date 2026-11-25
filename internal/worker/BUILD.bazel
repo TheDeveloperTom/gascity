@@ -37,6 +37,8 @@ go_library(
         "transcriptmeta_reconcile.go",
         "turn.go",
         "turn_watch.go",
+        "turn_watch_target_kqueue.go",
+        "turn_watch_target_other.go",
         "types.go",
         "user_prompt.go",
     ],
@@ -128,6 +130,8 @@ go_test(
         "turn_fixture_test.go",
         "turn_held_transcript_test.go",
         "turn_interrupt_test.go",
+        "turn_watch_kqueue_test.go",
+        "turn_watch_notify_test.go",
         "turn_watch_test.go",
     ],
     data = glob(
