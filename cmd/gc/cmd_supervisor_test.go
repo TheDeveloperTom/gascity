@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -381,6 +382,161 @@ func TestRenderSupervisorLaunchdTemplateUsesPreserveEnvFromData(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Fatalf("launchd template missing preserve env %q:\n%s", want, content)
 		}
+	}
+}
+
+// launchdPlistRootEntry is one value of a launchd plist's root dict: the
+// element that holds it ("integer", "string", "dict", ...) and its text,
+// empty for a dict or an array.
+type launchdPlistRootEntry struct {
+	kind, text string
+}
+
+// launchdPlistRootEntries decodes the root dict of a rendered launchd plist.
+// It holds only that dict's own keys, so a key inside EnvironmentVariables or
+// KeepAlive is not among them, and it fails the test on a root key set twice.
+func launchdPlistRootEntries(t *testing.T, content string) map[string]launchdPlistRootEntry {
+	t.Helper()
+	dec := xml.NewDecoder(strings.NewReader(content))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("launchd plist has no root dict: %v\n%s", err, content)
+		}
+		if start, ok := tok.(xml.StartElement); ok && start.Name.Local == "dict" {
+			break
+		}
+	}
+	root := make(map[string]launchdPlistRootEntry)
+	key := ""
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("decoding launchd plist root dict: %v\n%s", err, content)
+		}
+		switch tok := tok.(type) {
+		case xml.StartElement:
+			if tok.Name.Local == "key" {
+				if err := dec.DecodeElement(&key, &tok); err != nil {
+					t.Fatalf("decoding launchd plist key: %v\n%s", err, content)
+				}
+				continue
+			}
+			entry := launchdPlistRootEntry{kind: tok.Name.Local}
+			if entry.kind == "dict" || entry.kind == "array" {
+				err = dec.Skip()
+			} else {
+				err = dec.DecodeElement(&entry.text, &tok)
+			}
+			if err != nil {
+				t.Fatalf("decoding launchd plist value of %q: %v\n%s", key, err, content)
+			}
+			if _, dup := root[key]; dup {
+				t.Fatalf("launchd plist root sets %q twice:\n%s", key, content)
+			}
+			root[key] = entry
+			key = ""
+		case xml.EndElement:
+			if tok.Name.Local == "dict" {
+				return root
+			}
+		}
+	}
+}
+
+// TestRenderSupervisorLaunchdTemplateSetsExitTimeOut: with no root
+// ExitTimeOut, launchd SIGKILLs the supervisor a system-defined time after a
+// stop's SIGTERM (launchd.plist(5); `launchctl print` reports
+// "exit timeout = 5" on macOS 15). That can land before CityRuntime.shutdown
+// closes the workspace services, which it does only after waiting for
+// in-flight session starts and stops. On darwin a service runs in its own
+// process group with no Pdeathsig (proxyProcessSysProcAttr), so it outlives
+// the killed supervisor. launchd reads the value as an integer number of
+// seconds. 90 is systemd's DefaultTimeoutStopSec (systemd-system.conf(5)),
+// which supervisorSystemdTemplate relies on by setting no TimeoutStopSec.
+func TestRenderSupervisorLaunchdTemplateSetsExitTimeOut(t *testing.T) {
+	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, &supervisorServiceData{
+		GCPath:       "/usr/local/bin/gc",
+		LogPath:      "/home/user/.gc/supervisor.log",
+		GCHome:       "/home/user/.gc",
+		LaunchdLabel: defaultSupervisorLaunchdLabel,
+		Path:         "/usr/local/bin:/usr/bin:/bin",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := launchdPlistRootEntries(t, content)["ExitTimeOut"]
+	if !ok {
+		t.Fatalf("launchd plist root sets no ExitTimeOut:\n%s", content)
+	}
+	if want := (launchdPlistRootEntry{kind: "integer", text: "90"}); got != want {
+		t.Fatalf("launchd plist root ExitTimeOut = <%s>%s</%s>, want <integer>90</integer>", got.kind, got.text, got.kind)
+	}
+}
+
+// TestSupervisorLaunchdExitTimeOutCoversDestructiveStop: the plist's
+// ExitTimeOut must outlast the stop launchd times, at the engine defaults.
+// `gc supervisor stop` asks the supervisor for a destructive stop and then
+// boots the job out (stopSupervisorViaSocketJSON), so launchd's
+// SIGTERM-to-SIGKILL timer runs over that whole stop. Each term below is one
+// engine bound taken in full once, read from the engine's code rather than
+// copied, so raising one fails this test until supervisorLaunchdExitTimeOut
+// follows. Not covered: runSupervisor stops cities one after another,
+// provider-owned rig stores stop one after another, and each nudge poller
+// that ignores SIGTERM adds up to twice nudgePollerStopGrace, so several
+// cities, rig stores or hung pollers can still need longer.
+func TestSupervisorLaunchdExitTimeOutCoversDestructiveStop(t *testing.T) {
+	city := &managedCity{cr: &CityRuntime{cfg: &config.City{}}} // no [daemon] overrides
+	terms := []struct {
+		what string
+		d    time.Duration
+	}{
+		// stopManagedCity waits shutdown_timeout for the canceled city,
+		{"cancel wait", managedCityStopTimeout(city)},
+		// then forces its shutdown under one deadline of 5x that,
+		{"forced shutdown", managedCityForcedStopTimeout(city)},
+		// then stops the bead store (shutdownBeadsProvider). It waits for the
+		// exec provider's "stop" op at most providerOpTimeout("stop"); inside
+		// that op the managed Dolt gets dolt_stop_timeout to exit
+		// (resolveManagedDoltStopTimeout), so the larger of the two bounds
+		// this step.
+		{"bead store stop", max(city.cr.cfg.Daemon.DoltStopTimeoutDuration(), providerOpTimeout("stop"))},
+		// Once the op times out, its Wait returns within exec.Cmd.WaitDelay,
+		// a 2 s literal with no constant (runProviderOpWithEnvContext,
+		// beads_provider_lifecycle.go:4229).
+		{"provider op wait delay", 2 * time.Second},
+		// With its cities stopped the process keeps its socket briefly,
+		// drains HTTP streams and stops pprof before it exits; this is the
+		// engine's own bound for that tail.
+		{"process exit", supervisorStopProcessExitGrace},
+	}
+	var budget time.Duration
+	var spelled []string
+	for _, term := range terms {
+		budget += term.d
+		spelled = append(spelled, fmt.Sprintf("%s %s", term.what, term.d))
+	}
+
+	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, &supervisorServiceData{
+		GCPath:       "/usr/local/bin/gc",
+		LogPath:      "/home/user/.gc/supervisor.log",
+		GCHome:       "/home/user/.gc",
+		LaunchdLabel: defaultSupervisorLaunchdLabel,
+		Path:         "/usr/local/bin:/usr/bin:/bin",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := launchdPlistRootEntries(t, content)["ExitTimeOut"]
+	if !ok {
+		t.Fatalf("launchd plist sets no ExitTimeOut, so launchd's system-defined default (5 s on macOS 15) bounds a stop that can take %s: %s", budget, strings.Join(spelled, " + "))
+	}
+	seconds, err := strconv.Atoi(got.text)
+	if got.kind != "integer" || err != nil {
+		t.Fatalf("launchd plist ExitTimeOut = <%s>%s</%s>, want an integer number of seconds", got.kind, got.text, got.kind)
+	}
+	if exit := time.Duration(seconds) * time.Second; exit < budget {
+		t.Fatalf("launchd ExitTimeOut %s is shorter than the %s destructive stop at engine defaults: %s", exit, budget, strings.Join(spelled, " + "))
 	}
 }
 
