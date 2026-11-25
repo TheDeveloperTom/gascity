@@ -66,7 +66,9 @@ type TurnHandle interface {
 	// a turn that began before that window. A transcript write wakes the watch
 	// at once, but a move to a new conversation's transcript, and every write
 	// while fsnotify is unavailable, is seen only on the backstop poll: within
-	// 60 s while the session is idle.
+	// 60 s while the session is idle. On kqueue, after the transcript is
+	// replaced at the same path, writes are likewise seen only on the backstop
+	// poll until that poll re-arms the watch.
 	// It closes when ctx is done; a transcript watch closes once a file read
 	// in progress returns. A session with no source is
 	// runtime.ErrTurnIdentityUnsupported, returned at once.
