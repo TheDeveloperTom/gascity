@@ -288,6 +288,9 @@ type needs struct {
 	// non-interactive idle begin, the idle-timeout stop), recorded under the
 	// program-status shadow switch beside the record (proved_idle).
 	IdleShadow bool
+	// workBound bounds L5 in place of fenceProbeTimeout when set: the close
+	// section's (readFence, closeL5Bound). Set per read, never in a spec.
+	workBound time.Duration
 }
 
 func (s effectSpec) needsOf(w *World, it intent) needs {
@@ -640,6 +643,11 @@ func runTx(ctx context.Context, p *effectPass, it intent, spec effectSpec, latch
 		return runSpec(ctx, p, it, spec, c)
 	}
 	ran := false
+	if it.Kind == intentClose {
+		// One seat read per close, its own: never on p.reads, which capsFor
+		// copies into every effect of the pass.
+		c.reads.closeRead = &closeSeatRead{}
+	}
 	a := aroundCaps{it: it, reads: c.reads, release: c.release}
 	if spec.caps&capRetire != 0 {
 		r := p.held.retire
@@ -1008,7 +1016,7 @@ func (t *tx) read(ctx context.Context, sec section) (settlement, bool) {
 		}
 	}
 	if t.needs.Legs != 0 || t.needs.Idle {
-		if cause := t.readFence(ctx); cause != "" {
+		if cause := t.readFence(ctx, sec.Premise); cause != "" {
 			return refused(cause), false
 		}
 	}

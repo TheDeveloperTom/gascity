@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"time"
@@ -30,7 +31,12 @@ var errNoReadStore = errors.New("v2 effect: no city work legs for the live work 
 
 // readFence reads the legs and the idle proof the transaction needs, for the
 // expected row, or refuses with a cause when no backend resolves the name.
-func (t *tx) readFence(ctx context.Context) string {
+// premise is the reading section's: a close's sections before its own
+// answer L5 from the close's seat read before its lease, when that answered
+// (closeSeatRead); the close's own section reads L5 live, nearest the CAS
+// (v5.10a B), bounded by what its ctx leaves past one fenceProbeTimeout for
+// the CAS (closeL5Bound), not by fenceProbeTimeout alone.
+func (t *tx) readFence(ctx context.Context, premise premiseRule) string {
 	var leaf runtime.Provider
 	if t.view.RT != nil {
 		leaf = t.view.RT.leaf // the leaf the runtime read used
@@ -41,8 +47,30 @@ func (t *tx) readFence(ctx context.Context) string {
 			return causeRouteUnknown
 		}
 	}
-	t.view.Fence = readLegs(ctx, leaf, t.name, t.needs, t.view.Now, t.view.World.Now, func(ctx context.Context) *txWork { return t.p.readWork(ctx, t.expect, t.view.It) })
+	n := t.needs
+	var memo *SeatWork
+	if t.view.It.Kind == intentClose && n.Legs&legWork != 0 {
+		switch {
+		case premise == premiseClose:
+			n.workBound = closeL5Bound(ctx)
+		case t.p.World.Env != nil:
+			memo = t.c.reads.closeRead.clean(releaseScope(t.expect, t.p.World.Env.Cfg))
+		}
+	}
+	t.view.Fence = readLegs(ctx, leaf, t.name, n, t.view.Now, t.view.World.Now, func(ctx context.Context) *txWork { return t.p.readWorkFrom(ctx, t.expect, t.view.It, memo) })
 	return ""
+}
+
+// closeL5Bound is the close section's L5 bound: what ctx leaves past one
+// fenceProbeTimeout kept for the close's CAS, and never less than
+// fenceProbeTimeout (ctx's own end still cuts it); fenceProbeTimeout with no
+// deadline.
+func closeL5Bound(ctx context.Context) time.Duration {
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return fenceProbeTimeout
+	}
+	return max(time.Until(dl)-fenceProbeTimeout, fenceProbeTimeout)
 }
 
 // readLegs reads the legs and the idle proof n asks for, for name on leaf:
@@ -69,7 +97,7 @@ func readLegs(ctx context.Context, leaf runtime.Provider, name string, n needs, 
 		}
 	}
 	if n.Legs&legWork != 0 {
-		w, ok := boundedProbeCtx(ctx, work)
+		w, ok := boundedProbeFor(ctx, cmp.Or(n.workBound, fenceProbeTimeout), work)
 		if !ok {
 			w = &txWork{Err: errProbeExpired}
 		}
@@ -111,6 +139,13 @@ func boundedContent(ctx context.Context, snap runtime.IdleSnapshotProvider, name
 }
 
 func (p *effectPass) readWork(ctx context.Context, row session.Info, it intent) *txWork {
+	return p.readWorkFrom(ctx, row, it, nil)
+}
+
+// readWorkFrom is readWork answering a close's L5 from read, the close's own
+// seat read before its lease that answered for row's ReleaseScope
+// (closeSeatRead.clean), when set; any other kind ignores it.
+func (p *effectPass) readWorkFrom(ctx context.Context, row session.Info, it intent, read *SeatWork) *txWork {
 	if p.reads.legs.unusable() != nil || p.World.Env == nil {
 		return &txWork{Err: errNoReadStore}
 	}
@@ -135,7 +170,11 @@ func (p *effectPass) readWork(ctx context.Context, row session.Info, it intent) 
 	if it.Kind == intentRollback { // a live incarnation's in-flight work (#2081): open work no stale incarnation can claim
 		statuses = []string{"in_progress"}
 	}
-	has, err := sessionHasAssignedWorkInStoresForStatuses(seatWorkForCtx(ctx, p.reads.legs, scope), scope, statuses)
+	sw := seatWorkForCtx(ctx, p.reads.legs, scope)
+	if read != nil && it.Kind == intentClose {
+		sw = read
+	}
+	has, err := sessionHasAssignedWorkInStoresForStatuses(sw, scope, statuses)
 	return &txWork{Free: !has && err == nil, Err: err}
 }
 

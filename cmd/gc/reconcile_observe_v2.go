@@ -121,6 +121,9 @@ func (p *planner) observeSettlement(s settlement) {
 	if phase := idleRespawnPhase(s); phase != "" {
 		p.metrics.count(&p.metrics.series, phase)
 	}
+	if s.Kind == intentClose && s.SeatRead != "" {
+		p.metrics.count(&p.metrics.series, s.SeatRead) // a close's seat read before its lease, by bucket
+	}
 	if (s.Kind == intentRowHeal || s.Kind == intentRowHealFresh || s.Kind == intentDriftRepair) && (s.Outcome == settledRefused || s.Outcome == settledFailed) &&
 		p.backoff.Record(rowBackoffKey(s.Key)).Consecutive == healRefusalsBeforeAlert {
 		p.alert(alertHealRefused, s.Key.ID, fmt.Sprintf("%s effect for %s refused %d times in a row, last with cause %q", s.Kind, s.Key.ID, healRefusalsBeforeAlert, s.Cause))
@@ -199,7 +202,8 @@ func idleRespawnPhase(s settlement) string {
 }
 
 // soakSeries are passMetrics.series' counters, always in the record.
-var soakSeries = []string{"idle_respawn_begun", "idle_respawn_voided", "idle_respawn_completed", "stop_escalations", claimedDemandSeries}
+var soakSeries = []string{"idle_respawn_begun", "idle_respawn_voided", "idle_respawn_completed", "stop_escalations", claimedDemandSeries,
+	closeSeatReadLt5s, closeSeatReadLt10s, closeSeatReadLt20s, closeSeatReadUnread}
 
 // claimedDemandSeries counts the default-probe rows gather dropped as work
 // the pass already reads as claimed (demandView.ClaimedDemand): new demand the

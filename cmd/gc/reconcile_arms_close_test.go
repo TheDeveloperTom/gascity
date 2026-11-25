@@ -836,11 +836,17 @@ func TestCloseEffectEdges(t *testing.T) {
 				}
 				v := txView{It: k.decide(), World: &w, Row: k.w.Census.Rows[k.k].Info, Fence: txFence{Work: &txWork{}}}
 				got, err := strandedProbe(ctx, effectReads{legs: legs}, v)
-				if err != nil || got.searched != c.searched || len(got.ids) != 0 || got.held != c.searched {
+				// A read cut short reports the expiry (stranded-unread); a
+				// searched one whose claim is held reports none.
+				if (err != nil) == c.searched || got.searched != c.searched || len(got.ids) != 0 || got.held != c.searched {
 					t.Fatalf("probe = %+v, %v: want searched %v, nothing counted stranded", got, err, c.searched)
 				}
-				if step := closeWorkStep(txView{It: v.It, World: &w, Alloc: k.a, Row: v.Row, Meta: k.row(t).Metadata, Fence: v.Fence}, got, nil); step.Refuse != causeStranded {
-					t.Fatalf("step %+v, want refused stranded-unstamped", step)
+				want := causeStranded
+				if !c.searched {
+					want = causeStrandedUnread
+				}
+				if step := closeWorkStep(txView{It: v.It, World: &w, Alloc: k.a, Row: v.Row, Meta: k.row(t).Metadata, Fence: v.Fence}, got, err); step.Refuse != want || step.Err == nil {
+					t.Fatalf("step %+v, want refused %s with its error", step, want)
 				}
 			})
 		}
