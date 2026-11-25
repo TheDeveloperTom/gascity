@@ -60,6 +60,9 @@ func TestWatchTurnsTranscriptRearmsAfterReplace(t *testing.T) {
 // file) but cannot be opened for its kqueue watch (O_EVTONLY needs read
 // access), so the first re-arm fails.
 func TestWatchTurnsTranscriptRetriesAFailedRearm(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root opens a mode-000 file")
+	}
 	w := startNotifiedWatch(t, "claude")
 	w.replace(t, 0o000)
 	w.poll(t)
@@ -123,6 +126,8 @@ func (w *notifiedWatch) replace(t *testing.T, mode os.FileMode) {
 	if err := os.Chmod(w.path, mode); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
+	// The rename wakes exactly one read on kqueue; wait for it to finish.
+	w.ask = w.clock.nextAsk(t)
 }
 
 // poll lets the reads that file events woke finish, fires the backstop poll
