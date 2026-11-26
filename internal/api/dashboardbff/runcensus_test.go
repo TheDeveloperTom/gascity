@@ -61,7 +61,7 @@ func TestRunProjectionSourceReturnsImmediatelyWhileColdLoadIsPending(t *testing.
 	var releaseOnce sync.Once
 	releaseLoad := func() { releaseOnce.Do(func() { close(release) }) }
 	previous := readRunColdLoad
-	readRunColdLoad = func(*runproj.Projector, string) error {
+	readRunColdLoad = func(context.Context, *runproj.Projector, string) error {
 		close(started)
 		<-release
 		return nil

@@ -200,7 +200,7 @@ func TestRunTailerManagerRebindsChangedEventsPath(t *testing.T) {
 
 func TestRunTailerLogsColdLoadFailureOnce(t *testing.T) {
 	previousLoad := readRunColdLoad
-	readRunColdLoad = func(*runproj.Projector, string) error {
+	readRunColdLoad = func(context.Context, *runproj.Projector, string) error {
 		return errors.New("cold disk unavailable")
 	}
 	t.Cleanup(func() { readRunColdLoad = previousLoad })
@@ -230,6 +230,45 @@ func TestRunTailerLogsColdLoadFailureOnce(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "cold disk unavailable") {
 		t.Fatalf("cold replay log omitted raw cause: %q", logs.String())
+	}
+}
+
+// TestRunTailerColdLoadStopsWithLoopContext: the cold replay runs under the
+// tailer loop's context, so stopping the tailer (supervisor shutdown, or a city
+// re-registered at another root) cancels a replay that would otherwise hold the
+// loop for minutes on a large history.
+func TestRunTailerColdLoadStopsWithLoopContext(t *testing.T) {
+	previousLoad := readRunColdLoad
+	started := make(chan struct{})
+	readRunColdLoad = func(ctx context.Context, _ *runproj.Projector, _ string) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	t.Cleanup(func() { readRunColdLoad = previousLoad })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var wg sync.WaitGroup
+	m := newRunTailerManager(Deps{})
+	m.enable(ctx, &wg)
+	m.ensure("alpha", filepath.Join(t.TempDir(), ".gc", "events.jsonl"))
+	select {
+	case <-started:
+	case <-time.After(hangBudget):
+		t.Fatal("cold replay did not start")
+	}
+
+	cancel()
+	stopped := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(hangBudget):
+		t.Fatal("tailer did not stop: the cold replay ignored the loop context")
 	}
 }
 

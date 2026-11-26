@@ -271,9 +271,10 @@ func captureTailCursor(path string) *tailState {
 // tails newly appended events and republishes on each change. All folding and
 // summary-building happens on loop-owned locals; only the publish takes the lock.
 // readRunColdLoad is indirected so a test can hold the cold replay in flight and
-// prove RunProjection serves a non-blocking warming snapshot.
-var readRunColdLoad = func(proj *runproj.Projector, path string) error {
-	return proj.ColdLoad(path)
+// prove RunProjection serves a non-blocking warming snapshot. The replay runs
+// under the loop's ctx, so stopping the tailer cancels a long one.
+var readRunColdLoad = func(ctx context.Context, proj *runproj.Projector, path string) error {
+	return proj.ColdLoadContext(ctx, path)
 }
 
 func (t *cityRunTailer) loop(ctx context.Context, wg *sync.WaitGroup) {
@@ -288,7 +289,7 @@ func (t *cityRunTailer) loop(ctx context.Context, wg *sync.WaitGroup) {
 	// captureTailCursor reads the size and identity from one stat so a rotation
 	// cannot pair the old file's offset with the fresh file's identity.
 	st := captureTailCursor(t.eventsPath)
-	loadErr := readRunColdLoad(proj, t.eventsPath)
+	loadErr := readRunColdLoad(ctx, proj, t.eventsPath)
 	if loadErr != nil {
 		log.Printf("run-tailer: city %q cold replay failed: %v", t.name, loadErr)
 	}
