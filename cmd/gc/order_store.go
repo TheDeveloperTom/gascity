@@ -94,6 +94,18 @@ func (s orderTrackingSweepScopedStore) orderTrackingSweepKey() string {
 	return s.key
 }
 
+// Handles forwards the wrapped store's read handles, so beads.LiveFor and
+// beads.CachedFor over a sweep scope resolve to the store's own readers, as
+// beadPolicyStore.Handles does. Without it the fallback live reader lists
+// through CachingStore.List with Live set, which installs the whole closed
+// order-tracking history into the active cache on every retention run. The
+// writer stays the scoped store, so writes keep its label and key.
+func (s orderTrackingSweepScopedStore) Handles() beads.StoreHandles {
+	handles := beads.HandlesFor(s.Store)
+	handles.Writer = s
+	return handles
+}
+
 func openOrderStoreForOrder(cityPath string, cfg *config.City, a orders.Order, stderr io.Writer, cmdName string) (beads.OrdersStore, int) {
 	target, err := resolveOrderStoreTarget(cityPath, cfg, a)
 	if err != nil {
