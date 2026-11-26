@@ -426,7 +426,7 @@ func (s *requestBoundListStore) ListContext(ctx context.Context, _ beads.ListQue
 // (the supervisor's `gc ready --status closed` legs ran on to their end after
 // the CLI had given up, and held their rows and pool connections).
 func TestStatusLegReadSeesTheRequestContext(t *testing.T) {
-	for _, status := range []string{StatusClosed, StatusBlocked, StatusInProgress} {
+	for _, status := range []string{StatusOpen, StatusClosed, StatusBlocked, StatusInProgress} {
 		t.Run(status, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				store := &requestBoundListStore{Store: beads.NewMemStore(), entered: make(chan struct{})}

@@ -55,6 +55,7 @@ func TestLiveForForwardsListContext(t *testing.T) {
 		"a resident federated leg":   func(s Store) StoreReader { return MintResidentLeg(MintFederatedLeg(s, "rig:r")) },
 		"a relic leg (cached)":       func(s Store) StoreReader { return MintRelicLeg(NewCachingStoreForTest(s, nil), "rig:r") },
 		"a federated leg (no cache)": func(s Store) StoreReader { return MintFederatedLeg(s, "rig:r") },
+		"a class handle (cached)":    func(s Store) StoreReader { return WorkStore{Store: NewCachingStoreForTest(s, nil)} },
 	}
 	q := ListQuery{Status: "closed", TierMode: FederatedReadTier}
 	for name, over := range shapes {

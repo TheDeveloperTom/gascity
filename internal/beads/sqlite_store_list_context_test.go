@@ -129,6 +129,15 @@ func TestSQLiteStoreListContextCancelsWhileWaitingForAConnection(t *testing.T) {
 	case <-time.After(beadsHangBudget):
 		t.Fatal("ListContext never checked its context")
 	}
+	// Cancel only once the read is parked in the pool wait, so the cancel is
+	// seen by that wait, not by DB.conn's entry check.
+	deadline := time.Now().Add(beadsHangBudget)
+	for store.readDB.Stats().WaitCount == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("ListContext never queued for a read connection")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	cancel()
 
 	select {
@@ -200,6 +209,47 @@ func TestSQLiteStoreListBackgroundSkipsErrChecks(t *testing.T) {
 	// that can never be canceled.
 	if checks := ctx.checks.Load(); checks > 1 {
 		t.Fatalf("uncancellable context checks = %d, want at most the single entry guard", checks)
+	}
+}
+
+// TestLegListContextStopsARealSQLiteReadMidScan runs the controller's chain
+// end to end: a class handle over a federated leg over a CachingStore over a
+// real SQLiteStore, read the way readywork's listRead reads it. A cancel that
+// lands mid-scan stops the SQLite scan, and the answer is the context's error
+// with no rows.
+func TestLegListContextStopsARealSQLiteReadMidScan(t *testing.T) {
+	store := newReadySQLiteStore(t)
+	seedOpenSQLiteBeads(t, store, 64)
+	leg := WorkStore{Store: MintResidentLeg(MintFederatedLeg(NewCachingStoreForTest(store, nil), "rig:r"))}
+
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &cancelOnErrCheckContext{Context: base, cancel: cancel, cancelAt: 4}
+
+	rows, err := ListContextOf(ctx, LiveFor(leg), ListQuery{Status: "open", TierMode: FederatedReadTier})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListContextOf through the leg = %v, want context.Canceled (rows = %d)", err, len(rows))
+	}
+	if len(rows) != 0 {
+		t.Fatalf("ListContextOf through the leg returned %d beads after cancellation, want none", len(rows))
+	}
+	if checks := ctx.checks.Load(); checks < ctx.cancelAt {
+		t.Fatalf("context checks = %d, want at least %d; the SQLite scan never saw the context", checks, ctx.cancelAt)
+	}
+}
+
+// TestSQLiteStoreListContextRefusesAScanBeforeCheckingTheContext: a query
+// with no filter is refused as List refuses it, whatever the context's state,
+// so both answer the same error first.
+func TestSQLiteStoreListContextRefusesAScanBeforeCheckingTheContext(t *testing.T) {
+	store := newReadySQLiteStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := store.List(ListQuery{}); !errors.Is(err, ErrQueryRequiresScan) {
+		t.Fatalf("List with no filter = %v, want ErrQueryRequiresScan", err)
+	}
+	if _, err := store.ListContext(ctx, ListQuery{}); !errors.Is(err, ErrQueryRequiresScan) {
+		t.Fatalf("ListContext with no filter on an ended context = %v, want ErrQueryRequiresScan, as List answers", err)
 	}
 }
 

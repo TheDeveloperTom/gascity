@@ -1472,7 +1472,20 @@ func (s *SQLiteStore) List(query ListQuery) ([]Bead, error) {
 	if err := s.ensureOpen(); err != nil {
 		return nil, err
 	}
+	if err := sqliteListScanGuard(query); err != nil {
+		return nil, err
+	}
 	return s.listRows(context.Background(), query)
+}
+
+// sqliteListScanGuard refuses a query with no filter that does not allow a
+// scan. List and ListContext run it before anything else that can fail, so
+// both answer this error first.
+func sqliteListScanGuard(query ListQuery) error {
+	if !query.HasFilter() && !query.AllowScan {
+		return fmt.Errorf("listing beads: %w", ErrQueryRequiresScan)
+	}
+	return nil
 }
 
 // ListContext implements ContextLister for the SQLite store: List under ctx.
@@ -1480,6 +1493,9 @@ func (s *SQLiteStore) List(query ListQuery) ([]Bead, error) {
 // result, and the read-pool connection goes back to the pool.
 func (s *SQLiteStore) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
 	if err := s.ensureOpen(); err != nil {
+		return nil, err
+	}
+	if err := sqliteListScanGuard(query); err != nil {
 		return nil, err
 	}
 	if ctx == nil {
@@ -1511,9 +1527,6 @@ func (s *SQLiteStore) listRows(ctx context.Context, query ListQuery) ([]Bead, er
 		return ctx.Err()
 	}
 
-	if !query.HasFilter() && !query.AllowScan {
-		return nil, fmt.Errorf("listing beads: %w", ErrQueryRequiresScan)
-	}
 	sqlText, args := sqliteListSQL(query, s.sqliteBeadProjection())
 	rows, err := s.readDB.QueryContext(ctx, sqlText, args...)
 	if err != nil {

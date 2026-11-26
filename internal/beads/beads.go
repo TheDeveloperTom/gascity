@@ -1250,9 +1250,10 @@ type ContextLister interface {
 
 // ListContextOf lists q from r under ctx: through r's ListContext when r has
 // one, and otherwise with boundary semantics, as graphFrontDoor.ReadyContext
-// documents them: no read starts on an ended ctx, and a read ctx outlived
-// answers ctx.Err() instead of its rows. In that fallback the read below runs
-// to its own end; only a ContextLister stops it. A nil ctx is Background.
+// documents them: no read starts on an ended ctx, and when ctx ends during the
+// read, the answer is ctx.Err() instead of the read's rows or its error. In
+// that fallback the read below runs to its own end; only a ContextLister stops
+// it. A nil ctx is Background.
 func ListContextOf(ctx context.Context, r interface {
 	List(ListQuery) ([]Bead, error)
 }, q ListQuery,

@@ -15,11 +15,11 @@ import "context"
 // one non-generic type per role (generic stenciling would merge the frame
 // names), never inlined, and registered in legReadFrames: the federated and
 // relic read adapters (the cached and live readers, with GetExactBatch and
-// ListContext), the
-// cache-first list adapters (CachedLister) and the count adapters (Counter).
-// Any other capability a leg hands out (DependencyBatchLister,
-// ChildrenBatchLister, AbsentBlockedReader, ...) is still read below the leg
-// and policed; a caller that needs its role takes it through one of these.
+// ListContext), the cache-first list adapters (CachedLister) and the count
+// adapters (Counter). Any other capability a leg hands out
+// (DependencyBatchLister, ChildrenBatchLister, AbsentBlockedReader, ...) is
+// still read below the leg and policed; a caller that needs its role takes it
+// through one of these.
 
 // legSideReader is the read side of a cached or a live reader: CachedReader
 // and LiveReader have one method set.
