@@ -32,6 +32,13 @@ func (p *capProbe) GetExactBatch(ids []string) (map[string]Bead, []string, error
 
 func (p *capProbe) CachedList(ListQuery) ([]Bead, bool) { p.record(); return nil, true }
 
+// ListContext records the role on a context-bound list, the read a
+// supervisor leg takes (ListContextOf).
+func (p *capProbe) ListContext(_ context.Context, q ListQuery) ([]Bead, error) {
+	p.record()
+	return p.MemStore.List(q)
+}
+
 func (p *capProbe) Count(context.Context, ListQuery, ...string) (int, error) {
 	p.record()
 	return 0, nil
@@ -69,6 +76,7 @@ func belowLegReads(t *testing.T) map[string]func(StoreReader) {
 	read := func(r legSideReader) {
 		_, _ = r.Get("x")
 		_, _ = r.List(ListQuery{AllowScan: true})
+		_, _ = ListContextOf(context.Background(), r, ListQuery{AllowScan: true})
 		_, _ = r.Ready()
 		_, _ = r.DepList("x", "down")
 	}

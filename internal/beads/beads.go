@@ -1237,6 +1237,43 @@ type ContextReadyReader interface {
 	ReadyContext(ctx context.Context, query ...ReadyQuery) ([]Bead, error)
 }
 
+// ContextLister is an optional List capability for reads that must stop when
+// their caller does, such as a supervisor `gc ready --status` leg read bound
+// to its HTTP request. ListContext answers exactly what List answers for a
+// live ctx. Once ctx ends it stops the work it started and returns ctx.Err(),
+// never a short or empty result. A layer that wraps a reader (a live handle,
+// a leg adapter, a policy reader) forwards it explicitly, because an embedded
+// interface hides it.
+type ContextLister interface {
+	ListContext(ctx context.Context, query ListQuery) ([]Bead, error)
+}
+
+// ListContextOf lists q from r under ctx: through r's ListContext when r has
+// one, and otherwise with boundary semantics, as graphFrontDoor.ReadyContext
+// documents them: no read starts on an ended ctx, and when ctx ends during the
+// read, the answer is ctx.Err() instead of the read's rows or its error. In
+// that fallback the read below runs to its own end; only a ContextLister stops
+// it. A nil ctx is Background.
+func ListContextOf(ctx context.Context, r interface {
+	List(ListQuery) ([]Bead, error)
+}, q ListQuery,
+) ([]Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if lister, ok := r.(ContextLister); ok {
+		return lister.ListContext(ctx, q)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows, err := r.List(q)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return rows, err
+}
+
 // StorageClass selects the physical bead storage tier for adapters that
 // support table-specific creates. It is adapter plumbing, not a domain-level
 // behavior knob; normal callers should use Store.Create and let the policy

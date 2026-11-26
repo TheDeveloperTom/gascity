@@ -115,6 +115,14 @@ func (r logicalLiveStoreReader) List(query ListQuery) ([]Bead, error) {
 	return r.store.List(query)
 }
 
+// ListContext is List under ctx: the store's own ListContext when it has one
+// (ListContextOf), with the query List sends.
+func (r logicalLiveStoreReader) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
+	query.Live = true
+	query.TierMode = TierBoth
+	return ListContextOf(ctx, r.store, query)
+}
+
 func (r logicalLiveStoreReader) Ready(query ...ReadyQuery) ([]Bead, error) {
 	return r.store.Ready(query...)
 }
@@ -181,6 +189,15 @@ func (r liveStoreReader) List(query ListQuery) ([]Bead, error) {
 	query.Live = true
 	query.TierMode = TierBoth
 	return r.store.backing.List(query)
+}
+
+// ListContext is List under ctx: the backing store's own ListContext when it
+// has one (ListContextOf), with the query List sends. Like List it never
+// touches the cache, so one caller's cancel cannot cut a shared cache fill.
+func (r liveStoreReader) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
+	query.Live = true
+	query.TierMode = TierBoth
+	return ListContextOf(ctx, r.store.backing, query)
 }
 
 func (r liveStoreReader) Ready(query ...ReadyQuery) ([]Bead, error) {
