@@ -444,7 +444,7 @@ func launchdPlistRootEntries(t *testing.T, content string) map[string]launchdPli
 	}
 }
 
-// TestRenderSupervisorLaunchdTemplateSetsExitTimeOut: with no root
+// TestSupervisorLaunchdTemplateExitTimeOutIs90: with no root
 // ExitTimeOut, launchd SIGKILLs the supervisor a system-defined time after a
 // stop's SIGTERM (launchd.plist(5); `launchctl print` reports
 // "exit timeout = 5" on macOS 15). That can land before CityRuntime.shutdown
@@ -454,7 +454,7 @@ func launchdPlistRootEntries(t *testing.T, content string) map[string]launchdPli
 // the killed supervisor. launchd reads the value as an integer number of
 // seconds. 90 is systemd's DefaultTimeoutStopSec (systemd-system.conf(5)),
 // which supervisorSystemdTemplate relies on by setting no TimeoutStopSec.
-func TestRenderSupervisorLaunchdTemplateSetsExitTimeOut(t *testing.T) {
+func TestSupervisorLaunchdTemplateExitTimeOutIs90(t *testing.T) {
 	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, &supervisorServiceData{
 		GCPath:       "/usr/local/bin/gc",
 		LogPath:      "/home/user/.gc/supervisor.log",
