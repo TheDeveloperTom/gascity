@@ -49,7 +49,7 @@ import (
 // them have exactly a service root's process shape, so neither cwd nor
 // group/session shape can tell them apart.
 //
-// Limits. Two kinds of orphan never match, so they survive the sweep, as
+// Limits. Three kinds of orphan never match, so they survive the sweep, as
 // every orphan did on darwin before it existed (fail-closed):
 //   - one running an Apple platform binary (/bin/sh, /bin/bash, /usr/bin/env,
 //     /usr/bin/python3, …): the kernel withholds a restricted process's
@@ -58,7 +58,10 @@ import (
 //     configured as ["/bin/sh", "assets/activity-gw/run.sh"] that execs
 //     `node server.mjs`: rule 5 does not hold. Such a service should exec
 //     with its configured arguments, or be configured with the program's
-//     argv.
+//     argv;
+//   - one that does not lead its process group — a double-forked daemon, or
+//     a child of the service whose service root exited first: rule 2 does
+//     not hold. (The /proc path in orphan_reap.go has no group-leader rule.)
 //
 // A service's environment holds bot tokens and API keys; the reader never
 // asks for, materializes or logs any other entry, and the logs carry only
@@ -234,8 +237,11 @@ func reapOrphansFromTable(tb orphanProcTable, id orphanIdentity, self int, signa
 		if !tb.entryMatches(id, e) || !tb.stillOrphaned(e) {
 			continue
 		}
-		log.Printf("workspacesvc: reaping orphaned process of service %q: pid %d (ppid 1), SIGTERM to its process group", id.serviceName, e.pid)
+		// Signal first, log after: a log write can block (a full stderr
+		// pipe, a slow disk), and nothing may widen the window between the
+		// identity check above and kill(2).
 		signal(e.pid, syscall.SIGTERM)
+		log.Printf("workspacesvc: reaping orphaned process of service %q: pid %d (ppid 1), sent SIGTERM to its process group", id.serviceName, e.pid)
 		termed = append(termed, e)
 	}
 	if len(termed) == 0 {
@@ -254,8 +260,8 @@ func reapOrphansFromTable(tb orphanProcTable, id orphanIdentity, self int, signa
 		if !tb.groupIsSafe(e.pid) || !tb.stillOrphaned(e) {
 			continue
 		}
-		log.Printf("workspacesvc: orphaned process of service %q: pid %d survived SIGTERM for %v, SIGKILL to its process group", id.serviceName, e.pid, wait)
 		signal(e.pid, syscall.SIGKILL)
+		log.Printf("workspacesvc: orphaned process of service %q: pid %d survived SIGTERM for %v, sent SIGKILL to its process group", id.serviceName, e.pid, wait)
 	}
 	pids := make([]int, 0, len(termed))
 	for _, e := range termed {

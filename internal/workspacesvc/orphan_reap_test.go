@@ -93,12 +93,17 @@ func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 // orphanSpawnerEnv marks the child TestOrphanSpawnerProcess runs as.
 const orphanSpawnerEnv = "GC_TEST_ORPHAN_SPAWNER"
 
+// orphanSpawnerNoSetpgidEnv, passed in extraEnv, makes the spawner start the
+// orphan in the spawner's own process group instead: for an orphan that must
+// call setsid itself (a daemon), which a group leader cannot.
+const orphanSpawnerNoSetpgidEnv = "GC_TEST_ORPHAN_SPAWNER_NO_SETPGID"
+
 // TestOrphanSpawnerProcess is not a test. Run as a child with
 // orphanSpawnerEnv set, it starts the argv after the first "--" as the leader
 // of its own process group — what the spawn path's Setpgid makes every
 // proxy_process child — prints its pid and exits without waiting, so the
 // started process re-parents to init: a service orphaned by a supervisor
-// hard exit.
+// hard exit. With orphanSpawnerNoSetpgidEnv set it skips Setpgid.
 func TestOrphanSpawnerProcess(_ *testing.T) {
 	if os.Getenv(orphanSpawnerEnv) != "1" {
 		return
@@ -113,15 +118,16 @@ func TestOrphanSpawnerProcess(_ *testing.T) {
 	if len(argv) == 0 {
 		os.Exit(2)
 	}
+	setpgid := os.Getenv(orphanSpawnerNoSetpgidEnv) != "1"
 	env := make([]string, 0, len(os.Environ()))
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, orphanSpawnerEnv+"=") {
+		if !strings.HasPrefix(kv, orphanSpawnerEnv+"=") && !strings.HasPrefix(kv, orphanSpawnerNoSetpgidEnv+"=") {
 			env = append(env, kv)
 		}
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: setpgid}
 	if err := cmd.Start(); err != nil {
 		os.Exit(3)
 	}

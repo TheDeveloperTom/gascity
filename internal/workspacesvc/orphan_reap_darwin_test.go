@@ -31,16 +31,26 @@ func TestDarwinOrphanHelperProcess(_ *testing.T) {
 	}
 	if os.Getenv("GC_DARWIN_ORPHAN_SETSID") == "1" {
 		// A daemon a service started: its own session, like bd's proxy.
-		_, _ = syscall.Setsid()
-	} else {
+		// setsid fails (EPERM) for a group leader; the spawner leaves this
+		// helper in its group for that reason. Exit non-zero so a wrong
+		// shape fails the test instead of silently becoming the Setpgid one.
+		if _, err := syscall.Setsid(); err != nil {
+			os.Exit(4)
+		}
+	} else if err := syscall.Setpgid(0, 0); err != nil {
 		// A service root: its own group in its parent's session (Setpgid).
-		_ = syscall.Setpgid(0, 0)
+		os.Exit(5)
 	}
 	child := exec.Command("/bin/sleep", "600")
 	if err := child.Start(); err == nil {
 		_ = os.WriteFile(os.Getenv("GC_DARWIN_ORPHAN_CHILD_FILE"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
 	}
-	select {}
+	// Block until signaled. Not `select {}`: without cgo the runtime has no
+	// other thread, reports "all goroutines are asleep" and the helper dies
+	// by itself — which would let an "orphan gone" assertion pass unreaped.
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 
 // darwinHelperCommand is the argv of an orphan helper; marker makes it unique
@@ -92,6 +102,18 @@ func killGroupAtCleanupForTest(t *testing.T, leader int) {
 	if ident, ok := processIdentityForTest(leader); ok {
 		t.Cleanup(func() { killOwnProcessForTest(leader, ident, true) })
 	}
+}
+
+// processRunningForTest reports whether pid exists and is not a zombie, read
+// from the kernel's process table.
+func processRunningForTest(t *testing.T, pid int) bool {
+	t.Helper()
+	tb, _ := platformOrphanTable()
+	e, ok, err := tb.lookup(pid)
+	if err != nil {
+		t.Fatalf("lookup(%d): %v", pid, err)
+	}
+	return ok && !e.zombie
 }
 
 // A kern.proc.pid lookup of a pid that no longer exists fails with EIO in
@@ -158,6 +180,8 @@ func TestDarwinReapLeavesOtherCityAndLiveChildren(t *testing.T) {
 	live.Env = append(os.Environ(),
 		darwinOrphanHelperEnv+"=1",
 		"GC_DARWIN_ORPHAN_CHILD_FILE="+filepath.Join(t.TempDir(), "live.pid"),
+		// The full identity, so only the ppid rule (parent alive) spares it.
+		"GC_SERVICE_NAME=darwin-reap-test",
 		"GC_SERVICE_STATE_ROOT="+stateRoot,
 	)
 	live.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -178,7 +202,9 @@ func TestDarwinReapLeavesOtherCityAndLiveChildren(t *testing.T) {
 	if !processAliveForTest(otherCity) {
 		t.Errorf("another city's orphan %d was killed", otherCity)
 	}
-	if !processAliveForTest(live.Process.Pid) {
+	// Not processAliveForTest: kill(pid, 0) succeeds on a zombie, and this
+	// direct child stays one until Wait even if the sweep killed it.
+	if !processRunningForTest(t, live.Process.Pid) {
 		t.Errorf("live child %d (parent alive) was killed", live.Process.Pid)
 	}
 }
@@ -199,8 +225,14 @@ func TestDarwinReapSparesSameRootOrphansRunningAnotherCommand(t *testing.T) {
 		"GC_DARWIN_ORPHAN_CWD="+dir)
 	killGroupAtCleanupForTest(t, setpgid)
 	daemon, daemonChild := spawnDarwinOrphanGroup(t, darwinHelperCommand(t, marker+"-daemon"), stateRoot,
-		"GC_DARWIN_ORPHAN_CWD="+dir, "GC_DARWIN_ORPHAN_SETSID=1")
+		"GC_DARWIN_ORPHAN_CWD="+dir, "GC_DARWIN_ORPHAN_SETSID=1", orphanSpawnerNoSetpgidEnv+"=1")
 	killGroupAtCleanupForTest(t, daemon)
+	if sid, err := unix.Getsid(daemon); err != nil || sid != daemon {
+		t.Fatalf("daemon %d: getsid = %d, %v; want it to lead its own session", daemon, sid, err)
+	}
+	if sid, err := unix.Getsid(setpgid); err != nil || sid == setpgid {
+		t.Fatalf("setpgid orphan %d: getsid = %d, %v; want a session it does not lead", setpgid, sid, err)
+	}
 
 	reapOrphanedServiceProcesses(newOrphanIdentity("darwin-reap-test", stateRoot, configured))
 

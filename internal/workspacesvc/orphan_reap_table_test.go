@@ -625,3 +625,65 @@ func TestReapOrphansFromTableRefusesAGroupHoldingInfrastructure(t *testing.T) {
 		t.Fatalf("signals = %v, want [4301:TERM]", got)
 	}
 }
+
+// eventLogWriter records each log line as one event in a shared sequence.
+type eventLogWriter struct{ record func(string) }
+
+func (w eventLogWriter) Write(p []byte) (int, error) {
+	w.record("log")
+	return len(p), nil
+}
+
+// Nothing that can block — a log write to a full stderr pipe or a slow disk
+// above all — sits between the last identity check of a pid and its signal:
+// for SIGTERM and SIGKILL alike, the event right before the signal is the
+// kernel lookup of that pid, and the signal is still logged, afterwards.
+func TestReapOrphansFromTableSignalsRightAfterTheLastIdentityCheck(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		events []string
+	)
+	record := func(ev string) {
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(eventLogWriter{record: record})
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+
+	ft := orphanFixture() // the orphans ignore SIGTERM, so both signals fire
+	tb := ft.table()
+	lookup := tb.lookup
+	tb.lookup = func(pid int) (orphanProcEntry, bool, error) {
+		record("lookup:" + strconv.Itoa(pid))
+		return lookup(pid)
+	}
+	signal := func(pid int, sig syscall.Signal) {
+		record("signal:" + strconv.Itoa(pid) + ":" + sigName(sig))
+		ft.signal(pid, sig)
+	}
+	reapOrphansFromTable(tb, testIdentity(), testSweeperPID, signal, 50*time.Millisecond)
+
+	signals := 0
+	for i, ev := range events {
+		if !strings.HasPrefix(ev, "signal:") {
+			continue
+		}
+		signals++
+		pid := strings.Split(ev, ":")[1]
+		if i == 0 || events[i-1] != "lookup:"+pid {
+			t.Fatalf("event before %q is %q, want lookup:%s; events = %v", ev, events[max(i-1, 0)], pid, events)
+		}
+		if i+1 >= len(events) || events[i+1] != "log" {
+			t.Fatalf("%q is not logged right after it is sent; events = %v", ev, events)
+		}
+	}
+	if want := 2 * len(fixtureMatches); signals != want {
+		t.Fatalf("sent %d signals, want %d; events = %v", signals, want, events)
+	}
+}
