@@ -95,7 +95,7 @@ func (s orderTrackingSweepScopedStore) orderTrackingSweepKey() string {
 }
 
 // Handles forwards the wrapped store's read handles, so beads.LiveFor and
-// beads.CachedFor over a sweep scope resolve to the store's own readers, as
+// beads.HandlesFor(...).Cached over a sweep scope resolve to the store's own readers, as
 // beadPolicyStore.Handles does. Without it the fallback live reader lists
 // through CachingStore.List with Live set, which installs the whole closed
 // order-tracking history into the active cache on every retention run. The
