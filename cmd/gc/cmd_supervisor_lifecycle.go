@@ -2025,6 +2025,29 @@ func supervisorSystemdServiceName() string {
 	return defaultSupervisorSystemdUnit
 }
 
+// supervisorLaunchdExitTimeOut is the plist's ExitTimeOut: how long launchd
+// waits after a stop's SIGTERM before it SIGKILLs the supervisor
+// (launchd.plist(5)). Without the key launchd applies a system-defined
+// default, 5 s on macOS 15, which can kill the supervisor before
+// CityRuntime.shutdown has closed the workspace services. On darwin those run
+// in their own process groups with no Pdeathsig (proxyProcessSysProcAttr), so
+// they outlive it. 90 s is systemd's DefaultTimeoutStopSec, which
+// supervisorSystemdTemplate relies on by setting no TimeoutStopSec, and it
+// covers one city's destructive stop at the engine defaults
+// (TestSupervisorLaunchdExitTimeOutCoversDestructiveStop). Several cities or
+// rig stores, or a larger shutdown_timeout, can still need longer. On macOS
+// 26.4 and later launchd clamps ExitTimeOut to 60 s (Apple DTS,
+// developer.apple.com/forums/thread/854315).
+const supervisorLaunchdExitTimeOut = 90 * time.Second
+
+// supervisorLaunchdExitTimeOutSeconds renders supervisorLaunchdExitTimeOut
+// for the plist, which takes whole seconds. It is a template function rather
+// than a supervisorServiceData field so that no caller can render a zero,
+// which launchd reads as no timeout at all.
+func supervisorLaunchdExitTimeOutSeconds() int64 {
+	return int64(supervisorLaunchdExitTimeOut / time.Second)
+}
+
 // supervisorLaunchdTemplate has no equivalent of systemd's
 // RestartPreventExitStatus: launchd's KeepAlive dict below has no
 // per-exit-code / LastExitStatus key, so a duplicate supervisor that exits
@@ -2055,6 +2078,8 @@ const supervisorLaunchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
         <key>SuccessfulExit</key>
         <false/>
     </dict>
+    <key>ExitTimeOut</key>
+    <integer>{{launchdexittimeout}}</integer>
     <key>StandardOutPath</key>
     <string>{{xmlesc .LogPath}}</string>
     <key>StandardErrorPath</key>
@@ -2130,7 +2155,12 @@ func supervisorSystemdQuotePath(s string) string {
 }
 
 func renderSupervisorTemplate(tmplStr string, data *supervisorServiceData) (string, error) {
-	funcMap := template.FuncMap{"xmlesc": xmlEscape, "systemdenv": systemdEnv, "systemdpath": supervisorSystemdQuotePath}
+	funcMap := template.FuncMap{
+		"xmlesc":             xmlEscape,
+		"systemdenv":         systemdEnv,
+		"systemdpath":        supervisorSystemdQuotePath,
+		"launchdexittimeout": supervisorLaunchdExitTimeOutSeconds,
+	}
 	tmpl, err := template.New("service").Funcs(funcMap).Parse(tmplStr)
 	if err != nil {
 		return "", err
