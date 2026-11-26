@@ -199,11 +199,14 @@ func (cs *controllerState) readyWorkLegs(ctx context.Context) ([]readywork.Leg, 
 // readyLegsBoundTo returns legs with each store bound to ctx, so a request that
 // ends (the CLI's timeout, a client that hangs up) stops its leg reads. A
 // bd-backed store is read through a clone whose bd subprocesses ctx kills
-// (scopedStoreLike). A store that runs no subprocess, such as a native one, has
-// no clone and is read as held: readywork starts no read on it once ctx ends,
-// but a read already inside it runs to its end, beside the in-process read the
-// CLI falls back to. The legs are bound after they are planned, because the
-// plan tells legs apart by the identity of the stores held.
+// (scopedStoreLike). A store that runs no subprocess, such as a native or
+// SQLite one, has no clone and is read as held: readywork starts no read on it
+// once ctx ends, and a --status list already inside it stops too when the
+// store has ListContext (SQLite does; beads.ListContextOf). Any other read
+// already inside it (a Ready, a Get, a dependency read) runs to its end, beside
+// the in-process read the CLI falls back to. The legs are bound after they are
+// planned, because the plan tells legs apart by the identity of the stores
+// held.
 func readyLegsBoundTo(ctx context.Context, cityPath string, cfg *config.City, legs []readywork.Leg) ([]readywork.Leg, error) {
 	bound := make([]readywork.Leg, len(legs))
 	for i, leg := range legs {

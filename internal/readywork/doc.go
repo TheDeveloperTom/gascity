@@ -42,6 +42,16 @@
 // cannot be read fails the whole answer, naming the leg. The plan's
 // PartialDegrade verdict on rig legs is escalated here, deliberately.
 //
+// # Cancellation
+//
+// ReadContext starts no store read once its context ends. A --status arm's
+// leg lists also take the context (beads.ListContextOf): a store with
+// ListContext, such as SQLite, stops a list already in flight within one row
+// and frees its connection. The default ready arm's Ready reads, per-id Gets
+// and dependency reads take no context yet; one already in flight runs to its
+// own end, unless the caller hands in a store bound to the context (the
+// supervisor's bd-backed legs, cmd/gc ready_work_api.go).
+//
 // # Pushdown
 //
 // The selective predicates (--assignee, --unassigned, plain-string

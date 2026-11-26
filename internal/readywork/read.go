@@ -66,10 +66,13 @@ func Read(legs []Leg, q Query) ([]ReadyBead, error) {
 // and the answer is ctx's error rather than rows.
 //
 // It is checked before every leg read, before every refill and probe, and
-// between the candidate read and the blocker reads. A store read already in
-// flight runs to its own end, because beads.Store reads take no context; a
-// caller that must stop those too hands in stores bound to ctx (the supervisor
-// binds every leg to its request, cmd/gc ready_work_api.go).
+// between the candidate read and the blocker reads. A --status arm's leg list
+// is handed ctx too (beads.ListContextOf), so a store with ListContext (SQLite)
+// stops one already in flight; any other store read already in flight (the
+// default arm's Ready, a per-id Get, a dependency read, a list on a store
+// without ListContext) runs to its own end. A caller that must stop those too
+// hands in stores bound to ctx (the supervisor binds every bd-backed leg to its
+// request, cmd/gc ready_work_api.go).
 func ReadContext(ctx context.Context, legs []Leg, q Query) ([]ReadyBead, error) {
 	c, err := compile(q)
 	if err != nil {
@@ -351,8 +354,8 @@ type legResult struct {
 }
 
 func listRead(q beads.ListQuery) legRead {
-	return func(_ context.Context, leg Leg) legResult {
-		rows, err := beads.LiveFor(leg.Store).List(q)
+	return func(ctx context.Context, leg Leg) legResult {
+		rows, err := beads.ListContextOf(ctx, beads.LiveFor(leg.Store), q)
 		return legResult{rows: rows, err: err}
 	}
 }

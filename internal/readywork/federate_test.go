@@ -391,3 +391,78 @@ func TestReadAnswersEveryStatusFromTheLiveHandle(t *testing.T) {
 		}
 	}
 }
+
+// requestBoundListStore is a leg store whose context-bound List parks until
+// its context ends and records what it saw; its plain List records the call
+// and answers at once, so a reader that drops the context fails an assertion
+// rather than deadlocking the bubble.
+type requestBoundListStore struct {
+	beads.Store
+	mu          sync.Mutex
+	plainCalls  int
+	entered     chan struct{}
+	enteredOnce sync.Once
+	sawErr      error
+}
+
+func (s *requestBoundListStore) List(query beads.ListQuery) ([]beads.Bead, error) {
+	s.mu.Lock()
+	s.plainCalls++
+	s.mu.Unlock()
+	return s.Store.List(query)
+}
+
+func (s *requestBoundListStore) ListContext(ctx context.Context, _ beads.ListQuery) ([]beads.Bead, error) {
+	s.enteredOnce.Do(func() { close(s.entered) })
+	<-ctx.Done()
+	s.mu.Lock()
+	s.sawErr = ctx.Err()
+	s.mu.Unlock()
+	return nil, ctx.Err()
+}
+
+// TestStatusLegReadSeesTheRequestContext: a --status leg read is handed the
+// request's context, so a store that honors it stops when the request ends
+// (the supervisor's `gc ready --status closed` legs ran on to their end after
+// the CLI had given up, and held their rows and pool connections).
+func TestStatusLegReadSeesTheRequestContext(t *testing.T) {
+	for _, status := range []string{StatusClosed, StatusBlocked, StatusInProgress} {
+		t.Run(status, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				store := &requestBoundListStore{Store: beads.NewMemStore(), entered: make(chan struct{})}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+
+				var err error
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					_, err = ReadContext(ctx, []Leg{testLeg("city", store)}, Query{Status: status})
+				}()
+				synctest.Wait()
+				store.mu.Lock()
+				plain := store.plainCalls
+				store.mu.Unlock()
+				select {
+				case <-store.entered:
+				default:
+					<-done
+					t.Fatalf("--status=%s: the leg read called List %d times and ListContext never; the request's context does not reach the store", status, plain)
+				}
+				cancel()
+				<-done
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("--status=%s: ReadContext = %v, want context.Canceled", status, err)
+				}
+				store.mu.Lock()
+				defer store.mu.Unlock()
+				if !errors.Is(store.sawErr, context.Canceled) {
+					t.Fatalf("--status=%s: the leg's ListContext saw %v, want the request's cancel", status, store.sawErr)
+				}
+				if store.plainCalls != 0 {
+					t.Fatalf("--status=%s: List was called %d times beside ListContext", status, store.plainCalls)
+				}
+			})
+		})
+	}
+}

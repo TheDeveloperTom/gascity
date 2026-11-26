@@ -421,6 +421,14 @@ func (r beadPolicyLiveReader) List(query beads.ListQuery) ([]beads.Bead, error) 
 	return r.LiveReader.List(expandPolicyReadTier(query))
 }
 
+// ListContext forwards a context-bound list (a supervisor `gc ready --status`
+// leg read) with the same policy-expanded tier List sends. It must be
+// explicit: the embedded LiveReader interface does not promote it, and without
+// it the read below would run to its end after its request had ended.
+func (r beadPolicyLiveReader) ListContext(ctx context.Context, query beads.ListQuery) ([]beads.Bead, error) {
+	return beads.ListContextOf(ctx, r.LiveReader, expandPolicyReadTier(query))
+}
+
 func (r beadPolicyLiveReader) Ready(query ...beads.ReadyQuery) ([]beads.Bead, error) {
 	return r.LiveReader.Ready(expandPolicyReadyQuery(query...))
 }

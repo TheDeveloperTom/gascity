@@ -14,7 +14,8 @@ import "context"
 // So a leg answers them through adapters whose reads are their own frames,
 // one non-generic type per role (generic stenciling would merge the frame
 // names), never inlined, and registered in legReadFrames: the federated and
-// relic read adapters (the cached and live readers, with GetExactBatch), the
+// relic read adapters (the cached and live readers, with GetExactBatch and
+// ListContext), the
 // cache-first list adapters (CachedLister) and the count adapters (Counter).
 // Any other capability a leg hands out (DependencyBatchLister,
 // ChildrenBatchLister, AbsentBlockedReader, ...) is still read below the leg
@@ -39,9 +40,11 @@ var (
 	_ LiveReader       = (*federatedReads)(nil)
 	_ CachedReader     = (*federatedReads)(nil)
 	_ ExactBatchGetter = (*federatedReads)(nil)
+	_ ContextLister    = (*federatedReads)(nil)
 	_ LiveReader       = (*relicReads)(nil)
 	_ CachedReader     = (*relicReads)(nil)
 	_ ExactBatchGetter = (*relicReads)(nil)
+	_ ContextLister    = (*relicReads)(nil)
 )
 
 // Get reads below the federated leg.
@@ -53,6 +56,13 @@ func (a *federatedReads) Get(id string) (Bead, error) { return a.r.Get(id) }
 //
 //go:noinline
 func (a *federatedReads) List(query ListQuery) ([]Bead, error) { return a.r.List(query) }
+
+// ListContext lists under ctx below the federated leg (ListContextOf).
+//
+//go:noinline
+func (a *federatedReads) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
+	return ListContextOf(ctx, a.r, query)
+}
 
 // Ready reads below the federated leg.
 //
@@ -83,6 +93,13 @@ func (a *relicReads) Get(id string) (Bead, error) { return a.r.Get(id) }
 //
 //go:noinline
 func (a *relicReads) List(query ListQuery) ([]Bead, error) { return a.r.List(query) }
+
+// ListContext lists under ctx below the relic leg (ListContextOf).
+//
+//go:noinline
+func (a *relicReads) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
+	return ListContextOf(ctx, a.r, query)
+}
 
 // Ready reads below the relic leg.
 //
@@ -241,7 +258,7 @@ func LegAdapterBase(v any) any {
 
 // legAdapterFrames are the read frames the adapters leave, by role.
 func legAdapterFrames(pkg string, frames map[string]LegRole) {
-	for _, read := range []string{"Get", "List", "Ready", "DepList", "GetExactBatch"} {
+	for _, read := range []string{"Get", "List", "ListContext", "Ready", "DepList", "GetExactBatch"} {
 		frames[pkg+"(*federatedReads)."+read] = FederatedLegRole
 		frames[pkg+"(*relicReads)."+read] = RelicLegRole
 	}
