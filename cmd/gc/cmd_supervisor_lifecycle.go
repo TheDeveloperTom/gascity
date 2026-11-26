@@ -382,7 +382,14 @@ func cleanupSupervisorWorkspaceServicesForSupervisorStart(gcHome string) error {
 	}
 	if supervisorRuntimeGOOS != "linux" {
 		if len(scope.cityPaths) > 0 {
-			warnSupervisorWorkspaceServiceCleanup("gc supervisor: workspace-service startup cleanup is not available on %s; after a non-graceful supervisor exit, stale workspace-service processes may keep sockets bound. Registered workspace-service roots: %s. Stop stale processes whose environment includes GC_SERVICE_STATE_ROOT under those roots, then restart those cities.\n", supervisorRuntimeGOOS, strings.Join(supervisorWorkspaceServiceStateRoots(scope), ", "))
+			roots := strings.Join(supervisorWorkspaceServiceStateRoots(scope), ", ")
+			if supervisorRuntimeGOOS == "darwin" {
+				// internal/workspacesvc/orphan_reap_table.go sweeps each
+				// service's own orphans before its spawn, with these limits.
+				warnSupervisorWorkspaceServiceCleanup("gc supervisor: workspace-service startup cleanup is not available on darwin; each service reaps its own orphaned processes before it starts, except one running an Apple platform binary, one running a program its wrapper exec'd, or one that does not lead its process group (a double-forked daemon, or a child whose service root exited first), which may keep sockets bound. Registered workspace-service roots: %s. Stop such stale processes whose environment includes GC_SERVICE_STATE_ROOT under those roots, then restart those cities.\n", roots)
+			} else {
+				warnSupervisorWorkspaceServiceCleanup("gc supervisor: workspace-service startup cleanup is not available on %s; after a non-graceful supervisor exit, stale workspace-service processes may keep sockets bound. Registered workspace-service roots: %s. Stop stale processes whose environment includes GC_SERVICE_STATE_ROOT under those roots, then restart those cities.\n", supervisorRuntimeGOOS, roots)
+			}
 		}
 		return nil
 	}

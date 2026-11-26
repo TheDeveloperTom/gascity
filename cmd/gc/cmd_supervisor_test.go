@@ -1883,6 +1883,10 @@ func TestCleanupSupervisorWorkspaceServicesForSupervisorStartWarnsWhenProcCleanu
 		t.Fatalf("cleanupSupervisorWorkspaceServicesForSupervisorStart: %v", err)
 	}
 	if got := warnings.String(); !strings.Contains(got, "workspace-service startup cleanup is not available on darwin") ||
+		!strings.Contains(got, "each service reaps its own orphaned processes before it starts, except") ||
+		!strings.Contains(got, "Apple platform binary") ||
+		!strings.Contains(got, "wrapper exec'd") ||
+		!strings.Contains(got, "does not lead its process group") ||
 		!strings.Contains(got, citylayout.RuntimeServicesDir(cityPath)) ||
 		!strings.Contains(got, "GC_SERVICE_STATE_ROOT") {
 		t.Fatalf("cleanup warning = %q, want macOS operator guidance", got)
