@@ -37,15 +37,13 @@ jobs:
           install-claude-cli: "false"
       - name: Build (compiles the whole tree — catches compile errors the macOS ICU break hides)
         run: go build ./...
-      - name: Vet changed package
-        run: go vet ./cmd/gc/...
-      - name: Unit tests — cross-store work delivery
-        run: go test ./cmd/gc/ -run 'TestFilterAssignedWorkBeads|TestAssignedWork|TestFirstStoreWithWork|TestCrossStoreClaimDir|TestRunBDForBead|TestGateOpenWorkBounded|TestCrossStorePipeline' -count=1 -v
-      - name: Unit tests — cross-store reachability predicate + fail-loud guard
+      - name: Vet touched packages (PR #18)
+        run: go vet ./internal/events/... ./internal/runproj/... ./internal/api/dashboardbff/...
+      - name: Race — dashboard run tailer (PR #18, REFUTE idle §5)
+        run: go test -race ./internal/api/dashboardbff -run 'Idle|Tailer|Cold|RunCensus|RunDetail|RunProjection' -count=1
+      - name: Touched packages, full
+        run: go test ./internal/events/... ./internal/runproj/... ./internal/api/dashboardbff/... -count=1
+      - name: ColdLoad callers kept green (coldload design §3)
         run: |
-          go test ./internal/agentutil/ -run 'TestAgentReachesWorkflowStore|TestAgentIsCrossStoreEligible' -count=1 -v
-          go test ./internal/sling/ -run 'TestValidateBuiltInRouteStoreReachableAllowsCityScopedTarget|TestDoSlingRefusesCrossStore' -count=1 -v
-      - name: Unit tests — order scope (#2830)
-        run: go test ./internal/orders/ -run 'TestParseScope|TestValidateRejectsUnknownScope|TestValidateAcceptsCityAndRigScope|TestParseEnv' -count=1 -v
-      - name: Unit tests — scale from zero (#2819)
-        run: go test ./cmd/gc/ -run 'TestBuildDesiredState_ScaleFromZero' -count=1 -v
+          go test ./cmd/gc/ -run 'TestGcBdCloseAnnouncesTheCloseToRunProjection|TestHookClaimAnnouncesClaimToRunProjection|TestHookClaimAnnouncementFoldsIdempotentlyWithSupervisorAnnouncement|TestHookClaimWorkStoreWritesAnnounceOnlyWhatLanded' -count=1 -v
+          go test ./internal/api/ -run 'TestRunReadAfterCancelReflectsTheCancel' -count=1 -v
