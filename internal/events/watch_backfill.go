@@ -187,6 +187,11 @@ func activeSegmentReader(f *os.File, size int64) (*segmentReader, error) {
 // readInto reads up to batch filter-matching events with Seq > *maxSeq from the
 // segment into out, advancing *maxSeq. It returns done=true at end of segment.
 // Malformed and oversized-but-unparseable lines are skipped, never fatal.
+//
+// The Seq > *maxSeq guard is what Watch and ReadFilteredWithInFlightEach use to
+// drop the window a .gz archive and its not-yet-removed rotating source both
+// hold. It also drops a seq-0 line and any seq that rolls back below one already
+// delivered (TestReadFilteredWithInFlightEachDropsSeqNotAboveDelivered).
 func (sr *segmentReader) readInto(filter Filter, maxSeq *uint64, out *[]Event, batch int) (bool, error) {
 	added := 0
 	for added < batch {

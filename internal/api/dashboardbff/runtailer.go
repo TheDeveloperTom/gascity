@@ -39,6 +39,13 @@ var (
 	// runColdLoadWait bounds how long a first request blocks for the cold replay
 	// before returning a partial (warming) snapshot. A var so tests can shorten it.
 	runColdLoadWait = 5 * time.Second
+	// runTailerIdleTTL is how long a city's run tailer keeps folding after the
+	// last demand for its projection (every reader goes through ensure). Past it,
+	// with no detail-stream subscriber, the tailer stops and drops its projection,
+	// and the next demand starts a fresh one with a new cold replay. A value <= 0
+	// keeps every tailer running until Stop. A var so tests can change it; the
+	// manager captures it at construction.
+	runTailerIdleTTL = 10 * time.Minute
 )
 
 const runSessionsFetchTimeout = 10 * time.Second
@@ -86,6 +93,13 @@ type runTailerManager struct {
 	// retiredClock stamps and checks those deadlines. time.Now in production;
 	// a test injects a controllable clock to cross a TTL without sleeping.
 	retiredClock func() time.Time
+	// idleClock stamps demand and checks idleTTL (see evictIfIdle). time.Now in
+	// production. It is separate from retiredClock, so a test that moves the
+	// retired-session clock hours ahead does not evict its tailer.
+	idleClock func() time.Time
+	// idleTTL is the runTailerIdleTTL package var captured at construction, so
+	// the tailer loops read an immutable value while tests change the var.
+	idleTTL time.Duration
 
 	// sessionsTTL is the sessionsCacheTTL package var captured at construction.
 	// The sessions compute closure can run on the tailer loop's DETACHED prime
@@ -111,6 +125,8 @@ func newRunTailerManager(deps Deps) *runTailerManager {
 		formulaCache:    newSingleFlightCache[formulaCacheKey, cachedFormulaDetail](),
 		retiredSessions: newLRUSingleFlight[retiredSessionKey, cachedRetiredSession](retiredSessionCacheCap),
 		retiredClock:    time.Now,
+		idleClock:       time.Now,
+		idleTTL:         runTailerIdleTTL,
 		sessionsTTL:     sessionsCacheTTL,
 	}
 }
@@ -133,6 +149,11 @@ func (m *runTailerManager) enable(ctx context.Context, wg *sync.WaitGroup) {
 // pre-Start demand and a first post-Start demand share the same lifecycle.
 func (m *runTailerManager) startLocked(t *cityRunTailer) {
 	if !m.enabled || m.ctx == nil || m.wg == nil || t.started {
+		return
+	}
+	// A demand that arrives while the plane stops (an evicted city asked for
+	// again) must not add a loop to the waitgroup Stop is waiting on.
+	if m.ctx.Err() != nil {
 		return
 	}
 	t.started = true
@@ -174,8 +195,33 @@ func (m *runTailerManager) ensure(name, eventsPath string) *cityRunTailer {
 		t = &cityRunTailer{name: name, eventsPath: eventsPath, mgr: m, readyCh: make(chan struct{}), doneCh: make(chan struct{}), syncCh: make(chan chan struct{}), snapshotCache: newRunSnapshotCache(), detailMemo: newRunDetailMemo(), unknownRuns: newUnknownRunGrace()}
 		m.cities[name] = t
 	}
+	t.lastDemand = m.idleClock()
 	m.startLocked(t)
 	return t
+}
+
+// evictIfIdle stops t and removes it from the manager once nobody has asked for
+// its projection for idleTTL and no detail stream is subscribed to it, so an
+// unwatched city stops paying for the fold and frees its projection. The tailer
+// loop calls it on each poll; true means the loop must return. ensure stamps
+// lastDemand under the same m.mu, so a demand either lands before this check
+// (no eviction) or after the delete (ensure builds a fresh tailer): one city
+// never has two live tailers. The city's sessions, formula and retired-session
+// caches are not path-bound and stay; they expire on their own TTLs.
+func (m *runTailerManager) evictIfIdle(t *cityRunTailer) bool {
+	if m.idleTTL <= 0 {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cities[t.name] != t || m.idleClock().Sub(t.lastDemand) < m.idleTTL || t.subscriberCount() > 0 {
+		return false
+	}
+	delete(m.cities, t.name)
+	if t.cancel != nil {
+		t.cancel()
+	}
+	return true
 }
 
 // ── Per-city tailer ───────────────────────────────────────────────────────
@@ -192,6 +238,9 @@ type cityRunTailer struct {
 	// through its current end, publishes, and closes each request's channel.
 	syncCh chan chan struct{}
 	cancel context.CancelFunc
+	// lastDemand is when ensure last handed out this tailer (guarded by mgr.mu);
+	// evictIfIdle measures idleness from it.
+	lastDemand time.Time
 
 	// snapshotCache caches the folded run snapshot (and the formula target
 	// derived from it) per fold generation so a same-generation repeat request
@@ -271,9 +320,10 @@ func captureTailCursor(path string) *tailState {
 // tails newly appended events and republishes on each change. All folding and
 // summary-building happens on loop-owned locals; only the publish takes the lock.
 // readRunColdLoad is indirected so a test can hold the cold replay in flight and
-// prove RunProjection serves a non-blocking warming snapshot.
-var readRunColdLoad = func(proj *runproj.Projector, path string) error {
-	return proj.ColdLoad(path)
+// prove RunProjection serves a non-blocking warming snapshot. The replay runs
+// under the loop's ctx, so stopping the tailer cancels a long one.
+var readRunColdLoad = func(ctx context.Context, proj *runproj.Projector, path string) error {
+	return proj.ColdLoadContext(ctx, path)
 }
 
 func (t *cityRunTailer) loop(ctx context.Context, wg *sync.WaitGroup) {
@@ -288,7 +338,7 @@ func (t *cityRunTailer) loop(ctx context.Context, wg *sync.WaitGroup) {
 	// captureTailCursor reads the size and identity from one stat so a rotation
 	// cannot pair the old file's offset with the fresh file's identity.
 	st := captureTailCursor(t.eventsPath)
-	loadErr := readRunColdLoad(proj, t.eventsPath)
+	loadErr := readRunColdLoad(ctx, proj, t.eventsPath)
 	if loadErr != nil {
 		log.Printf("run-tailer: city %q cold replay failed: %v", t.name, loadErr)
 	}
@@ -340,6 +390,9 @@ func (t *cityRunTailer) loop(ctx context.Context, wg *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case <-poll.C:
+			if t.mgr.evictIfIdle(t) {
+				return
+			}
 			t.foldNext(proj, st)
 			t.logDecodeMisses(proj, st)
 		case done := <-t.syncCh:
