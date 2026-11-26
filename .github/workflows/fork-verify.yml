@@ -39,13 +39,11 @@ jobs:
         run: go build ./...
       - name: Vet changed package
         run: go vet ./cmd/gc/...
-      - name: Unit tests — cross-store work delivery
-        run: go test ./cmd/gc/ -run 'TestFilterAssignedWorkBeads|TestAssignedWork|TestFirstStoreWithWork|TestCrossStoreClaimDir|TestRunBDForBead|TestGateOpenWorkBounded|TestCrossStorePipeline' -count=1 -v
-      - name: Unit tests — cross-store reachability predicate + fail-loud guard
-        run: |
-          go test ./internal/agentutil/ -run 'TestAgentReachesWorkflowStore|TestAgentIsCrossStoreEligible' -count=1 -v
-          go test ./internal/sling/ -run 'TestValidateBuiltInRouteStoreReachableAllowsCityScopedTarget|TestDoSlingRefusesCrossStore' -count=1 -v
-      - name: Unit tests — order scope (#2830)
-        run: go test ./internal/orders/ -run 'TestParseScope|TestValidateRejectsUnknownScope|TestValidateAcceptsCityAndRigScope|TestParseEnv' -count=1 -v
-      - name: Unit tests — scale from zero (#2819)
-        run: go test ./cmd/gc/ -run 'TestBuildDesiredState_ScaleFromZero' -count=1 -v
+      - name: Unit tests — tests added or changed by #8178 / #9357
+        run: go test ./cmd/gc -run '^(TestComputePoolDesiredStates|TestApplyNestedCaps_WakeKnownIdentityRanksBeforeNew|TestDecideAndLegacyFreshWakeSkipBlockedAssignedStep|TestCityRuntimeDemandSnapshotFreshWake|TestBuildDesiredState_FreshWakeSkipsBlockedAssignedStep|TestBuildDesiredState_BlockedFreshSessionMaterializesRunnableReplacement|TestFilterAssignedWorkBeadsForPoolDemand|TestFreshWakeDemandUsesEachRowsOwnStoreReadiness|TestPoolDemandFilter|TestAllocationDifferential|TestLegacyScaleCheckTimeoutIsAFailedCheck|TestSessionDifferential|TestEveryKeptBehaviorOfARegisteredArmHasAParityFixture|TestKeptGateBindsAKindOnceARegisteredArmProposesIt|TestTimelineExplainsAreStepScoped|TestFreshDrainBeginsReachAdmission|TestIdleProbesPaceAPatrolApart|TestIdlePaceHoldsOnlyIdleProbes)' -count=1 -v
+      - name: Unit tests — broader pool / desired-state / wake / reconcile
+        run: go test ./cmd/gc -run 'PoolDesired|DesiredState|Parked|Wake|Reconcile' -count=1
+      - name: Split-strict gate — fresh-wake tests under GC_TEST_SPLIT_STRICT=1 (known-failures list from #9357)
+        env:
+          GC_TEST_SPLIT_STRICT: "1"
+        run: go test ./cmd/gc -run '^(TestComputePoolDesiredStates|TestDecideAndLegacyFreshWakeSkipBlockedAssignedStep|TestCityRuntimeDemandSnapshotFreshWake|TestBuildDesiredState_FreshWakeSkipsBlockedAssignedStep|TestFilterAssignedWorkBeadsForPoolDemand|TestFreshWakeDemandUsesEachRowsOwnStoreReadiness)' -count=1 -v
