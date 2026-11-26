@@ -53,9 +53,10 @@ func (t *cityRunTailer) unsubscribe(sub *detailStreamSub) {
 	t.subMu.Unlock()
 }
 
-// subscriberCount reports the number of live detail-stream subscribers. It backs
-// the goroutine-leak test (the count must return to zero after every connection
-// closes) and carries no production behavior.
+// subscriberCount reports the number of live detail-stream subscribers. A tailer
+// with a subscriber is never evicted as idle (evictIfIdle), and the
+// goroutine-leak test checks the count returns to zero after every connection
+// closes.
 func (t *cityRunTailer) subscriberCount() int {
 	t.subMu.Lock()
 	defer t.subMu.Unlock()
