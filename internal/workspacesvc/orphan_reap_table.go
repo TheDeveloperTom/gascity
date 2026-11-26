@@ -2,7 +2,6 @@ package workspacesvc
 
 import (
 	"log"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -36,28 +35,31 @@ import (
 //     init by design, and supervise the city's dolt server, so signaling one
 //     takes the store down. The session and order-exec reapers apply the
 //     same fence; and
-//  5. it runs this service's command, by one of: its argv equals the
-//     configured command; or the arguments after argv[0] equal the
-//     configured ones (an interpreter re-exec — Homebrew python3 re-execs
-//     through Python.app and rewrites argv[0]); or (the cwd rule, for a
-//     wrapper such as run.sh that exec'd a different binary) it leads its own
-//     process group but not its session — exactly what the spawn path's
-//     Setpgid-without-Setsid produces, and what a Setsid daemon a service
-//     started (bd's proxy) is not — and its cwd is the service's command
-//     dir. The cwd rule is off when that dir is the city root (see
-//     orphanCwdRuleDir), and its lsof call only runs for processes that
-//     passed every other rule.
+//  5. it runs this service's command: its argv equals the configured
+//     command, or the arguments after argv[0] equal the configured ones (an
+//     interpreter re-exec — Homebrew python3 re-execs through Python.app and
+//     rewrites argv[0]).
+//
+// Rule 5 is the only identity rule; nothing else stands in for the command.
+// Every long-lived process a service can leave behind inherits its state root
+// and cwd — bd's proxy, gc's managed dolt sql-server (Setpgid, the starter's
+// env and cwd), a tmux server, an agent runtime — and some of them have
+// exactly a service root's process shape, so neither cwd nor group/session
+// shape can tell them apart. The cost: a service whose wrapper exec's a binary
+// with different arguments (run.sh -> node server.mjs) is not reaped here;
+// such a service should exec with its configured arguments, or be configured
+// with the binary's argv.
 //
 // Rule 3 reads exactly one environment variable. A service's environment
 // holds bot tokens and API keys; the reader never asks for, materializes or
 // logs any other entry, and the logs carry only pids and the service name.
 //
 // Kill path: each match is re-read in full immediately before its SIGTERM
-// (later candidates' matching can take seconds), and its process group is
-// checked for city infrastructure — or a member whose argv cannot be read —
-// before the group is signaled at all. During the bounded wait and before
-// SIGKILL a pid is re-checked by its kernel start time, which detects pid
-// reuse exactly without re-running lsof on every poll.
+// (later candidates' matching takes time), and its process group is checked
+// for city infrastructure — or a member whose argv cannot be read — before
+// the group is signaled at all. During the bounded wait and before SIGKILL a
+// pid is re-checked by its kernel start time, which detects pid reuse
+// exactly.
 //
 // By design, a copy someone starts by hand with this instance's
 // GC_SERVICE_STATE_ROOT exported, detached to ppid 1 and running the service
@@ -94,10 +96,6 @@ type orphanProcTable struct {
 	cmdline func(pid int) ([]string, error)
 	// envValue returns the value of exactly one environment variable.
 	envValue func(pid int, key string) (string, bool, error)
-	// cwd returns the pid's current working directory.
-	cwd func(pid int) (string, error)
-	// sid returns the pid's session id (getsid(2)).
-	sid func(pid int) (int, error)
 }
 
 // find returns the pids in the table that satisfy the full orphan identity.
@@ -148,17 +146,7 @@ func (tb orphanProcTable) entryMatches(id orphanIdentity, e orphanProcEntry) boo
 	if err != nil || proctable.IsCityInfrastructureArgv(argv) {
 		return false
 	}
-	if orphanCommandMatches(argv, id.command) {
-		return true
-	}
-	if id.dir == "" || e.pgid != e.pid {
-		return false
-	}
-	if sid, err := tb.sid(e.pid); err != nil || sid == e.pid {
-		return false
-	}
-	cwd, err := tb.cwd(e.pid)
-	return err == nil && cwd != "" && cwd == id.dir
+	return orphanCommandMatches(argv, id.command)
 }
 
 // orphanCommandMatches reports whether a live argv runs the configured
@@ -187,8 +175,8 @@ func (tb orphanProcTable) rematch(id orphanIdentity, e orphanProcEntry) bool {
 
 // stillOrphaned is the cheap re-check used while waiting: the same process
 // (pid and start time) is still alive, not a zombie, and still under init.
-// argv, environment and cwd are fixed for a process's lifetime as far as the
-// sweep is concerned, so they are not re-read on every poll.
+// argv and environment were re-read in full right before SIGTERM; pid plus
+// start time names that same process, so they are not re-read on every poll.
 func (tb orphanProcTable) stillOrphaned(e orphanProcEntry) bool {
 	fresh, ok, err := tb.lookup(e.pid)
 	return err == nil && ok && fresh.pid == e.pid && fresh.startTime == e.startTime &&
@@ -269,29 +257,4 @@ func filterStillOrphaned(tb orphanProcTable, entries []orphanProcEntry) []orphan
 		}
 	}
 	return live
-}
-
-// orphanCwdRuleDir returns the dir the cwd rule compares against for a
-// service run in commandDir, or "" (rule off) when that is the city root:
-// a root-pack service's `gc`/`bd` calls leave daemons whose cwd is the city
-// root, so there it identifies nothing.
-func orphanCwdRuleDir(commandDir, cityPath string) string {
-	dir := resolveOrphanCommandDir(commandDir)
-	if dir == "" || dir == resolveOrphanCommandDir(cityPath) {
-		return ""
-	}
-	return dir
-}
-
-// resolveOrphanCommandDir returns dir with symlinks resolved, the form the
-// kernel reports a process's cwd in (on darwin /var is /private/var), so the
-// cwd rule compares like with like. An unresolvable dir is only cleaned.
-func resolveOrphanCommandDir(dir string) string {
-	if dir == "" {
-		return ""
-	}
-	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-		return resolved
-	}
-	return filepath.Clean(dir)
 }

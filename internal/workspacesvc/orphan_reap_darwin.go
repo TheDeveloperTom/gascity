@@ -3,15 +3,8 @@
 package workspacesvc
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
-	"time"
 
 	"github.com/gastownhall/gascity/internal/pidutil"
 	"golang.org/x/sys/unix"
@@ -60,34 +53,7 @@ func platformOrphanTable() (orphanProcTable, bool) {
 		},
 		cmdline:  pidutil.Cmdline,
 		envValue: pidutil.EnvironValue,
-		cwd:      darwinProcessCwd,
-		sid:      unix.Getsid,
 	}, true
-}
-
-// darwinCwdTimeout bounds one lsof call. The sweep only asks for the cwd of
-// processes that already carry this instance's state root, so it runs at
-// most a handful of times per spawn.
-const darwinCwdTimeout = 5 * time.Second
-
-// darwinProcessCwd reads pid's current working directory with
-// `lsof -a -p <pid> -d cwd -Fn`, whose field output is one "n<path>" line
-// for the cwd. darwin exposes the cwd only through proc_pidinfo, which
-// x/sys does not wrap; lsof is part of the base system.
-func darwinProcessCwd(pid int) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), darwinCwdTimeout)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "/usr/sbin/lsof", "-a", "-p", strconv.Itoa(pid), "-d", "cwd", "-Fn").Output()
-	if err != nil {
-		return "", fmt.Errorf("reading the cwd of PID %d via lsof: %w", pid, err)
-	}
-	sc := bufio.NewScanner(bytes.NewReader(out))
-	for sc.Scan() {
-		if line := sc.Text(); len(line) > 1 && line[0] == 'n' {
-			return line[1:], nil
-		}
-	}
-	return "", fmt.Errorf("lsof reported no cwd for PID %d", pid)
 }
 
 func darwinOrphanEntry(kp *unix.KinfoProc) orphanProcEntry {

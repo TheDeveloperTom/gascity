@@ -13,31 +13,24 @@ import (
 	"time"
 )
 
-// testSessionID is the session every fake process belongs to unless a row
-// says otherwise: the supervisor's session, which no service root leads.
-const testSessionID = 500
-
 // fakeOrphanProc is one row of the fake process table: its kinfo-style
-// entry, its session, argv, environment and cwd. env holds secrets on
-// purpose so the tests can prove the sweep never asks for them. A zero
-// entry.pgid means "leads its own group"; a zero sid means testSessionID.
+// entry, argv and environment. env holds secrets on purpose so the tests can
+// prove the sweep never asks for them. A zero entry.pgid means "leads its own
+// group".
 type fakeOrphanProc struct {
 	entry orphanProcEntry
-	sid   int
 	argv  []string
 	env   map[string]string
-	cwd   string
 }
 
 // fakeOrphanTable is an injectable process lister for the table-driven sweep
 // (the darwin path). It records every environment key the sweep asks for,
-// every pid whose environment or cwd it reads, and every signal it sends.
+// every pid whose environment it reads, and every signal it sends.
 type fakeOrphanTable struct {
 	mu       sync.Mutex
 	procs    map[int]*fakeOrphanProc
 	envKeys  []string
 	envPIDs  []int
-	cwdPIDs  []int
 	listErr  error
 	signals  []string
 	onSignal func(pid int, sig syscall.Signal)
@@ -54,9 +47,6 @@ func newFakeOrphanTable(procs ...fakeOrphanProc) *fakeOrphanTable {
 func (ft *fakeOrphanTable) put(p fakeOrphanProc) {
 	if p.entry.pgid == 0 {
 		p.entry.pgid = p.entry.pid
-	}
-	if p.sid == 0 {
-		p.sid = testSessionID
 	}
 	if p.entry.startTime == 0 {
 		p.entry.startTime = int64(p.entry.pid) * 1000
@@ -109,25 +99,6 @@ func (ft *fakeOrphanTable) table() orphanProcTable {
 			v, ok := p.env[key]
 			return v, ok, nil
 		},
-		cwd: func(pid int) (string, error) {
-			ft.mu.Lock()
-			defer ft.mu.Unlock()
-			ft.cwdPIDs = append(ft.cwdPIDs, pid)
-			p, ok := ft.procs[pid]
-			if !ok || p.cwd == "" {
-				return "", errors.New("cwd unreadable")
-			}
-			return p.cwd, nil
-		},
-		sid: func(pid int) (int, error) {
-			ft.mu.Lock()
-			defer ft.mu.Unlock()
-			p, ok := ft.procs[pid]
-			if !ok {
-				return 0, errors.New("no such process")
-			}
-			return p.sid, nil
-		},
 	}
 }
 
@@ -175,7 +146,6 @@ const (
 	testOtherCityRoot = "/cities/beta/.gc/services/discord-gateway"
 	testOtherSvcRoot  = "/cities/alpha/.gc/services/slack-adapter"
 	testSweeperPID    = 900
-	testCommandDir    = "/packs/discord"
 )
 
 var testServiceCommand = []string{"python3", "discord_gateway_service.py"}
@@ -209,34 +179,27 @@ func orphanFixture() *fakeOrphanTable {
 		fakeOrphanProc{entry: orphanProcEntry{pid: 4107, ppid: 1}, argv: testServiceCommand},
 		// An unrelated orphan with a different argv.
 		fakeOrphanProc{entry: orphanProcEntry{pid: 4108, ppid: 1}, argv: []string{"/usr/sbin/cfprefsd", "agent"}, env: map[string]string{}},
-		// This city's state root and cwd, but its argv cannot be read: the
+		// This city's state root, but its argv cannot be read: the
 		// infrastructure guard cannot run, so it never matches.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4109, ppid: 1}, env: secretEnv(testCityRoot), cwd: testCommandDir},
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4109, ppid: 1}, env: secretEnv(testCityRoot)},
 		// Homebrew python re-execs through Python.app, rewriting argv[0]: the
 		// arguments after it still equal the configured command's.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4110, ppid: 1}, argv: []string{"/opt/homebrew/Cellar/python@3.14/Python.app/Contents/MacOS/Python", "discord_gateway_service.py"}, env: secretEnv(testCityRoot), cwd: "/elsewhere"},
-		// A wrapper script exec'd a binary (run.sh -> adapter): the argv is
-		// unrelated, but the process runs in the service's command dir and,
-		// like every service root, leads its own group inside the
-		// supervisor's session.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4111, ppid: 1}, argv: []string{"/packs/discord/adapter/bin"}, env: secretEnv(testCityRoot), cwd: testCommandDir},
-		// This city's state root, but neither the command nor the cwd match.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4112, ppid: 1}, argv: []string{"python3", "some_other_tool.py"}, env: secretEnv(testCityRoot), cwd: "/elsewhere"},
-		// A Setsid daemon a service started (bd's db-proxy-child shape, with
-		// a generic argv): it inherited the state root and cwd and was
-		// re-parented to launchd, but it leads its own session — no service
-		// root ever does.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4113, ppid: 1}, sid: 4113, argv: []string{"/usr/local/bin/somedaemon", "--serve"}, env: secretEnv(testCityRoot), cwd: testCommandDir},
-		// bd's db-proxy-child itself, even shaped as a non-session group
-		// leader: city infrastructure supervising the store's dolt server.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4114, ppid: 1}, argv: []string{"bd", "db-proxy-child", "--root", "/cities/alpha/.beads/dolt"}, env: secretEnv(testCityRoot), cwd: testCommandDir},
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4110, ppid: 1}, argv: []string{"/opt/homebrew/Cellar/python@3.14/Python.app/Contents/MacOS/Python", "discord_gateway_service.py"}, env: secretEnv(testCityRoot)},
+		// A wrapper script exec'd a binary (run.sh -> adapter): it leads its
+		// own group like a service root, but its argv is not the command.
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4111, ppid: 1}, argv: []string{"/packs/discord/adapter/bin"}, env: secretEnv(testCityRoot)},
+		// This city's state root, but another command.
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4112, ppid: 1}, argv: []string{"python3", "some_other_tool.py"}, env: secretEnv(testCityRoot)},
+		// A Setsid daemon a service started, with a generic argv.
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4113, ppid: 1}, argv: []string{"/usr/local/bin/somedaemon", "--serve"}, env: secretEnv(testCityRoot)},
+		// bd's db-proxy-child: city infrastructure supervising the store's
+		// dolt server.
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4114, ppid: 1}, argv: []string{"bd", "db-proxy-child", "--root", "/cities/alpha/.beads/dolt"}, env: secretEnv(testCityRoot)},
 		// gc's managed-Dolt scope watchdog: Setpgid (not Setsid), inherited
-		// env and cwd, re-parented to launchd. Only the infrastructure guard
-		// tells it apart.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4115, ppid: 1}, argv: []string{"/Users/x/.local/bin/gc", "__gc-managed-dolt-scope-watchdog", "--city", "/cities/alpha"}, env: secretEnv(testCityRoot), cwd: testCommandDir},
-		// A descendant in some other process's group: same root and cwd, but
-		// not a group leader, so not a service root.
-		fakeOrphanProc{entry: orphanProcEntry{pid: 4116, ppid: 1, pgid: 4111}, argv: []string{"/packs/discord/adapter/helper"}, env: secretEnv(testCityRoot), cwd: testCommandDir},
+		// env, re-parented to launchd.
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4115, ppid: 1}, argv: []string{"/Users/x/.local/bin/gc", "__gc-managed-dolt-scope-watchdog", "--city", "/cities/alpha"}, env: secretEnv(testCityRoot)},
+		// A descendant in some other process's group.
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4116, ppid: 1, pgid: 4111}, argv: []string{"/packs/discord/adapter/helper"}, env: secretEnv(testCityRoot)},
 		// The sweeper itself and launchd.
 		fakeOrphanProc{entry: orphanProcEntry{pid: testSweeperPID, ppid: 1}, argv: testServiceCommand, env: secretEnv(testCityRoot)},
 		fakeOrphanProc{entry: orphanProcEntry{pid: 1, ppid: 0}, argv: []string{"/sbin/launchd"}, env: map[string]string{}},
@@ -244,12 +207,10 @@ func orphanFixture() *fakeOrphanTable {
 }
 
 // fixtureMatches is every pid of orphanFixture the sweep must match.
-var fixtureMatches = []int{4101, 4110, 4111}
+var fixtureMatches = []int{4101, 4110}
 
 func testIdentity() orphanIdentity {
-	id := newOrphanIdentity("discord-gateway", testCityRoot, testServiceCommand)
-	id.dir = testCommandDir
-	return id
+	return newOrphanIdentity("discord-gateway", testCityRoot, testServiceCommand)
 }
 
 func TestOrphanTableFindMatchesOnlyThisCitysOrphans(t *testing.T) {
@@ -302,16 +263,6 @@ func TestOrphanTableFindReadsOnlyTheStateRootVariable(t *testing.T) {
 			t.Fatalf("the sweep read the environment of pid %d, which fails a cheaper check first", pid)
 		}
 	}
-	// The cwd (an lsof call on darwin) is only read for same-root,
-	// non-infrastructure group leaders outside a session lead whose argv did
-	// not match.
-	for _, pid := range ft.cwdPIDs {
-		switch pid {
-		case 4111, 4112:
-		default:
-			t.Fatalf("the sweep read the cwd of pid %d; only same-root group-leader argv mismatches need it", pid)
-		}
-	}
 }
 
 // City infrastructure that inherited a service's environment and cwd — bd's
@@ -327,10 +278,35 @@ func TestOrphanTableNeverMatchesCityInfrastructure(t *testing.T) {
 			// Even configured as the service's own command, so the exact-argv
 			// rule would otherwise match.
 			id := newOrphanIdentity("discord-gateway", testCityRoot, argv)
-			id.dir = testCommandDir
-			ft := newFakeOrphanTable(fakeOrphanProc{entry: orphanProcEntry{pid: 4200, ppid: 1}, argv: argv, env: secretEnv(testCityRoot), cwd: testCommandDir})
+			ft := newFakeOrphanTable(fakeOrphanProc{entry: orphanProcEntry{pid: 4200, ppid: 1}, argv: argv, env: secretEnv(testCityRoot)})
 			if got := ft.table().find(testSweeperPID, id); len(got) != 0 {
 				t.Fatalf("find = %v, want city infrastructure left alone", got)
+			}
+		})
+	}
+}
+
+// A process that carries this instance's state root but does not run the
+// service command is never matched, whatever its shape. gc's managed dolt
+// sql-server is started Setpgid (its own group, in its starter's session) with
+// the starter's whole environment and cwd (cmd/gc/dolt_start_managed.go,
+// dolt_scope_watchdog.go): started by a `gc` call a service made, then
+// re-parented to launchd once its watchdog is gone, it looks exactly like a
+// service root that exec'd another binary in the service's command dir.
+func TestOrphanTableNeverMatchesASameRootProcessRunningAnotherCommand(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		proc fakeOrphanProc
+	}{
+		{name: "managed dolt sql-server", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4250, ppid: 1}, argv: []string{"dolt", "sql-server", "--config", "/cities/alpha/.beads/dolt/config.yaml"}, env: secretEnv(testCityRoot)}},
+		{name: "tmux server", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4251, ppid: 1}, argv: []string{"tmux", "-L", "gc-alpha", "new-session", "-d"}, env: secretEnv(testCityRoot)}},
+		{name: "agent runtime", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4252, ppid: 1}, argv: []string{"/Users/x/.local/bin/claude", "--resume", "abc"}, env: secretEnv(testCityRoot)}},
+		{name: "wrapper-exec'd binary", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4253, ppid: 1}, argv: []string{"/packs/discord/adapter/bin"}, env: secretEnv(testCityRoot)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ft := newFakeOrphanTable(tc.proc)
+			if got := ft.table().find(testSweeperPID, testIdentity()); len(got) != 0 {
+				t.Fatalf("find = %v, want a process not running the service command left alone", got)
 			}
 		})
 	}
@@ -360,16 +336,6 @@ func TestOrphanTableFindListFailureFindsNothing(t *testing.T) {
 	ft.listErr = errors.New("sysctl failed")
 	if got := ft.table().find(testSweeperPID, testIdentity()); len(got) != 0 {
 		t.Fatalf("find = %v, want none when the table cannot be listed", got)
-	}
-}
-
-// Without a known command dir the cwd rule never matches: an empty dir must
-// not equal a process whose cwd could not be read.
-func TestOrphanTableFindWithoutCommandDirSkipsCwdRule(t *testing.T) {
-	ft := orphanFixture()
-	got := ft.table().find(testSweeperPID, newOrphanIdentity("discord-gateway", testCityRoot, testServiceCommand))
-	if !slices.Equal(got, []int{4101, 4110}) {
-		t.Fatalf("find = %v, want [4101 4110]", got)
 	}
 }
 
@@ -439,24 +405,6 @@ func TestReapOrphansFromTableKillsAStragglerAfterTheWait(t *testing.T) {
 	}
 }
 
-// The escalation wait re-checks a matched pid by its start time, not by
-// re-running the identity rules: the cwd rule's lsof runs once per pid, not
-// on every 50ms poll.
-func TestReapOrphansFromTableReadsCwdOncePerPID(t *testing.T) {
-	ft := orphanFixture() // the orphans ignore SIGTERM
-	reapOrphansFromTable(ft.table(), testIdentity(), testSweeperPID, ft.signal, 200*time.Millisecond)
-	reads := 0
-	for _, pid := range ft.cwdPIDs {
-		if pid == 4111 {
-			reads++
-		}
-	}
-	// One read in find, one in the pre-SIGTERM re-check.
-	if reads > 2 {
-		t.Fatalf("read the cwd of pid 4111 %d times during one reap; want at most 2", reads)
-	}
-}
-
 func TestReapOrphansFromTableNeverKillsARecycledPID(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -465,7 +413,7 @@ func TestReapOrphansFromTableNeverKillsARecycledPID(t *testing.T) {
 		{name: "reused by a process with a live parent", next: func(pid int) fakeOrphanProc {
 			return fakeOrphanProc{entry: orphanProcEntry{pid: pid, ppid: 5555}, argv: []string{"vim"}, env: map[string]string{}}
 		}},
-		// Same ppid, argv, root and cwd: only the start time tells the new
+		// Same ppid, argv and root: only the start time tells the new
 		// process apart.
 		{name: "reused by an identical-looking orphan", next: func(pid int) fakeOrphanProc {
 			p := *orphanFixture().procs[pid]
@@ -494,13 +442,13 @@ func TestReapOrphansFromTableNeverKillsARecycledPID(t *testing.T) {
 func TestReapOrphansFromTableRechecksBeforeFirstSIGTERM(t *testing.T) {
 	ft := orphanFixture()
 	tb := ft.table()
-	inner := tb.cwd
-	tb.cwd = func(pid int) (string, error) {
-		// Matching 4111 (the last match) happens after 4101 matched.
-		if pid == 4111 {
+	inner := tb.envValue
+	tb.envValue = func(pid int, key string) (string, bool, error) {
+		// Matching 4110 (the last match) happens after 4101 matched.
+		if pid == 4110 {
 			ft.replace(fakeOrphanProc{entry: orphanProcEntry{pid: 4101, ppid: 5555}, argv: []string{"vim"}, env: map[string]string{}})
 		}
-		return inner(pid)
+		return inner(pid, key)
 	}
 	reapOrphansFromTable(tb, testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
 	for _, s := range ft.signaled() {
@@ -546,22 +494,5 @@ func TestReapOrphansFromTableRefusesAGroupHoldingInfrastructure(t *testing.T) {
 	reapOrphansFromTable(ft.table(), testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
 	if got := ft.signaled(); !slices.Equal(got, []string{"4301:TERM"}) {
 		t.Fatalf("signals = %v, want [4301:TERM]", got)
-	}
-}
-
-// The cwd rule is disabled when the service runs in the city root: every
-// `gc`/`bd` call a root-pack service makes from there leaves descendants with
-// that cwd, so it identifies nothing. A pack dir keeps it.
-func TestOrphanCwdRuleDir(t *testing.T) {
-	city := t.TempDir()
-	pack := t.TempDir()
-	if got := orphanCwdRuleDir(city, city); got != "" {
-		t.Fatalf("orphanCwdRuleDir(city, city) = %q, want disabled", got)
-	}
-	if got, want := orphanCwdRuleDir(pack, city), resolveOrphanCommandDir(pack); got != want {
-		t.Fatalf("orphanCwdRuleDir(pack, city) = %q, want %q", got, want)
-	}
-	if got := orphanCwdRuleDir("", city); got != "" {
-		t.Fatalf("orphanCwdRuleDir(\"\", city) = %q, want disabled", got)
 	}
 }

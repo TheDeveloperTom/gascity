@@ -62,11 +62,6 @@ type orphanIdentity struct {
 	// newOrphanIdentity leaves it 0 so the identity keeps the strict
 	// re-parented-to-init (ppid 1) rule until a subreaper is detected.
 	subreaperPID int
-	// dir is the directory the spawn path runs the command in. Only the
-	// table-driven (darwin) sweep uses it, as its cwd cross-check for a
-	// service whose wrapper exec'd a different binary; empty disables that
-	// rule.
-	dir string
 }
 
 // newOrphanIdentity builds the sweep identity for one service instance.

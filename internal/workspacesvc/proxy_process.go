@@ -203,9 +203,7 @@ func (p *proxyProcessInstance) start(now time.Time) error {
 	// to init; spawning next to them accumulates duplicates (ga-mukg0s).
 	// Best-effort sweep before every spawn, scoped to this instance's state
 	// root so sibling cities' orphans are untouched; see orphan_reap.go.
-	orphanID := newOrphanIdentity(p.svc.Name, p.absStateRoot, p.svc.Process.Command)
-	orphanID.dir = orphanCwdRuleDir(p.commandDir(), p.rt.CityPath())
-	reapOrphanedServiceProcesses(orphanID)
+	reapOrphanedServiceProcesses(newOrphanIdentity(p.svc.Name, p.absStateRoot, p.svc.Process.Command))
 
 	logFile, err := os.OpenFile(filepath.Join(p.absStateRoot, "logs", "service.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
 	if err != nil {
