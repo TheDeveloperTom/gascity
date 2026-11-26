@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // darwinOrphanHelperEnv marks the child TestDarwinOrphanHelperProcess runs
@@ -71,13 +73,56 @@ func spawnDarwinOrphanGroup(t *testing.T, command []string, stateRoot string, ex
 			if err != nil {
 				t.Fatalf("parse grandchild pid %q: %v", data, err)
 			}
-			t.Cleanup(func() { _ = syscall.Kill(child, syscall.SIGKILL) })
+			if ident, ok := processIdentityForTest(child); ok {
+				t.Cleanup(func() { killOwnProcessForTest(child, ident, false) })
+			}
 			return pid, child
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("orphan helper %d never started its grandchild", pid)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// killGroupAtCleanupForTest SIGKILLs, at cleanup, the process group led by a
+// process the test spawned, only while leader still names that process.
+func killGroupAtCleanupForTest(t *testing.T, leader int) {
+	t.Helper()
+	if ident, ok := processIdentityForTest(leader); ok {
+		t.Cleanup(func() { killOwnProcessForTest(leader, ident, true) })
+	}
+}
+
+// A kern.proc.pid lookup of a pid that no longer exists fails with EIO in
+// x/sys; the table reads that (and ESRCH) as "gone", anything else as a
+// failed read. A reaped child's pid and this process's own pid exercise the
+// real sysctl.
+func TestDarwinLookupMapsAMissingPIDToGone(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		gone bool
+	}{
+		{err: unix.EIO, gone: true},
+		{err: fmt.Errorf("wrapped: %w", unix.ESRCH), gone: true},
+		{err: unix.EPERM},
+		{err: unix.ENOMEM},
+	} {
+		if got := darwinLookupGone(tc.err); got != tc.gone {
+			t.Errorf("darwinLookupGone(%v) = %v, want %v", tc.err, got, tc.gone)
+		}
+	}
+
+	tb, _ := platformOrphanTable()
+	if e, ok, err := tb.lookup(os.Getpid()); err != nil || !ok || e.pid != os.Getpid() || e.startTime == 0 {
+		t.Fatalf("lookup(self) = %+v, %v, %v; want this process", e, ok, err)
+	}
+	done := exec.Command("/usr/bin/true")
+	if err := done.Run(); err != nil {
+		t.Fatalf("run /usr/bin/true: %v", err)
+	}
+	if e, ok, err := tb.lookup(done.Process.Pid); err != nil || ok {
+		t.Fatalf("lookup(reaped child %d) = %+v, %v, %v; want gone, no error", done.Process.Pid, e, ok, err)
 	}
 }
 
@@ -152,10 +197,10 @@ func TestDarwinReapSparesSameRootOrphansRunningAnotherCommand(t *testing.T) {
 
 	setpgid, setpgidChild := spawnDarwinOrphanGroup(t, darwinHelperCommand(t, marker+"-setpgid"), stateRoot,
 		"GC_DARWIN_ORPHAN_CWD="+dir)
-	t.Cleanup(func() { _ = syscall.Kill(-setpgid, syscall.SIGKILL) })
+	killGroupAtCleanupForTest(t, setpgid)
 	daemon, daemonChild := spawnDarwinOrphanGroup(t, darwinHelperCommand(t, marker+"-daemon"), stateRoot,
 		"GC_DARWIN_ORPHAN_CWD="+dir, "GC_DARWIN_ORPHAN_SETSID=1")
-	t.Cleanup(func() { _ = syscall.Kill(-daemon, syscall.SIGKILL) })
+	killGroupAtCleanupForTest(t, daemon)
 
 	reapOrphanedServiceProcesses(newOrphanIdentity("darwin-reap-test", stateRoot, configured))
 

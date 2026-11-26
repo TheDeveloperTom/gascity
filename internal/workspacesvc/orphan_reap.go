@@ -21,8 +21,11 @@ import (
 // duplicates never accumulate.
 //
 // Matching queries live process-table state only — no pid or status files.
-// A process is signaled only while every rule of the orphan identity holds
-// (see orphanIdentity.matchesLive):
+// The rules below are the /proc path (linux). Hosts without /proc (darwin)
+// sweep the sysctl process table with their own rules and limits instead —
+// see orphan_reap_table.go. On the /proc path a process is signaled only
+// while every rule of the orphan identity holds (see
+// orphanIdentity.matchesLive):
 //
 //  1. it is alive and not a zombie;
 //  2. it has re-parented to a subreaper — init (ppid 1), or the detected
@@ -120,8 +123,6 @@ func (id orphanIdentity) parentIsSubreaper(ppid int) bool {
 // /proc (darwin) sweep the sysctl process table instead, with the rules in
 // orphan_reap_table.go.
 func reapOrphanedServiceProcesses(id orphanIdentity) {
-	// Hosts without /proc (darwin) read the process table through sysctl
-	// instead; see orphan_reap_table.go.
 	if tb, ok := platformOrphanTable(); ok {
 		reapOrphansFromTable(tb, id, os.Getpid(), signalProcessOrGroup, orphanReapTermWait)
 		return

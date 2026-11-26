@@ -28,8 +28,9 @@ func requireProcFS(t *testing.T) {
 	}
 }
 
-// spawnOrphanForTest spawns argv detached through an intermediate shell so
-// the child re-parents to init (ppid 1), simulating a service process that
+// spawnOrphanForTest spawns argv detached through an intermediate process
+// (TestOrphanSpawnerProcess) so the child re-parents to init (ppid 1) as the
+// leader of its own process group, simulating a service process that
 // survived a supervisor hard exit. extraEnv entries are appended to the
 // orphan's environment. It returns only once the orphan's
 // /proc/<pid>/cmdline reads as argv: right after spawn the exec transition
@@ -41,9 +42,13 @@ func requireProcFS(t *testing.T) {
 func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 	t.Helper()
 	requireOrphanSweepHost(t)
-	args := append([]string{"-c", `"$@" >/dev/null 2>&1 & echo $!`, "gc-orphan-spawner"}, argv...)
-	cmd := exec.Command("sh", args...)
-	cmd.Env = append(os.Environ(), extraEnv...)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("Executable: %v", err)
+	}
+	args := append([]string{"-test.run=^TestOrphanSpawnerProcess$", "--"}, argv...)
+	cmd := exec.Command(exe, args...)
+	cmd.Env = append(append(os.Environ(), extraEnv...), orphanSpawnerEnv+"=1")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("spawn orphan: %v", err)
@@ -52,7 +57,9 @@ func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 	if err != nil {
 		t.Fatalf("parse orphan pid from %q: %v", out, err)
 	}
-	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	if ident, ok := processIdentityForTest(pid); ok {
+		t.Cleanup(func() { killOwnProcessForTest(pid, ident, false) })
+	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -81,6 +88,75 @@ func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// orphanSpawnerEnv marks the child TestOrphanSpawnerProcess runs as.
+const orphanSpawnerEnv = "GC_TEST_ORPHAN_SPAWNER"
+
+// TestOrphanSpawnerProcess is not a test. Run as a child with
+// orphanSpawnerEnv set, it starts the argv after the first "--" as the leader
+// of its own process group — what the spawn path's Setpgid makes every
+// proxy_process child — prints its pid and exits without waiting, so the
+// started process re-parents to init: a service orphaned by a supervisor
+// hard exit.
+func TestOrphanSpawnerProcess(_ *testing.T) {
+	if os.Getenv(orphanSpawnerEnv) != "1" {
+		return
+	}
+	var argv []string
+	for i, arg := range os.Args {
+		if arg == "--" {
+			argv = os.Args[i+1:]
+			break
+		}
+	}
+	if len(argv) == 0 {
+		os.Exit(2)
+	}
+	env := make([]string, 0, len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, orphanSpawnerEnv+"=") {
+			env = append(env, kv)
+		}
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = env
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		os.Exit(3)
+	}
+	fmt.Println(cmd.Process.Pid)
+	os.Exit(0)
+}
+
+// processIdentityForTest returns a token naming the process that holds pid
+// now: the kernel start time from the sweep's process table where there is
+// one (darwin, microseconds), else pidutil.StartTime. ok is false once the
+// pid is gone or unreadable.
+func processIdentityForTest(pid int) (string, bool) {
+	if tb, ok := platformOrphanTable(); ok {
+		e, found, err := tb.lookup(pid)
+		if err != nil || !found {
+			return "", false
+		}
+		return strconv.FormatInt(e.startTime, 10), true
+	}
+	start, err := pidutil.StartTime(pid)
+	return start, err == nil
+}
+
+// killOwnProcessForTest SIGKILLs pid — with group, the process group it
+// leads — only while pid still names the process identified by ident, so a
+// test cleanup never signals a process that reused the pid of one it spawned.
+func killOwnProcessForTest(pid int, ident string, group bool) {
+	if cur, ok := processIdentityForTest(pid); !ok || cur != ident {
+		return
+	}
+	if group {
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
+		return
+	}
+	_ = syscall.Kill(pid, syscall.SIGKILL)
 }
 
 // requireOrphanSweepHost skips tests that need a working orphan sweep: /proc

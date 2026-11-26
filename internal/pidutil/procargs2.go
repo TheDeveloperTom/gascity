@@ -75,32 +75,38 @@ func splitProcArgs2(data []byte) ([]string, []byte, error) {
 	return argv, rest, nil
 }
 
-// parseProcArgs2EnvValue returns the value of exactly one environment
-// variable from Darwin's kern.procargs2 buffer, reporting whether it is
-// present. It walks the same entries parseProcArgs2Environ does, but compares
-// each one as bytes against "key=" and copies out only the matching value, so
-// no other variable — and the environment of a service process routinely holds
+// parseProcArgs2ArgvEnvValues returns argv and the values of exactly the named
+// environment variables from one Darwin kern.procargs2 buffer; a key that is
+// not set is absent from the map, and the first occurrence of a key wins, as
+// in libc. It walks the same entries parseProcArgs2Environ does, but compares
+// each one as bytes against "key=" and copies out only matching values, so no
+// other variable — and the environment of a service process routinely holds
 // tokens — is ever materialized as a string by this reader. A buffer that ends
 // inside an entry is an error, as it is for parseProcArgs2Environ.
-func parseProcArgs2EnvValue(data []byte, key string) (string, bool, error) {
-	_, rest, err := splitProcArgs2(data)
+func parseProcArgs2ArgvEnvValues(data []byte, keys []string) ([]string, map[string]string, error) {
+	argv, rest, err := splitProcArgs2(data)
 	if err != nil {
-		return "", false, err
+		return nil, nil, err
 	}
-	prefix := []byte(key + "=")
-	var (
-		value string
-		found bool
-	)
+	values := make(map[string]string, len(keys))
+	if len(keys) == 0 {
+		return argv, values, nil
+	}
+	prefixes := make([][]byte, len(keys))
+	for i, key := range keys {
+		prefixes[i] = []byte(key + "=")
+	}
 	for len(rest) > 0 && rest[0] != 0 {
 		end := bytes.IndexByte(rest, 0)
 		if end < 0 {
-			return "", false, fmt.Errorf("pidutil: procargs2 buffer ended inside an environment entry")
+			return nil, nil, fmt.Errorf("pidutil: procargs2 buffer ended inside an environment entry")
 		}
-		if !found && bytes.HasPrefix(rest[:end], prefix) {
-			value, found = string(rest[len(prefix):end]), true
+		for i, prefix := range prefixes {
+			if _, seen := values[keys[i]]; !seen && bytes.HasPrefix(rest[:end], prefix) {
+				values[keys[i]] = string(rest[len(prefix):end])
+			}
 		}
 		rest = rest[end+1:]
 	}
-	return value, found, nil
+	return argv, values, nil
 }

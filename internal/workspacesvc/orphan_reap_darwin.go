@@ -16,7 +16,7 @@ const darwinZombieState = 5
 
 // platformOrphanTable returns the darwin process table for the table-driven
 // orphan sweep: rows from the kern.proc sysctls (kinfo_proc), argv and the
-// single state-root variable from kern.procargs2. Rows are limited to
+// named identity variables from one kern.procargs2 read. Rows are limited to
 // processes whose real uid is the sweeper's; kern.procargs2 refuses another
 // user's process anyway, which the sweep reads as a mismatch.
 func platformOrphanTable() (orphanProcTable, bool) {
@@ -39,9 +39,7 @@ func platformOrphanTable() (orphanProcTable, bool) {
 		lookup: func(pid int) (orphanProcEntry, bool, error) {
 			kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 			if err != nil {
-				// The kernel copies out nothing for a pid that no longer
-				// exists, which x/sys reports as EIO.
-				if errors.Is(err, unix.EIO) || errors.Is(err, unix.ESRCH) {
+				if darwinLookupGone(err) {
 					return orphanProcEntry{}, false, nil
 				}
 				return orphanProcEntry{}, false, err
@@ -51,9 +49,15 @@ func platformOrphanTable() (orphanProcTable, bool) {
 			}
 			return darwinOrphanEntry(kp), true, nil
 		},
-		cmdline:  pidutil.Cmdline,
-		envValue: pidutil.EnvironValue,
+		procArgs: pidutil.ArgvEnvValues,
 	}, true
+}
+
+// darwinLookupGone reports whether a kern.proc.pid lookup error means the pid
+// no longer exists: the kernel copies out nothing for it, which x/sys reports
+// as EIO (ESRCH is accepted too). Any other error is a failed read.
+func darwinLookupGone(err error) bool {
+	return errors.Is(err, unix.EIO) || errors.Is(err, unix.ESRCH)
 }
 
 func darwinOrphanEntry(kp *unix.KinfoProc) orphanProcEntry {

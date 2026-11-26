@@ -25,15 +25,26 @@ type fakeOrphanProc struct {
 
 // fakeOrphanTable is an injectable process lister for the table-driven sweep
 // (the darwin path). It records every environment key the sweep asks for,
-// every pid whose environment it reads, and every signal it sends.
+// every pid whose environment it reads, every pid whose arguments it reads
+// at all, and every signal it sends.
 type fakeOrphanTable struct {
 	mu       sync.Mutex
 	procs    map[int]*fakeOrphanProc
 	envKeys  []string
 	envPIDs  []int
+	argPIDs  []int
 	listErr  error
 	signals  []string
 	onSignal func(pid int, sig syscall.Signal)
+}
+
+// find returns the pids in the table that satisfy the full orphan identity.
+func (tb orphanProcTable) find(self int, id orphanIdentity) []int {
+	var pids []int
+	for _, e := range tb.findEntries(self, id) {
+		pids = append(pids, e.pid)
+	}
+	return pids
 }
 
 func newFakeOrphanTable(procs ...fakeOrphanProc) *fakeOrphanTable {
@@ -78,26 +89,27 @@ func (ft *fakeOrphanTable) table() orphanProcTable {
 			}
 			return p.entry, true, nil
 		},
-		cmdline: func(pid int) ([]string, error) {
+		procArgs: func(pid int, keys ...string) ([]string, map[string]string, error) {
 			ft.mu.Lock()
 			defer ft.mu.Unlock()
+			ft.argPIDs = append(ft.argPIDs, pid)
+			if len(keys) > 0 {
+				ft.envKeys = append(ft.envKeys, keys...)
+				ft.envPIDs = append(ft.envPIDs, pid)
+			}
 			p, ok := ft.procs[pid]
 			if !ok || p.argv == nil {
-				return nil, errors.New("no such process")
+				return nil, nil, errors.New("no such process")
 			}
-			return slices.Clone(p.argv), nil
-		},
-		envValue: func(pid int, key string) (string, bool, error) {
-			ft.mu.Lock()
-			defer ft.mu.Unlock()
-			ft.envKeys = append(ft.envKeys, key)
-			ft.envPIDs = append(ft.envPIDs, pid)
-			p, ok := ft.procs[pid]
-			if !ok || p.env == nil {
-				return "", false, errors.New("environment unreadable")
+			// A nil env stands for one the kernel withholds (another user's
+			// process, a platform binary): readable argv, no variables.
+			values := map[string]string{}
+			for _, k := range keys {
+				if v, ok := p.env[k]; ok {
+					values[k] = v
+				}
 			}
-			v, ok := p.env[key]
-			return v, ok, nil
+			return slices.Clone(p.argv), values, nil
 		},
 	}
 }
@@ -244,24 +256,31 @@ func TestOrphanTableCommandMatchRules(t *testing.T) {
 	}
 }
 
-func TestOrphanTableFindReadsOnlyTheStateRootVariable(t *testing.T) {
+func TestOrphanTableFindReadsOnlyTheIdentityVariables(t *testing.T) {
 	ft := orphanFixture()
 	ft.table().find(testSweeperPID, testIdentity())
 	if len(ft.envKeys) == 0 {
-		t.Fatal("the sweep never read the state root; it cannot have proven ownership")
+		t.Fatal("the sweep never read the identity variables; it cannot have proven ownership")
 	}
 	for _, k := range ft.envKeys {
-		if k != stateRootEnvKey {
-			t.Fatalf("the sweep read environment key %q; only %q may be read", k, stateRootEnvKey)
+		if k != stateRootEnvKey && k != serviceNameEnvKey {
+			t.Fatalf("the sweep read environment key %q; only %q and %q may be read", k, stateRootEnvKey, serviceNameEnvKey)
 		}
 	}
-	// The environment is only read for live orphans: a live supervisor's
-	// child, a zombie, launchd and the sweeper itself are never touched.
-	for _, pid := range ft.envPIDs {
+	// A process's arguments are read only for live group-leader orphans: a
+	// live supervisor's child, a zombie, a non-leader, launchd and the
+	// sweeper itself fail a cheaper check first — and each candidate's
+	// arguments and environment are read once, together.
+	seen := map[int]bool{}
+	for _, pid := range ft.argPIDs {
 		switch pid {
-		case 4105, 4106, 1, testSweeperPID:
-			t.Fatalf("the sweep read the environment of pid %d, which fails a cheaper check first", pid)
+		case 4105, 4106, 4116, 1, testSweeperPID:
+			t.Fatalf("the sweep read the arguments of pid %d, which fails a cheaper check first", pid)
 		}
+		if seen[pid] {
+			t.Fatalf("the sweep read the arguments of pid %d twice in one find", pid)
+		}
+		seen[pid] = true
 	}
 }
 
@@ -312,6 +331,115 @@ func TestOrphanTableNeverMatchesASameRootProcessRunningAnotherCommand(t *testing
 	}
 }
 
+// A service's orphan carries its own GC_SERVICE_NAME and leads its own
+// process group (the spawn path's Setpgid). A sibling service sharing the
+// state root, and a same-argv process inside another group, are not this
+// service's orphans.
+func TestOrphanTableMatchesOnlyThisServicesGroupLeaders(t *testing.T) {
+	siblingEnv := secretEnv(testCityRoot)
+	siblingEnv["GC_SERVICE_NAME"] = "discord-admin"
+	for _, tc := range []struct {
+		name string
+		proc fakeOrphanProc
+	}{
+		{name: "sibling service sharing the state root", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4260, ppid: 1}, argv: testServiceCommand, env: siblingEnv}},
+		{name: "no service name", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4261, ppid: 1}, argv: testServiceCommand, env: map[string]string{stateRootEnvKey: testCityRoot}}},
+		{name: "not a group leader", proc: fakeOrphanProc{entry: orphanProcEntry{pid: 4262, ppid: 1, pgid: 4999}, argv: testServiceCommand, env: secretEnv(testCityRoot)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ft := newFakeOrphanTable(tc.proc)
+			if got := ft.table().find(testSweeperPID, testIdentity()); len(got) != 0 {
+				t.Fatalf("find = %v, want none", got)
+			}
+		})
+	}
+}
+
+// The identity check (pid and start time) is the last thing before each
+// signal: here the orphan exits while its group is being checked and a new
+// process takes its pid, so neither SIGTERM nor SIGKILL may be sent to it.
+func TestReapOrphansFromTableRechecksIdentityAfterTheGroupCheck(t *testing.T) {
+	reused := func(ft *fakeOrphanTable, pid int) {
+		p := *orphanFixture().procs[pid]
+		p.entry.startTime += 7
+		ft.replace(p)
+	}
+	t.Run("before SIGTERM", func(t *testing.T) {
+		ft := orphanFixture()
+		tb := ft.table()
+		inner, lists := tb.list, 0
+		tb.list = func() ([]orphanProcEntry, error) {
+			lists++
+			// List 1 is find; list 2 is 4101's group check.
+			if lists == 2 {
+				reused(ft, 4101)
+			}
+			return inner()
+		}
+		ft.onSignal = func(pid int, sig syscall.Signal) { ft.remove(pid) }
+		reapOrphansFromTable(tb, testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
+		for _, s := range ft.signaled() {
+			if strings.HasPrefix(s, "4101:") {
+				t.Fatalf("signals = %v; pid 4101 was reused during its group check", ft.signaled())
+			}
+		}
+	})
+	t.Run("before SIGKILL", func(t *testing.T) {
+		ft := orphanFixture() // the orphans ignore SIGTERM
+		tb := ft.table()
+		inner, terms, done := tb.list, 0, false
+		ft.onSignal = func(pid int, sig syscall.Signal) {
+			if sig == syscall.SIGTERM {
+				terms++
+			}
+		}
+		tb.list = func() ([]orphanProcEntry, error) {
+			// The first list after both SIGTERMs is 4101's pre-SIGKILL
+			// group check.
+			if terms == len(fixtureMatches) && !done {
+				done = true
+				reused(ft, 4101)
+			}
+			return inner()
+		}
+		reapOrphansFromTable(tb, testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
+		for _, s := range ft.signaled() {
+			if s == "4101:KILL" {
+				t.Fatalf("signals = %v; pid 4101 was reused during its pre-SIGKILL group check", ft.signaled())
+			}
+		}
+	})
+}
+
+// gc's managed dolt sql-server in an orphan's group refuses the group: in
+// test mode it is started without Setpgid, so it can share a group.
+func TestReapOrphansFromTableRefusesAGroupHoldingDolt(t *testing.T) {
+	ft := newFakeOrphanTable(
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4301, ppid: 1}, argv: testServiceCommand, env: secretEnv(testCityRoot)},
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4302, ppid: 4301, pgid: 4301}, argv: []string{"/opt/homebrew/bin/dolt", "sql-server", "--config", "/c/config.yaml"}},
+	)
+	reapOrphansFromTable(ft.table(), testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
+	if got := ft.signaled(); len(got) != 0 {
+		t.Fatalf("signals = %v, want none", got)
+	}
+}
+
+// Infrastructure that joins the group after SIGTERM refuses the SIGKILL.
+func TestReapOrphansFromTableRefusesSIGKILLWhenInfrastructureJoinsTheGroup(t *testing.T) {
+	ft := newFakeOrphanTable(
+		fakeOrphanProc{entry: orphanProcEntry{pid: 4301, ppid: 1}, argv: testServiceCommand, env: secretEnv(testCityRoot)},
+	)
+	ft.onSignal = func(pid int, sig syscall.Signal) {
+		if sig == syscall.SIGTERM {
+			ft.replace(fakeOrphanProc{entry: orphanProcEntry{pid: 4302, ppid: 4301, pgid: 4301}, argv: []string{"bd", "db-proxy-child"}})
+		}
+	}
+	reapOrphansFromTable(ft.table(), testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
+	if got := ft.signaled(); !slices.Equal(got, []string{"4301:TERM"}) {
+		t.Fatalf("signals = %v, want [4301:TERM] and no SIGKILL", got)
+	}
+}
+
 func TestOrphanTableFindRefusesIncompleteIdentityAndInitSweeper(t *testing.T) {
 	ft := orphanFixture()
 	for _, tc := range []struct {
@@ -322,6 +450,7 @@ func TestOrphanTableFindRefusesIncompleteIdentityAndInitSweeper(t *testing.T) {
 		{name: "sweeper is init", self: 1, id: testIdentity()},
 		{name: "no state root", self: testSweeperPID, id: newOrphanIdentity("discord-gateway", "", testServiceCommand)},
 		{name: "no command", self: testSweeperPID, id: newOrphanIdentity("discord-gateway", testCityRoot, nil)},
+		{name: "no service name", self: testSweeperPID, id: newOrphanIdentity("", testCityRoot, testServiceCommand)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := ft.table().find(tc.self, tc.id); len(got) != 0 {
@@ -442,13 +571,13 @@ func TestReapOrphansFromTableNeverKillsARecycledPID(t *testing.T) {
 func TestReapOrphansFromTableRechecksBeforeFirstSIGTERM(t *testing.T) {
 	ft := orphanFixture()
 	tb := ft.table()
-	inner := tb.envValue
-	tb.envValue = func(pid int, key string) (string, bool, error) {
+	inner := tb.procArgs
+	tb.procArgs = func(pid int, keys ...string) ([]string, map[string]string, error) {
 		// Matching 4110 (the last match) happens after 4101 matched.
 		if pid == 4110 {
 			ft.replace(fakeOrphanProc{entry: orphanProcEntry{pid: 4101, ppid: 5555}, argv: []string{"vim"}, env: map[string]string{}})
 		}
-		return inner(pid, key)
+		return inner(pid, keys...)
 	}
 	reapOrphansFromTable(tb, testIdentity(), testSweeperPID, ft.signal, 50*time.Millisecond)
 	for _, s := range ft.signaled() {
